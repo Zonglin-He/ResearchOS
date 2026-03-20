@@ -35,7 +35,7 @@ _REASONING_DEFAULT = RoleProviderPreference(
     model_priority={
         ProviderFamily.CLAUDE.value: ("sonnet",),
         ProviderFamily.CODEX.value: ("gpt-5.4",),
-        ProviderFamily.GEMINI.value: ("gemini-pro",),
+        ProviderFamily.GEMINI.value: ("gemini-3.1-pro-preview",),
         ProviderFamily.LOCAL.value: ("deterministic-reader",),
     },
 )
@@ -47,7 +47,7 @@ _REASONING_FALLBACK = RoleProviderPreference(
     ),
     model_priority={
         ProviderFamily.CODEX.value: ("gpt-5.4",),
-        ProviderFamily.GEMINI.value: ("gemini-pro",),
+        ProviderFamily.GEMINI.value: ("gemini-3.1-pro-preview",),
         ProviderFamily.LOCAL.value: ("deterministic-reader",),
     },
 )
@@ -59,7 +59,10 @@ _RETRIEVAL_DEFAULT = RoleProviderPreference(
         ProviderFamily.LOCAL.value,
     ),
     model_priority={
-        ProviderFamily.GEMINI.value: ("gemini-auto", "gemini-pro"),
+        ProviderFamily.GEMINI.value: (
+            "gemini-3-flash-preview",
+            "gemini-3.1-flash-lite-preview",
+        ),
         ProviderFamily.CLAUDE.value: ("sonnet",),
         ProviderFamily.CODEX.value: ("gpt-5.4",),
         ProviderFamily.LOCAL.value: ("deterministic-reader",),
@@ -73,7 +76,7 @@ _SYNTHESIS_DEFAULT = RoleProviderPreference(
         ProviderFamily.LOCAL.value,
     ),
     model_priority={
-        ProviderFamily.GEMINI.value: ("gemini-pro",),
+        ProviderFamily.GEMINI.value: ("gemini-3.1-pro-preview", "gemini-3-flash-preview"),
         ProviderFamily.CLAUDE.value: ("sonnet",),
         ProviderFamily.CODEX.value: ("gpt-5.4",),
         ProviderFamily.LOCAL.value: ("deterministic-reader",),
@@ -99,7 +102,10 @@ _ARCHIVAL_DEFAULT = RoleProviderPreference(
         ProviderFamily.CODEX.value,
     ),
     model_priority={
-        ProviderFamily.GEMINI.value: ("gemini-flash", "gemini-auto"),
+        ProviderFamily.GEMINI.value: (
+            "gemini-3.1-flash-lite-preview",
+            "gemini-3-flash-preview",
+        ),
         ProviderFamily.LOCAL.value: ("deterministic-reader",),
         ProviderFamily.CLAUDE.value: ("sonnet",),
         ProviderFamily.CODEX.value: ("gpt-5.4",),

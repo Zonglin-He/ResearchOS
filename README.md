@@ -159,6 +159,7 @@ Recommended usage:
 
 - use `local` for deterministic local development, CI, demos, and teaching
 - use `codex` / `claude` / `gemini` only when the corresponding external CLI is already installed and working
+- in the terminal control plane, Gemini presets now use explicit Gemini 3 family model names rather than older 2.5-only presets
 
 ## Claude-First Routing Philosophy
 
@@ -181,10 +182,10 @@ Default intent:
 
 Default role-family tendency:
 
-- Librarian -> Gemini
-- Synthesizer -> Gemini
+- Librarian -> Gemini 3 Flash / Flash-Lite
+- Synthesizer -> Gemini 3.1 Pro
 - Executor -> Codex
-- Archivist -> Gemini or local
+- Archivist -> Gemini 3.1 Flash-Lite or local
 - core reasoning roles -> Claude first
 
 Fallback is capability-aware rather than one global order:
@@ -243,6 +244,13 @@ Open the interactive terminal control plane:
 ```powershell
 uv run researchos
 ```
+
+If there are no projects yet, ResearchOS now starts with a guided first-project flow that helps you:
+
+- create the first project
+- choose a default dispatch profile
+- create the first task
+- optionally dispatch it immediately
 
 Explicit console launch still works:
 

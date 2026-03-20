@@ -104,6 +104,9 @@ class ConsoleControlPlane:
     def system_dispatch_profile(self) -> DispatchProfile:
         return self.routing_resolver.system_default
 
+    def has_projects(self) -> bool:
+        return bool(self.project_service.list_projects())
+
     def provider_names(self) -> list[str]:
         return self.provider_registry.list_names()
 

@@ -21,6 +21,8 @@ Then open the terminal control plane directly:
 uv run researchos
 ```
 
+If the workspace has no projects yet, the console now opens a guided setup flow so the operator can create the first project, choose a routing profile, create the first task, and optionally dispatch it immediately.
+
 Equivalent explicit launch paths:
 
 ```powershell
@@ -40,6 +42,12 @@ uv run pytest -q
 $env:RESEARCHOS_PROVIDER = "local"
 $env:RESEARCHOS_PROVIDER_MODEL = "deterministic-reader"
 ```
+
+If you want Gemini from the terminal model picker, the current presets use explicit Gemini 3 family names:
+
+- `gemini-3.1-pro-preview`
+- `gemini-3-flash-preview`
+- `gemini-3.1-flash-lite-preview`
 
 ## Live Provider Notes
 

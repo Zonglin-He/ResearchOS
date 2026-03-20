@@ -29,8 +29,13 @@ KNOWN_PROVIDER_MODELS: dict[str, list[ProviderModelChoice]] = {
         ProviderModelChoice("Codex GPT-5.4 Mini", "codex", "gpt-5.4-mini"),
     ],
     "gemini": [
-        ProviderModelChoice("Gemini 2.5 Pro", "gemini", "gemini-2.5-pro"),
-        ProviderModelChoice("Gemini 2.5 Flash", "gemini", "gemini-2.5-flash"),
+        ProviderModelChoice("Gemini 3.1 Pro Preview", "gemini", "gemini-3.1-pro-preview"),
+        ProviderModelChoice("Gemini 3 Flash Preview", "gemini", "gemini-3-flash-preview"),
+        ProviderModelChoice(
+            "Gemini 3.1 Flash-Lite Preview",
+            "gemini",
+            "gemini-3.1-flash-lite-preview",
+        ),
     ],
     "local": [
         ProviderModelChoice("Local Default", "local", "default"),

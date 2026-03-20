@@ -62,6 +62,7 @@ class TerminalControlPlaneApp:
                 title="ResearchOS",
             )
         )
+        self._maybe_run_first_project_guide()
         while True:
             self._print_system_routing()
             choice = self._choose(
@@ -87,6 +88,96 @@ class TerminalControlPlaneApp:
                 self._registries_menu()
             else:
                 return 0
+
+    def _maybe_run_first_project_guide(self) -> None:
+        if self.control_plane.has_projects():
+            return
+        self.console.print(
+            Panel.fit(
+                "No projects found.\n"
+                "ResearchOS Guide will help you create your first project, choose a routing profile, "
+                "and optionally create and dispatch the first task.",
+                title="First Project Guide",
+            )
+        )
+        if not Confirm.ask("Start guided setup now?", default=True):
+            return
+
+        project = self._run_guided_project_creation()
+        self.console.print(f"[green]Created project[/green] {project.project_id}")
+
+        if not Confirm.ask("Create the first task now?", default=True):
+            return
+
+        task = self._run_guided_first_task(project.project_id)
+        self.console.print(f"[green]Created task[/green] {task.task_id}")
+
+        if not Confirm.ask("Dispatch this task now?", default=True):
+            return
+
+        result = self.control_plane.dispatch_task(task.task_id, run_async=False)
+        self.console.print(
+            f"[green]Dispatched[/green] {result.task.task_id} -> "
+            f"{result.task.status.value} ({result.result.status})"
+        )
+        if result.result.routing is not None:
+            self.console.print(
+                f"Routing: {result.result.routing.provider_name} / "
+                f"{result.result.routing.model or '<default>'}"
+            )
+
+    def _run_guided_project_creation(self):
+        self.console.print("[bold]Guide[/bold]: let's create a project container first.")
+        data = ProjectCreateInput(
+            project_id=Prompt.ask("Project ID"),
+            name=Prompt.ask("Project name"),
+            description=Prompt.ask("Short description"),
+            status=Prompt.ask("Status", default="active"),
+            dispatch_profile=self._select_dispatch_profile(),
+        )
+        return self.control_plane.create_project(data)
+
+    def _run_guided_first_task(self, project_id: str):
+        self.console.print(
+            "[bold]Guide[/bold]: the safest first step is usually [cyan]paper_ingest[/cyan] "
+            "so ResearchOS can create a paper card before mapping gaps."
+        )
+        kind = self._choose(
+            "Choose the first task kind",
+            [
+                "paper_ingest",
+                "gap_mapping",
+                "build_spec",
+                "write_draft",
+            ],
+        )
+        topic = Prompt.ask("Topic", default="")
+        source_title = ""
+        source_abstract = ""
+        source_setting = ""
+        if kind in {"paper_ingest", "repo_ingest", "read_source"}:
+            source_title = Prompt.ask("Source title", default="")
+            source_abstract = Prompt.ask("Source abstract", default="")
+            source_setting = Prompt.ask("Source setting", default="")
+
+        return self.control_plane.create_task(
+            TaskCreateInput(
+                task_id=Prompt.ask("Task ID"),
+                project_id=project_id,
+                kind=kind,
+                goal=Prompt.ask("Goal"),
+                owner=Prompt.ask("Owner", default="operator"),
+                input_payload=self.control_plane.build_task_input_payload(
+                    kind=kind,
+                    topic=topic,
+                    source_title=source_title,
+                    source_abstract=source_abstract,
+                    source_setting=source_setting,
+                ),
+                assigned_agent=None,
+                dispatch_profile=self._select_dispatch_profile(),
+            )
+        )
 
     def _print_system_routing(self) -> None:
         profile = self.control_plane.system_dispatch_profile()

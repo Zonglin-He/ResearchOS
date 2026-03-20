@@ -1,11 +1,14 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+from app.console.app import TerminalControlPlaneApp
 from app.console.catalog import available_dispatch_profile_choices, build_dispatch_profile
+import app.console.app as console_app_module
 from app.console.control_plane import ConsoleControlPlane, ProjectCreateInput, TaskCreateInput
 from app.db.repositories.in_memory_project_repository import InMemoryProjectRepository
 from app.db.repositories.in_memory_task_repository import InMemoryTaskRepository
 from app.providers.registry import ProviderRegistry
+from app.roles import role_routing_policy_for_role
 from app.routing.models import DispatchProfile, ProviderSpec
 from app.routing.resolver import RoutingResolver
 from app.services.approval_service import ApprovalService
@@ -107,3 +110,96 @@ def test_console_catalog_exposes_inherit_and_known_profiles() -> None:
     assert choices[0].dispatch_profile is None
     assert choices[0].label == "Inherit system default"
     assert any(choice.label == "Codex GPT-5.4" for choice in choices)
+
+
+def test_console_catalog_exposes_gemini_3_profiles() -> None:
+    choices = available_dispatch_profile_choices(
+        DispatchProfile(
+            provider=ProviderSpec(provider_name="claude", model="sonnet"),
+            max_steps=12,
+        )
+    )
+
+    labels = {choice.label for choice in choices}
+
+    assert "Gemini 3.1 Pro Preview" in labels
+    assert "Gemini 3 Flash Preview" in labels
+    assert "Gemini 3.1 Flash-Lite Preview" in labels
+
+
+def test_role_routing_prefers_explicit_gemini_3_models_for_non_claude_defaults() -> None:
+    librarian = role_routing_policy_for_role("librarian")
+    synthesizer = role_routing_policy_for_role("synthesizer")
+    archivist = role_routing_policy_for_role("archivist")
+
+    assert librarian.family_model_priority["gemini"] == [
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite-preview",
+    ]
+    assert synthesizer.family_model_priority["gemini"] == [
+        "gemini-3.1-pro-preview",
+        "gemini-3-flash-preview",
+    ]
+    assert archivist.family_model_priority["gemini"] == [
+        "gemini-3.1-flash-lite-preview",
+        "gemini-3-flash-preview",
+    ]
+
+
+def test_terminal_console_guides_first_project_creation(monkeypatch, tmp_path: Path) -> None:
+    control_plane = build_control_plane(tmp_path)
+    app = TerminalControlPlaneApp(control_plane)
+
+    prompts = iter(
+        [
+            "proj-1",
+            "First Project",
+            "Guided project",
+            "active",
+            "research systems",
+            "ResearchOS paper",
+            "A compact summary.",
+            "terminal workflows",
+            "task-1",
+            "Read the first source",
+            "operator",
+        ]
+    )
+    choices = iter(
+        [
+            "Inherit system default",
+            "paper_ingest",
+            "Inherit system default",
+        ]
+    )
+    dispatched: list[str] = []
+
+    monkeypatch.setattr(console_app_module.Prompt, "ask", lambda *args, **kwargs: next(prompts))
+    monkeypatch.setattr(
+        console_app_module.Confirm,
+        "ask",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(app, "_choose", lambda *args, **kwargs: next(choices))
+    monkeypatch.setattr(
+        control_plane,
+        "dispatch_task",
+        lambda task_id, run_async=False: dispatched.append(task_id)
+        or SimpleNamespace(
+            task=SimpleNamespace(task_id=task_id, status=SimpleNamespace(value="succeeded")),
+            result=SimpleNamespace(status="success", routing=None),
+        ),
+    )
+
+    app._maybe_run_first_project_guide()
+
+    projects = control_plane.list_projects()
+    tasks = control_plane.list_tasks(project_id="proj-1")
+
+    assert len(projects) == 1
+    assert projects[0].project_id == "proj-1"
+    assert len(tasks) == 1
+    assert tasks[0].task_id == "task-1"
+    assert tasks[0].kind == "paper_ingest"
+    assert tasks[0].input_payload["source_summary"]["title"] == "ResearchOS paper"
+    assert dispatched == ["task-1"]
