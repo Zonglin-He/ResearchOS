@@ -17,6 +17,7 @@ class TaskStatus(str, Enum):
 @dataclass
 class Task:
     task_id: str
+    project_id: str
     kind: str
     goal: str
     input_payload: dict[str, Any]

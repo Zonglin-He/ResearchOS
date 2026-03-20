@@ -1,0 +1,5 @@
+DEFAULT_DB_PATH = "data/researchos.db"
+DEFAULT_MAX_STEPS = 12
+DEFAULT_DATABASE_URL = ""
+DEFAULT_REDIS_URL = "redis://localhost:6379/0"
+DEFAULT_PROVIDER = "claude"

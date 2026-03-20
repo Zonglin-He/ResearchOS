@@ -6,6 +6,7 @@ def test_create_and_get_task_by_id() -> None:
     repository = InMemoryTaskRepository()
     task = Task(
         task_id="t1",
+        project_id="p1",
         kind="paper_ingest",
         goal="Ingest a paper",
         input_payload={},
@@ -24,6 +25,7 @@ def test_delete_task_removes_it() -> None:
     repository = InMemoryTaskRepository()
     task = Task(
         task_id="t1",
+        project_id="p1",
         kind="paper_ingest",
         goal="Ingest a paper",
         input_payload={},

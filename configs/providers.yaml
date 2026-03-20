@@ -1,0 +1,11 @@
+default_provider: claude
+providers:
+  codex:
+    command: codex
+    model: gpt-5.4
+  claude:
+    command: claude
+    model: sonnet
+  gemini:
+    command: gemini
+    model: gemini-2.5-pro

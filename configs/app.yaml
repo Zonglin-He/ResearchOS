@@ -1,0 +1,3 @@
+db_path: data/researchos.db
+max_steps: 12
+workspace_root: .

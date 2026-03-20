@@ -10,3 +10,6 @@ class ToolRegistry:
 
     def get(self, name: str) -> BaseTool:
         return self._tools[name]
+
+    def list_tools(self) -> list[BaseTool]:
+        return list(self._tools.values())

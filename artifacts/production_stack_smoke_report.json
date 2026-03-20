@@ -1,0 +1,40 @@
+{
+  "ran_at": "2026-03-20T02:28:59.188754+00:00",
+  "checks": [
+    {
+      "name": "postgres",
+      "ok": true,
+      "detail": "connected"
+    },
+    {
+      "name": "redis",
+      "ok": true,
+      "detail": "ping ok"
+    },
+    {
+      "name": "api",
+      "ok": true,
+      "detail": "{\"status\":\"ok\"}"
+    },
+    {
+      "name": "api_create_project",
+      "ok": true,
+      "detail": "{\"project_id\": \"stack-project\", \"name\": \"Stack Smoke\", \"description\": \"production stack smoke test\", \"status\": \"active\", \"created_at\": \"2026-03-20T02:28:59.740567Z\"}"
+    },
+    {
+      "name": "api_create_task",
+      "ok": true,
+      "detail": "{\"task_id\": \"stack-task\", \"project_id\": \"stack-project\", \"kind\": \"paper_ingest\", \"goal\": \"Smoke the Celery task path\", \"input_payload\": {\"topic\": \"smoke\"}, \"owner\": \"system\", \"assigned_agent\": null, \"parent_task_id\": null, \"status\": \"queued\", \"created_at\": \"2026-03-20T02:28:59.823212Z\"}"
+    },
+    {
+      "name": "celery_ping",
+      "ok": true,
+      "detail": "{\"status\": \"ok\"}"
+    },
+    {
+      "name": "celery_advance_task",
+      "ok": true,
+      "detail": "{\"task_id\": \"stack-task\", \"status\": \"running\"}"
+    }
+  ]
+}

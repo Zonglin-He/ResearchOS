@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: researchos
+      POSTGRES_USER: researchos
+      POSTGRES_PASSWORD: researchos
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U researchos -d researchos"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      RESEARCHOS_DATABASE_URL: postgresql+psycopg://researchos:researchos@postgres:5432/researchos
+      RESEARCHOS_REDIS_URL: redis://redis:6379/0
+      RESEARCHOS_CELERY_BACKEND: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: uv run celery -A app.worker.celery_app.celery_app worker --loglevel=INFO
+    environment:
+      RESEARCHOS_DATABASE_URL: postgresql+psycopg://researchos:researchos@postgres:5432/researchos
+      RESEARCHOS_REDIS_URL: redis://redis:6379/0
+      RESEARCHOS_CELERY_BACKEND: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

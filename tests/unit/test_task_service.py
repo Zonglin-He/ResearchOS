@@ -8,6 +8,7 @@ def test_create_task_and_get_task() -> None:
     service = TaskService(repository)
     task = Task(
         task_id="t1",
+        project_id="p1",
         kind="paper_ingest",
         goal="Ingest a paper",
         input_payload={},
@@ -28,6 +29,7 @@ def test_list_tasks_returns_created_tasks() -> None:
 
     task_1 = Task(
         task_id="t1",
+        project_id="p1",
         kind="paper_ingest",
         goal="Ingest a paper",
         input_payload={},
@@ -35,6 +37,7 @@ def test_list_tasks_returns_created_tasks() -> None:
     )
     task_2 = Task(
         task_id="t2",
+        project_id="p1",
         kind="build_cards",
         goal="Build paper cards",
         input_payload={},
@@ -56,6 +59,7 @@ def test_update_status_changes_task_status_when_transition_is_allowed() -> None:
     service = TaskService(repository)
     task = Task(
         task_id="t1",
+        project_id="p1",
         kind="paper_ingest",
         goal="Ingest a paper",
         input_payload={},
@@ -75,6 +79,7 @@ def test_update_status_raises_value_error_for_illegal_transition() -> None:
     service = TaskService(repository)
     task = Task(
         task_id="t1",
+        project_id="p1",
         kind="paper_ingest",
         goal="Ingest a paper",
         input_payload={},
@@ -88,3 +93,65 @@ def test_update_status_raises_value_error_for_illegal_transition() -> None:
         assert False, "Expected ValueError for illegal transition"
     except ValueError:
         pass
+
+
+def test_retry_task_moves_failed_task_back_to_queued() -> None:
+    repository = InMemoryTaskRepository()
+    service = TaskService(repository)
+    task = Task(
+        task_id="t1",
+        project_id="p1",
+        kind="paper_ingest",
+        goal="Ingest a paper",
+        input_payload={},
+        owner="gabriel",
+        status=TaskStatus.FAILED,
+        assigned_agent="reader_agent",
+    )
+
+    service.create_task(task)
+    result = service.retry_task("t1")
+
+    assert result.status == TaskStatus.QUEUED
+    assert result.assigned_agent is None
+
+
+def test_retry_task_raises_value_error_for_running_task() -> None:
+    repository = InMemoryTaskRepository()
+    service = TaskService(repository)
+    task = Task(
+        task_id="t1",
+        project_id="p1",
+        kind="paper_ingest",
+        goal="Ingest a paper",
+        input_payload={},
+        owner="gabriel",
+        status=TaskStatus.RUNNING,
+        assigned_agent="reader_agent",
+    )
+
+    service.create_task(task)
+
+    try:
+        service.retry_task("t1")
+        assert False, "Expected ValueError for illegal retry"
+    except ValueError:
+        pass
+
+
+def test_cancel_task_moves_task_to_cancelled() -> None:
+    repository = InMemoryTaskRepository()
+    service = TaskService(repository)
+    task = Task(
+        task_id="t1",
+        project_id="p1",
+        kind="paper_ingest",
+        goal="Ingest a paper",
+        input_payload={},
+        owner="gabriel",
+    )
+
+    service.create_task(task)
+    result = service.cancel_task("t1")
+
+    assert result.status == TaskStatus.CANCELLED

@@ -1,0 +1,59 @@
+{
+  "ran_at": "2026-03-20T02:08:04.381435+00:00",
+  "results": [
+    {
+      "provider": "codex",
+      "command": [
+        "codex",
+        "exec",
+        "Return exactly the text pong and nothing else.",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "-C",
+        "C:\\Users\\25011\\AppData\\Local\\Temp\\researchos-provider-smoke-jrqnvt0m",
+        "--model",
+        "gpt-5.4"
+      ],
+      "returncode": 0,
+      "ok": true,
+      "stdout": "pong",
+      "stderr": "2026-03-20T02:07:24.792086Z ERROR codex_core::models_manager::manager: failed to refresh available models: timeout waiting for child process to exit\n2026-03-20T02:07:24.792642Z  WARN codex_protocol::openai_models: Model personality requested but model_messages is missing, falling back to base instructions. model=gpt-5.4 personality=pragmatic\n2026-03-20T02:07:24.805856Z  WARN codex_core::shell_snapshot: Failed to create shell snapshot for powershell: Shell snapshot not supported yet for PowerShell\nOpenAI Codex v0.111.0 (research preview)\n--------\nworkdir: C:\\Users\\25011\\AppData\\Local\\Temp\\researchos-provider-smoke-jrqnvt0m\nmodel: gpt-5.4\nprovider: openai\napproval: never\nsandbox: read-only\nreasoning effort: high\nreasoning summaries: none\nsession id: 019d08ff-5678-74e2-b8c8-9720e8b9f2a2\n--------\nuser\nReturn exactly the text pong and nothing else.\nmcp startup: no servers\n2026-03-20T02:07:33.749244Z  WARN codex_protocol::openai_models: Model personality requested but model_messages is missing, falling back to base instructions. model=gpt-5.4 personality=pragmatic\ncodex\npong\ntokens used\n6,817",
+      "started_at": "2026-03-20T02:07:19.534330+00:00"
+    },
+    {
+      "provider": "claude",
+      "command": [
+        "claude",
+        "-p",
+        "Return exactly the text pong and nothing else.",
+        "--output-format",
+        "text",
+        "--model",
+        "sonnet",
+        "--no-session-persistence"
+      ],
+      "returncode": 0,
+      "ok": true,
+      "stdout": "pong",
+      "stderr": "",
+      "started_at": "2026-03-20T02:07:37.892513+00:00"
+    },
+    {
+      "provider": "gemini",
+      "command": [
+        "gemini",
+        "-p",
+        "Return exactly the text pong and nothing else.",
+        "--output-format",
+        "text",
+        "--model",
+        "gemini-2.5-pro"
+      ],
+      "returncode": 0,
+      "ok": true,
+      "stdout": "pong",
+      "stderr": "Loaded cached credentials.",
+      "started_at": "2026-03-20T02:07:43.237406+00:00"
+    }
+  ]
+}

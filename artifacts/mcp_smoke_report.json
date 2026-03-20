@@ -1,0 +1,89 @@
+{
+  "ran_at": "2026-03-20T02:27:03.458110+00:00",
+  "tools": [
+    {
+      "name": "add",
+      "title": null,
+      "description": "",
+      "inputSchema": {
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "integer"
+          },
+          "b": {
+            "title": "B",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "a",
+          "b"
+        ],
+        "title": "addArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "result": {
+            "title": "Result",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "title": "addOutput",
+        "type": "object"
+      },
+      "icons": null,
+      "annotations": null,
+      "meta": null,
+      "execution": null
+    }
+  ],
+  "call_tool": {
+    "meta": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "15",
+        "annotations": null,
+        "meta": null
+      }
+    ],
+    "structuredContent": {
+      "result": 15
+    },
+    "isError": false
+  },
+  "resources": [
+    {
+      "name": "greeting",
+      "title": null,
+      "uri": "memo://greeting",
+      "description": "",
+      "mimeType": "text/plain",
+      "size": null,
+      "icons": null,
+      "annotations": null,
+      "meta": null
+    }
+  ],
+  "prompts": [
+    {
+      "name": "write_intro",
+      "title": null,
+      "description": "",
+      "arguments": [
+        {
+          "name": "topic",
+          "description": null,
+          "required": true
+        }
+      ],
+      "icons": null,
+      "meta": null
+    }
+  ]
+}

@@ -28,4 +28,21 @@ class TaskService:
         task.status = new_status
         return self.repository.update(task)
 
+    def retry_task(self, task_id: str) -> Task:
+        task = self.repository.get_by_id(task_id)
+        if task is None:
+            raise KeyError(f"Task not found: {task_id}")
+
+        if task.status not in {TaskStatus.FAILED, TaskStatus.BLOCKED}:
+            raise ValueError(
+                f"Cannot retry task {task_id} from status {task.status.value}"
+            )
+
+        task.status = TaskStatus.QUEUED
+        task.assigned_agent = None
+        return self.repository.update(task)
+
+    def cancel_task(self, task_id: str) -> Task:
+        return self.update_status(task_id, TaskStatus.CANCELLED)
+
 
