@@ -19,6 +19,8 @@ class RunManifestCreate(BaseModel):
 
 
 class RunManifestRead(RunManifestCreate):
+    experiment_proposal_id: str | None = None
+    experiment_branch: str | None = None
     start_time: datetime
     end_time: datetime | None = None
     status: str

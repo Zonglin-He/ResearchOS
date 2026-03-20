@@ -4,6 +4,7 @@ from fastapi import Depends, FastAPI, HTTPException
 
 from app.api.deps import get_project_service, get_task_service
 from app.api.schemas import (
+    ArtifactRead,
     AuditEntryRead,
     AuditReportRead,
     ApprovalCreate,
@@ -76,6 +77,7 @@ def create_app(db_path: str = "data/researchos.db") -> FastAPI:
     app.state.paper_card_service = services.paper_card_service
     app.state.gap_map_service = services.gap_map_service
     app.state.approval_service = services.approval_service
+    app.state.artifact_service = services.artifact_service
     app.state.lessons_service = services.lessons_service
     app.state.verification_service = services.verification_service
     app.state.audit_service = services.audit_service
@@ -237,6 +239,23 @@ def create_app(db_path: str = "data/researchos.db") -> FastAPI:
     @app.get("/runs", response_model=list[RunManifestRead])
     def list_runs() -> list[RunManifestRead]:
         return [_to_run_read(run) for run in app.state.run_service.list_runs()]
+
+    @app.get("/artifacts", response_model=list[ArtifactRead])
+    def list_artifacts(run_id: str | None = None) -> list[ArtifactRead]:
+        artifacts = app.state.artifact_service.list_artifacts()
+        if run_id is not None:
+            artifacts = [artifact for artifact in artifacts if artifact.run_id == run_id]
+        return [
+            ArtifactRead(
+                artifact_id=artifact.artifact_id,
+                run_id=artifact.run_id,
+                kind=artifact.kind,
+                path=artifact.path,
+                hash=artifact.hash,
+                metadata=artifact.metadata,
+            )
+            for artifact in artifacts
+        ]
 
     @app.post("/lessons", response_model=LessonRead)
     def create_lesson(payload: LessonCreate) -> LessonRead:
@@ -545,6 +564,7 @@ def _to_task_read(task: Task) -> TaskRead:
         parent_task_id=task.parent_task_id,
         dispatch_profile=to_record(task.dispatch_profile),
         status=task.status.value,
+        experiment_proposal_id=task.experiment_proposal_id,
         last_run_routing=to_record(task.last_run_routing),
         created_at=task.created_at,
     )
@@ -570,6 +590,8 @@ def _to_run_read(run: RunManifest) -> RunManifestRead:
         dataset_snapshot=run.dataset_snapshot,
         seed=run.seed,
         gpu=run.gpu,
+        experiment_proposal_id=run.experiment_proposal_id,
+        experiment_branch=run.experiment_branch,
         start_time=run.start_time,
         end_time=run.end_time,
         status=run.status,

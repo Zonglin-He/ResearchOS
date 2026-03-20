@@ -1,3 +1,4 @@
+from app.api.schemas.artifacts import ArtifactRead
 from app.api.schemas.audit import AuditEntryRead, AuditReportRead
 from app.api.schemas.approvals import ApprovalCreate, ApprovalRead
 from app.api.schemas.claims import ClaimCreate, ClaimRead
@@ -40,6 +41,7 @@ from app.api.schemas.tasks import TaskCreate, TaskRead, TaskStatusUpdate
 from app.api.schemas.verifications import VerificationRead
 
 __all__ = [
+    "ArtifactRead",
     "AuditEntryRead",
     "AuditReportRead",
     "ApprovalCreate",

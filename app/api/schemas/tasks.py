@@ -22,6 +22,7 @@ class TaskCreate(BaseModel):
 
 class TaskRead(TaskCreate):
     status: str
+    experiment_proposal_id: str | None = None
     last_run_routing: ResolvedDispatchModel | None = None
     created_at: datetime
 

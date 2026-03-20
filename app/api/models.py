@@ -1,4 +1,5 @@
 from app.api.schemas import (
+    ArtifactRead,
     AuditEntryRead,
     AuditReportRead,
     ApprovalCreate,
@@ -22,6 +23,7 @@ from app.api.schemas import (
 )
 
 __all__ = [
+    "ArtifactRead",
     "AuditEntryRead",
     "AuditReportRead",
     "ApprovalCreate",

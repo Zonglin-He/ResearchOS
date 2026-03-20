@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Sync dependencies
+        run: uv sync --dev
+
+      - name: Compile app
+        run: python -m compileall app
+
+      - name: Run unit tests
+        run: uv run pytest -q
+
+      - name: CLI smoke
+        run: |
+          uv run researchos --help
+          uv run researchos --db-path data/ci.db init-db
+          uv run researchos --db-path data/ci.db create-project --project-id ci-p1 --name "CI Project" --description "CI smoke project"
+          uv run researchos --db-path data/ci.db list-projects

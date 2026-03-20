@@ -215,6 +215,10 @@ def build_parser() -> argparse.ArgumentParser:
     create_gap_map.add_argument("--description", required=True)
     create_gap_map.set_defaults(handler=_handle_create_gap_map)
 
+    list_artifacts = subparsers.add_parser("list-artifacts")
+    list_artifacts.add_argument("--run-id")
+    list_artifacts.set_defaults(handler=_handle_list_artifacts)
+
     return parser
 
 
@@ -843,6 +847,25 @@ def _handle_create_gap_map(
     )
     gap_map_service.register_gap_map(gap_map)
     print(f"Created gap map for topic {gap_map.topic}")
+    return 0
+
+
+def _handle_list_artifacts(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    artifacts = args.runtime_services.artifact_service.list_artifacts()
+    if args.run_id:
+        artifacts = [artifact for artifact in artifacts if artifact.run_id == args.run_id]
+    for artifact in artifacts:
+        print(f"{artifact.artifact_id}\t{artifact.run_id}\t{artifact.kind}\t{artifact.path}")
     return 0
 
 

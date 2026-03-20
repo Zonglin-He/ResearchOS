@@ -1,8 +1,0 @@
-topic_id: topic_001
-selected_gap_ids:
-- gap_001
-research_question: Can purification improve robustness?
-novelty_type:
-- setting
-owner: gabriel
-status: approved

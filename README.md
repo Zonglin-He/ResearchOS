@@ -1,0 +1,239 @@
+# ResearchOS
+
+ResearchOS is a code-first multi-agent research workflow runtime. It is a backend and control-plane system for running structured research tasks with:
+
+- typed task and run state
+- specialized agents
+- CLI and terminal control plane
+- FastAPI control plane
+- worker-based async dispatch
+- routing policies for provider/model selection
+- registries for claims, paper cards, gap maps, runs, freezes, lessons, and verifications
+
+It is not a chat UI product. The core interface is still backend services plus CLI/TUI/API.
+
+## What It Does
+
+ResearchOS manages a research workflow around explicit objects:
+
+- `Task`: unit of work with lifecycle and dispatch profile
+- `Message`: structured cross-agent communication primitive
+- `AgentResult`: structured output from agent execution
+- `RunContext`: runtime state including resolved routing and prior lessons
+- `RunManifest`: recorded execution metadata and metrics
+- `Claim`, `PaperCard`, `GapMap`, `Freeze`: durable research artifacts
+- `ExperimentProposal`, `ExperimentDecision`: explicit experiment loop primitives
+- `LessonRecord`, `VerificationRecord`: reusable memory and verification surfaces
+
+## Architecture Overview
+
+High-level layers:
+
+1. Schemas
+   - typed dataclasses and enums in [`app/schemas/`](app/schemas)
+2. Services
+   - task lifecycle, claims, runs, freezes, experiments, lessons, verification, audit in [`app/services/`](app/services)
+3. Providers and Tools
+   - provider abstraction in [`app/providers/`](app/providers)
+   - tool abstraction and registry in [`app/tools/`](app/tools)
+4. Agents and Orchestration
+   - specialized agents and orchestrator in [`app/agents/`](app/agents)
+5. Control Plane
+   - CLI in [`app/cli.py`](app/cli.py)
+   - interactive terminal control plane in [`app/console/`](app/console)
+   - FastAPI app in [`app/api/app.py`](app/api/app.py)
+6. Worker / Async Dispatch
+   - Celery integration in [`app/worker/`](app/worker)
+
+## Local Quickstart
+
+Requirements:
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/)
+- optional: Docker Desktop for the production stack
+- optional: provider CLIs if you want live Codex / Claude / Gemini execution
+
+Install dependencies:
+
+```powershell
+uv sync --dev
+```
+
+Initialize a local SQLite database:
+
+```powershell
+uv run researchos --db-path data\researchos.db init-db
+```
+
+Run the unit test suite:
+
+```powershell
+uv run pytest -q
+```
+
+## Provider Setup
+
+ResearchOS keeps env defaults as a fallback, but provider/model can also be set explicitly through dispatch profiles.
+
+Minimum env example:
+
+```powershell
+$env:RESEARCHOS_PROVIDER = "claude"
+$env:RESEARCHOS_PROVIDER_MODEL = "sonnet"
+$env:RESEARCHOS_MAX_STEPS = "12"
+```
+
+Supported provider families in the current repo:
+
+- `codex`
+- `claude`
+- `gemini`
+- `local`
+
+If you use live provider execution, make sure the relevant provider CLI or command path is already working on your machine.
+
+## CLI Quickstart
+
+Create a project:
+
+```powershell
+uv run researchos --db-path data\researchos.db create-project `
+  --project-id p1 `
+  --name "ResearchOS Demo" `
+  --description "Minimal local demo"
+```
+
+Create a task:
+
+```powershell
+uv run researchos --db-path data\researchos.db create-task `
+  --task-id t1 `
+  --project-id p1 `
+  --kind paper_ingest `
+  --goal "Read one paper summary" `
+  --owner demo `
+  --input-payload "{\"topic\":\"robustness\",\"source_summary\":{\"title\":\"Example Paper\",\"abstract\":\"A compact summary.\",\"setting\":\"classification\"}}"
+```
+
+Dispatch the task:
+
+```powershell
+uv run researchos --db-path data\researchos.db dispatch-task --task-id t1
+```
+
+List tasks and artifacts:
+
+```powershell
+uv run researchos --db-path data\researchos.db list-tasks --project-id p1
+uv run researchos --db-path data\researchos.db list-artifacts
+```
+
+Open the interactive terminal control plane:
+
+```powershell
+uv run researchos console
+```
+
+## API Quickstart
+
+Start the API:
+
+```powershell
+uv run uvicorn app.api.app:create_app --factory --reload
+```
+
+Health check:
+
+```powershell
+curl http://127.0.0.1:8000/health
+```
+
+Create a project:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/projects" `
+  -ContentType "application/json" `
+  -Body '{"project_id":"p1","name":"ResearchOS Demo","description":"API demo","status":"active"}'
+```
+
+Dispatch a task:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/tasks/t1/dispatch"
+```
+
+Inspect artifacts:
+
+```powershell
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/artifacts"
+```
+
+## Docker / Production Quickstart
+
+The production-oriented stack uses:
+
+- FastAPI
+- Postgres
+- Redis
+- Celery worker
+
+Start the stack:
+
+```powershell
+docker compose up -d --build
+```
+
+Run the production smoke path:
+
+```powershell
+uv run python scripts\smoke_production_stack.py
+```
+
+## Registries and Artifacts
+
+ResearchOS persists several durable research surfaces outside the task table:
+
+- `registry/claims.jsonl`
+- `registry/runs.jsonl`
+- `registry/paper_cards.jsonl`
+- `registry/gap_maps.jsonl`
+- `registry/freezes/`
+- `registry/lessons.jsonl`
+- `registry/verifications.jsonl`
+
+These are not transient logs. They are explicit workflow state that agents and operators can inspect and reuse.
+
+Artifacts produced by runs are registered via [`app/services/artifact_service.py`](app/services/artifact_service.py), and run manifests can be checked through the verification layer.
+
+The artifact registry file is:
+
+- `registry/artifacts.jsonl`
+
+## Example Flows
+
+Copy-pastable examples live in:
+
+- [`examples/README.md`](examples/README.md)
+- [`examples/minimal-paper-ingest.ps1`](examples/minimal-paper-ingest.ps1)
+- [`examples/minimal-gap-mapping.ps1`](examples/minimal-gap-mapping.ps1)
+- [`examples/minimal-dispatch-profile.ps1`](examples/minimal-dispatch-profile.ps1)
+
+## Operator and Developer Notes
+
+- local developer notes: [`docs/operator_setup.md`](docs/operator_setup.md)
+- release checklist: [`docs/release_checklist.md`](docs/release_checklist.md)
+- changelog: [`CHANGELOG.md`](CHANGELOG.md)
+
+## CI
+
+GitHub Actions runs:
+
+- dependency install with `uv`
+- Python bytecode compilation for import sanity
+- unit tests
+- a small CLI smoke path
+
+Workflow file:
+
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
