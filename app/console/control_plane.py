@@ -70,6 +70,7 @@ class ConsoleControlPlane:
         orchestrator,
         routing_resolver,
         provider_registry,
+        provider_invocation_service=None,
     ) -> None:
         self.project_service = project_service
         self.task_service = task_service
@@ -83,6 +84,7 @@ class ConsoleControlPlane:
         self.orchestrator = orchestrator
         self.routing_resolver = routing_resolver
         self.provider_registry = provider_registry
+        self.provider_invocation_service = provider_invocation_service
 
     @classmethod
     def from_runtime_services(cls, services) -> "ConsoleControlPlane":
@@ -99,6 +101,7 @@ class ConsoleControlPlane:
             orchestrator=services.orchestrator,
             routing_resolver=services.routing_resolver,
             provider_registry=services.provider_registry,
+            provider_invocation_service=services.provider_invocation_service,
         )
 
     def system_dispatch_profile(self) -> DispatchProfile:

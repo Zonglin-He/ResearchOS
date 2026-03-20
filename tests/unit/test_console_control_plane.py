@@ -12,9 +12,12 @@ from app.console.control_plane import ConsoleControlPlane, ProjectCreateInput, T
 from app.console.guide_agent import OnboardingGuideAgent
 from app.db.repositories.in_memory_project_repository import InMemoryProjectRepository
 from app.db.repositories.in_memory_task_repository import InMemoryTaskRepository
+from app.providers.health import ProviderHealthService
+from app.providers.local_provider import LocalProvider
 from app.providers.registry import ProviderRegistry
 from app.roles import role_routing_policy_for_role
 from app.routing.models import DispatchProfile, ProviderSpec
+from app.routing.provider_router import ProviderInvocationService
 from app.routing.resolver import RoutingResolver
 from app.schemas.task import TaskStatus
 from app.services.approval_service import ApprovalService
@@ -56,6 +59,35 @@ def build_control_plane(tmp_path: Path) -> ConsoleControlPlane:
             )
         ),
         provider_registry=provider_registry,
+    )
+
+
+def build_ai_control_plane(tmp_path: Path) -> ConsoleControlPlane:
+    provider_registry = ProviderRegistry()
+    provider_registry.register("local", LocalProvider)
+    return ConsoleControlPlane(
+        project_service=ProjectService(InMemoryProjectRepository()),
+        task_service=TaskService(InMemoryTaskRepository()),
+        approval_service=ApprovalService(tmp_path / "approvals.jsonl"),
+        run_service=RunService(tmp_path / "runs.jsonl"),
+        artifact_service=ArtifactService(tmp_path / "artifacts.jsonl"),
+        claim_service=ClaimService(tmp_path / "claims.jsonl"),
+        paper_card_service=PaperCardService(tmp_path / "paper_cards.jsonl"),
+        gap_map_service=GapMapService(tmp_path / "gap_maps.jsonl"),
+        freeze_service=FreezeService(tmp_path / "freezes"),
+        orchestrator=DummyOrchestrator(),
+        routing_resolver=RoutingResolver(
+            DispatchProfile(
+                provider=ProviderSpec(provider_name="local", model="deterministic-reader"),
+                max_steps=12,
+                metadata={"source": "env_explicit"},
+            )
+        ),
+        provider_registry=provider_registry,
+        provider_invocation_service=ProviderInvocationService(
+            provider_registry,
+            ProviderHealthService(),
+        ),
     )
 
 
@@ -165,11 +197,11 @@ def test_terminal_console_guides_first_project_creation(monkeypatch, tmp_path: P
 
     prompts = iter(
         [
+            "survey the literature on research systems",
             "proj-1",
             "First Project",
             "Guided project",
             "active",
-            "survey the literature on research systems",
             "research systems",
             "ResearchOS paper",
             "A compact summary.",
@@ -218,6 +250,24 @@ def test_terminal_console_guides_first_project_creation(monkeypatch, tmp_path: P
     assert tasks[0].goal == "survey the literature on research systems"
     assert tasks[0].input_payload["source_summary"]["title"] == "ResearchOS paper"
     assert dispatched == ["task-1"]
+
+
+def test_onboarding_guide_agent_uses_provider_path_when_available(tmp_path: Path) -> None:
+    control_plane = build_ai_control_plane(tmp_path)
+    guide = OnboardingGuideAgent(
+        provider_registry=control_plane.provider_registry,
+        routing_resolver=control_plane.routing_resolver,
+        provider_invocation_service=control_plane.provider_invocation_service,
+    )
+
+    plan = guide.build_first_project_plan("survey the literature on retrieval safety")
+
+    assert "Based on your research goal" in plan.assistant_message
+    assert plan.recommended_task_kind == "paper_ingest"
+    assert plan.expected_artifact == "paper_card"
+    assert plan.likely_next_task_kind == "gap_mapping"
+    assert plan.routing_provider_name == "local"
+    assert plan.routing_model == "deterministic-reader"
 
 
 def test_onboarding_guide_agent_recommends_next_step_from_project_state(tmp_path: Path) -> None:

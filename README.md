@@ -286,6 +286,8 @@ The guide now also explains:
 - what artifact it will usually produce
 - which task kind usually comes next after it
 
+The onboarding guide is now a real provider-backed console agent. It resolves routing through the current ResearchOS provider stack and can use Claude / Codex / Gemini / local deterministic execution depending on your active routing and fallback state.
+
 Explicit console launch still works:
 
 ```powershell

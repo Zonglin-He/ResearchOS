@@ -16,6 +16,9 @@ class LocalProvider(BaseProvider):
         model: str | None = None,
     ) -> dict[str, Any]:
         payload = self._parse_user_input(user_input)
+        guide_request = payload.get("guide_request")
+        if isinstance(guide_request, dict) and guide_request:
+            return self._guide_response(guide_request)
         task_payload = payload.get("task", {})
         input_payload = task_payload.get("input_payload", {})
 
@@ -46,6 +49,61 @@ class LocalProvider(BaseProvider):
             materialized = self._materialize_from_schema(response_schema)
             return materialized if isinstance(materialized, dict) else {"content": materialized}
         return {"content": "local provider response"}
+
+    def _guide_response(self, guide_request: dict[str, Any]) -> dict[str, Any]:
+        heuristic = guide_request.get("heuristic_recommendation", {})
+        recommended_task_kind = heuristic.get("recommended_task_kind", "paper_ingest")
+        recommendation_reason = heuristic.get(
+            "recommendation_reason",
+            "This is the safest bounded step for the current project state.",
+        )
+        expected_artifact = heuristic.get("expected_artifact", "workflow artifact")
+        likely_next_task_kind = heuristic.get("likely_next_task_kind")
+        research_goal = guide_request.get("research_goal", "")
+        project = guide_request.get("project", {}) if isinstance(guide_request.get("project"), dict) else {}
+        suggested_project_name = heuristic.get("suggested_project_name") or project.get("name") or "ResearchOS Project"
+        suggested_project_description = (
+            heuristic.get("suggested_project_description")
+            or project.get("description")
+            or research_goal
+            or "Guided ResearchOS project."
+        )
+        suggested_task_goal = heuristic.get("suggested_task_goal") or research_goal or suggested_project_description
+        mode = guide_request.get("mode", "first_project")
+
+        if mode == "existing_project":
+            assistant_message = (
+                f"I reviewed the current project state. I recommend {recommended_task_kind} next because "
+                f"{recommendation_reason} Finish it to produce {expected_artifact}."
+            )
+            follow_up_prompt = "If you want, I can help you create that task next."
+            summary = (
+                "Stay in the current project container and move it forward one bounded task at a time."
+            )
+        else:
+            assistant_message = (
+                f"Based on your research goal, start with {recommended_task_kind}. "
+                f"{recommendation_reason} That should give you a first durable artifact: {expected_artifact}."
+            )
+            follow_up_prompt = (
+                "I can help you create the project container now. Accept the suggested name or replace it."
+            )
+            summary = (
+                "Create the project container first, then create one bounded initial task and dispatch it."
+            )
+
+        return {
+            "assistant_message": assistant_message,
+            "summary": summary,
+            "follow_up_prompt": follow_up_prompt,
+            "recommended_task_kind": recommended_task_kind,
+            "recommendation_reason": recommendation_reason,
+            "expected_artifact": expected_artifact,
+            "likely_next_task_kind": likely_next_task_kind,
+            "suggested_project_name": suggested_project_name,
+            "suggested_project_description": suggested_project_description,
+            "suggested_task_goal": suggested_task_goal,
+        }
 
     @staticmethod
     def _parse_user_input(user_input: str) -> dict[str, Any]:

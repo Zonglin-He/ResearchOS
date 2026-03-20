@@ -25,6 +25,7 @@ If the workspace has no projects yet, the console now opens a guided setup flow 
 
 Once a project exists, open `Projects -> Guide project` to let the onboarding guide agent inspect current project task state and recommend the next task kind in the workflow.
 The guide also explains why that step is recommended, what artifact it typically produces, and what task kind usually follows it.
+The guide agent is provider-backed: it follows current routing and fallback rules, so it can use Claude, Codex, Gemini, or the local deterministic provider instead of being a hard-coded rules panel.
 
 Equivalent explicit launch paths:
 

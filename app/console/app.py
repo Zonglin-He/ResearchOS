@@ -13,7 +13,6 @@ from app.console.catalog import (
     available_dispatch_profile_choices,
     available_model_choices,
     build_dispatch_profile,
-    recommend_first_task_kind,
 )
 from app.console.control_plane import (
     ApprovalCreateInput,
@@ -55,7 +54,11 @@ class TerminalControlPlaneApp:
         self.control_plane = control_plane
         self.console = Console()
         self.refresh_interval = refresh_interval
-        self.guide_agent = OnboardingGuideAgent()
+        self.guide_agent = OnboardingGuideAgent(
+            provider_registry=control_plane.provider_registry,
+            routing_resolver=control_plane.routing_resolver,
+            provider_invocation_service=control_plane.provider_invocation_service,
+        )
 
     def run(self) -> int:
         self.console.print(
@@ -97,22 +100,24 @@ class TerminalControlPlaneApp:
             return
         self.console.print(
             Panel.fit(
-                "No projects found.\n"
-                "ResearchOS Guide will help you create your first project, choose a routing profile, "
-                "and optionally create and dispatch the first task.",
-                title="First Project Guide",
+                self.guide_agent.opening_message(has_projects=False),
+                title="Guide Agent",
             )
         )
         if not Confirm.ask("Start guided setup now?", default=True):
             return
 
-        project = self._run_guided_project_creation()
+        research_goal = Prompt.ask("Research goal", default="")
+        plan = self.guide_agent.build_first_project_plan(research_goal)
+        self._render_guide_plan(plan)
+
+        project = self._run_guided_project_creation(plan)
         self.console.print(f"[green]Created project[/green] {project.project_id}")
 
         if not Confirm.ask("Create the first task now?", default=True):
             return
 
-        task = self._run_guided_first_task(project.project_id)
+        task = self._run_guided_first_task(project.project_id, plan)
         self.console.print(f"[green]Created task[/green] {task.task_id}")
 
         if not Confirm.ask("Dispatch this task now?", default=True):
@@ -129,24 +134,21 @@ class TerminalControlPlaneApp:
                 f"{result.result.routing.model or '<default>'}"
             )
 
-    def _run_guided_project_creation(self):
-        self.console.print("[bold]Guide[/bold]: let's create a project container first.")
+    def _run_guided_project_creation(self, plan: GuidePlan):
+        self.console.print("[bold]Guide Agent[/bold]: I will help you create the project container now.")
+        suggested_name = plan.suggested_project_name or "ResearchOS Project"
         data = ProjectCreateInput(
-            project_id=Prompt.ask("Project ID"),
-            name=Prompt.ask("Project name"),
-            description=Prompt.ask("Short description"),
+            project_id=Prompt.ask("Project ID", default=self._slugify(suggested_name)),
+            name=Prompt.ask("Project name", default=suggested_name),
+            description=Prompt.ask("Short description", default=plan.suggested_project_description),
             status=Prompt.ask("Status", default="active"),
             dispatch_profile=self._select_dispatch_profile(),
         )
         return self.control_plane.create_project(data)
 
-    def _run_guided_first_task(self, project_id: str):
-        research_goal = Prompt.ask("Primary research goal", default="")
-        plan = self.guide_agent.build_first_project_plan(research_goal)
-        self._render_guide_plan(plan)
-        recommendation = recommend_first_task_kind(research_goal)
+    def _run_guided_first_task(self, project_id: str, plan: GuidePlan):
         if Confirm.ask("Use the recommended first task kind?", default=True):
-            kind = recommendation.task_kind
+            kind = plan.recommended_task_kind or "paper_ingest"
         else:
             kind = self._choose(
                 "Choose the first task kind",
@@ -171,7 +173,7 @@ class TerminalControlPlaneApp:
                 task_id=Prompt.ask("Task ID"),
                 project_id=project_id,
                 kind=kind,
-                goal=Prompt.ask("Goal", default=research_goal),
+                goal=Prompt.ask("Goal", default=plan.suggested_goal),
                 owner=Prompt.ask("Owner", default="operator"),
                 input_payload=self.control_plane.build_task_input_payload(
                     kind=kind,
@@ -411,6 +413,7 @@ class TerminalControlPlaneApp:
             return
         project = next(project for project in self.control_plane.list_projects() if project.project_id == project_id)
         tasks = self.control_plane.list_tasks(project_id=project_id)
+        self.console.print(Panel.fit(self.guide_agent.opening_message(has_projects=True), title="Guide Agent"))
         plan = self.guide_agent.build_project_plan(project, tasks)
         self._render_guide_plan(plan)
         if plan.recommended_task_kind is None:
@@ -450,7 +453,9 @@ class TerminalControlPlaneApp:
         self.console.print(f"[green]Created guided task[/green] {task.task_id}")
 
     def _render_guide_plan(self, plan: GuidePlan) -> None:
-        body_lines = [plan.summary]
+        body_lines = [f"Guide Agent: {plan.assistant_message}"]
+        if plan.summary:
+            body_lines.extend(["", plan.summary])
         if plan.recommended_task_kind is not None:
             body_lines.extend(
                 [
@@ -462,14 +467,21 @@ class TerminalControlPlaneApp:
             )
             if plan.likely_next_task_kind is not None:
                 body_lines.append(f"Likely next step after that: {plan.likely_next_task_kind}")
+        if plan.follow_up_prompt:
+            body_lines.extend(["", f"Guide asks: {plan.follow_up_prompt}"])
         if plan.steps:
             body_lines.append("")
             body_lines.append("Workflow steps:")
             for step in plan.steps:
                 body_lines.append(f"- [{step.status}] {step.title}: {step.detail}")
+        if plan.routing_provider_name is not None:
+            routing_model = plan.routing_model or "<default>"
+            body_lines.extend(["", f"Guide agent routing: {plan.routing_provider_name} / {routing_model}"])
+            if plan.fallback_reason is not None:
+                body_lines.append(f"Routing fallback: {plan.fallback_reason}")
         body_lines.append("")
         body_lines.append(f"Guide prompt: {plan.prompt_id}")
-        self.console.print(Panel.fit("\n".join(body_lines), title=plan.headline))
+        self.console.print(Panel.fit("\n".join(body_lines), title="Guide Agent"))
 
     def _choose(self, title: str, options: Sequence[str]) -> str:
         self.console.print(f"\n[bold]{title}[/bold]")
@@ -477,3 +489,8 @@ class TerminalControlPlaneApp:
             self.console.print(f"{index}. {option}")
         selection = IntPrompt.ask("Select", choices=[str(index) for index in range(1, len(options) + 1)])
         return options[selection - 1]
+
+    @staticmethod
+    def _slugify(value: str) -> str:
+        normalized = "-".join(part.lower() for part in value.split() if part.strip())
+        return normalized or "project-1"
