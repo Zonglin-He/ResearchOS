@@ -14,7 +14,7 @@ from app.services.lessons_service import LessonsService
 class ArchivistAgent(PromptDrivenAgent):
     name = "archivist_agent"
     description = "Curates lessons, provenance notes, and archive entries."
-    prompt_path = "C:/Anti Project/ResearchOS/prompts/archivist.md"
+    prompt_path = "prompts/archivist.md"
     role_binding = archivist_role_binding()
 
     def __init__(

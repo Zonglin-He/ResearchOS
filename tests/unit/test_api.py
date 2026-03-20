@@ -507,3 +507,107 @@ def test_api_can_return_audit_and_verification_summaries(tmp_path: Path) -> None
     assert audit_summary.json()["entry_status_counts"]["warn"] >= 1
     assert verification_summary.json()["total_checks"] >= 1
     assert verification_summary.json()["status_counts"]["verified"] >= 1
+
+
+def test_api_exposes_project_dashboard_and_routing_surfaces(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
+
+    client.post(
+        "/projects",
+        json={
+            "project_id": "p1",
+            "name": "Dashboard Project",
+            "description": "dashboard test",
+            "status": "active",
+            "dispatch_profile": {
+                "provider": {"provider_name": "local", "model": "deterministic-reader"},
+                "max_steps": 12,
+            },
+        },
+    )
+    client.post(
+        "/tasks",
+        json={
+            "task_id": "t1",
+            "project_id": "p1",
+            "kind": "paper_ingest",
+            "goal": "Read one source",
+            "input_payload": {
+                "topic": "retrieval",
+                "source_summary": {
+                    "title": "Dashboard Source",
+                    "abstract": "Compact summary.",
+                    "setting": "streaming retrieval",
+                },
+            },
+            "owner": "tester",
+            "dispatch_profile": {
+                "provider": {"provider_name": "local", "model": "deterministic-reader"},
+            },
+        },
+    )
+    client.post("/tasks/t1/dispatch")
+
+    dashboard = client.get("/projects/p1/dashboard")
+    system_routing = client.get("/routing/system")
+    task_routing = client.get("/routing/tasks/t1")
+    provider_health = client.get("/providers/health")
+
+    assert dashboard.status_code == 200
+    assert dashboard.json()["project_id"] == "p1"
+    assert dashboard.json()["artifact_count"] >= 1
+    assert dashboard.json()["storage_boundary"]["registry_dir"].endswith("registry")
+    assert system_routing.status_code == 200
+    assert "resolved_dispatch" in system_routing.json()
+    assert task_routing.status_code == 200
+    assert task_routing.json()["resolved_dispatch"]["provider_name"] == "local"
+    assert provider_health.status_code == 200
+    assert any(item["provider_family"] == "local" for item in provider_health.json())
+
+
+def test_api_can_disable_and_enable_provider_family(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
+
+    disable_response = client.post("/providers/gemini/disable")
+    enable_response = client.post("/providers/gemini/enable")
+
+    assert disable_response.status_code == 200
+    assert disable_response.json()["provider_family"] == "gemini"
+    assert disable_response.json()["state"] == "disabled"
+    assert enable_response.status_code == 200
+    assert enable_response.json()["provider_family"] == "gemini"
+
+
+def test_api_can_return_artifact_inspection_surface(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
+    artifact_path = tmp_path / "artifacts" / "inspect.txt"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text("artifact", encoding="utf-8")
+
+    client.post(
+        "/runs",
+        json={
+            "run_id": "run_001",
+            "spec_id": "spec_001",
+            "git_commit": "abc123",
+            "config_hash": "sha256:123",
+            "dataset_snapshot": "dataset_v1",
+            "seed": 42,
+            "gpu": "A100",
+        },
+    )
+    client.app.state.artifact_service.register_artifact(
+        ArtifactRecord(
+            artifact_id="artifact_inspect",
+            run_id="run_001",
+            kind="note",
+            path="artifacts/inspect.txt",
+            hash="sha256:inspect",
+        )
+    )
+
+    response = client.get("/artifacts/artifact_inspect/inspect")
+
+    assert response.status_code == 200
+    assert response.json()["artifact_id"] == "artifact_inspect"
+    assert response.json()["exists_on_disk"] is True

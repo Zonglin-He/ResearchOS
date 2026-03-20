@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from app.console.catalog import FirstTaskRecommendation, recommend_first_task_kind
+from app.core.prompts import resolve_prompt_path
 from app.providers.registry import ProviderRegistry
 from app.roles import WorkflowRole, role_routing_policy_for_role
 from app.routing.models import AgentRoutingPolicy, ResolvedDispatch
@@ -67,7 +67,7 @@ class GuidePlan:
 
 class OnboardingGuideAgent:
     prompt_id = "console-onboarding-guide"
-    prompt_path = Path(__file__).resolve().parents[2] / "prompts" / "console" / "onboarding_guide.md"
+    prompt_path = "prompts/console/onboarding_guide.md"
 
     def __init__(
         self,
@@ -86,7 +86,7 @@ class OnboardingGuideAgent:
         )
 
     def prompt_text(self) -> str:
-        return self.prompt_path.read_text(encoding="utf-8").strip()
+        return resolve_prompt_path(self.prompt_path).read_text(encoding="utf-8").strip()
 
     def opening_message(self, *, has_projects: bool) -> str:
         if has_projects:

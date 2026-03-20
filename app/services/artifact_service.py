@@ -7,8 +7,18 @@ from app.services.registry_store import append_jsonl, read_jsonl, to_record
 
 
 class ArtifactService:
-    def __init__(self, registry_path: str | Path = "registry/artifacts.jsonl") -> None:
+    def __init__(
+        self,
+        registry_path: str | Path = "registry/artifacts.jsonl",
+        *,
+        workspace_root: str | Path | None = None,
+    ) -> None:
         self.registry_path = Path(registry_path).expanduser().resolve()
+        self.workspace_root = (
+            self.registry_path.parent.parent
+            if workspace_root is None
+            else Path(workspace_root).expanduser().resolve()
+        )
 
     def register_artifact(self, artifact: ArtifactRecord) -> ArtifactRecord:
         append_jsonl(self.registry_path, to_record(artifact))
@@ -24,7 +34,7 @@ class ArtifactService:
         path = Path(artifact.path)
         if path.is_absolute():
             return path
-        return self.registry_path.parent.parent / path
+        return self.workspace_root / path
 
     def list_artifacts(self) -> list[ArtifactRecord]:
         rows = read_jsonl(self.registry_path)

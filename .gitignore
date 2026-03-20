@@ -36,6 +36,7 @@ dist/
 artifacts/
 data/
 registry/
+state/
 *.db
 *.sqlite
 *.sqlite3

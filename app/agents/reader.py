@@ -17,7 +17,7 @@ from app.services.paper_card_service import PaperCardService
 class ReaderAgent(PromptDrivenAgent):
     name = "reader_agent"
     description = "Reads papers and repositories into structured research artifacts."
-    prompt_path = "C:/Anti Project/ResearchOS/prompts/reader.md"
+    prompt_path = "prompts/reader.md"
     role_binding = reader_role_binding()
 
     def __init__(

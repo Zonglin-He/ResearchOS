@@ -17,7 +17,7 @@ from app.services.paper_card_service import PaperCardService
 class MapperAgent(PromptDrivenAgent):
     name = "mapper_agent"
     description = "Maps paper cards into structured gaps and ranked candidates."
-    prompt_path = "C:/Anti Project/ResearchOS/prompts/mapper.md"
+    prompt_path = "prompts/mapper.md"
     role_binding = mapper_role_binding()
 
     def __init__(

@@ -263,6 +263,16 @@ uv run researchos --db-path data\researchos.db list-tasks --project-id p1
 uv run researchos --db-path data\researchos.db list-artifacts
 ```
 
+Inspect the project, routing, and artifacts:
+
+```powershell
+uv run researchos --db-path data\researchos.db project-dashboard --project-id p1
+uv run researchos --db-path data\researchos.db inspect-routing-system
+uv run researchos --db-path data\researchos.db inspect-routing-task --task-id t1
+uv run researchos --db-path data\researchos.db provider-health
+uv run researchos --db-path data\researchos.db inspect-artifact --artifact-id <artifact-id>
+```
+
 Open the interactive terminal control plane:
 
 ```powershell
@@ -328,8 +338,18 @@ Inspect artifacts:
 ```powershell
 Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/artifacts"
 Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/artifacts/<artifact-id>"
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/artifacts/<artifact-id>/inspect"
 Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/verifications/summary"
 Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/audit/summary"
+```
+
+Inspect dashboard and routing:
+
+```powershell
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/projects/p1/dashboard"
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/routing/system"
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/routing/tasks/t1"
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/providers/health"
 ```
 
 ## Docker / Production Quickstart
@@ -368,6 +388,7 @@ Relative to the workspace root, the main registry files are:
 - `registry/freezes/`
 - `registry/lessons.jsonl`
 - `registry/verifications.jsonl`
+- `state/provider_health.yaml`
 
 These are not transient logs. They are explicit workflow state that agents and operators can inspect and reuse.
 
@@ -385,8 +406,15 @@ Operator-facing inspection surfaces now include:
 
 - `GET /artifacts`
 - `GET /artifacts/{artifact_id}`
+- `GET /artifacts/{artifact_id}/inspect`
 - `GET /artifacts/{artifact_id}/annotations`
 - `POST /artifacts/{artifact_id}/annotations`
+- `GET /projects/{project_id}/dashboard`
+- `GET /routing/system`
+- `GET /routing/tasks/{task_id}`
+- `GET /providers/health`
+- `POST /providers/{provider_name}/disable`
+- `POST /providers/{provider_name}/enable`
 - `GET /verifications`
 - `GET /verifications/summary`
 - `GET /audit/claims`
@@ -400,6 +428,15 @@ Artifact detail now includes a typed provenance view with:
 - claim support references
 - run evidence
 - constrained operator annotations
+
+Storage boundaries are now explicit:
+
+- projects and tasks live in the configured DB
+- registry-backed workflow state lives under `registry/`
+- generated files live under `artifacts/`
+- provider health, cooldowns, and manual disable state live under `state/provider_health.yaml`
+
+This keeps operator state persistent without pretending that registry files and DB tables are the same storage surface.
 
 ## Example Flows
 
@@ -429,3 +466,9 @@ GitHub Actions runs:
 Workflow file:
 
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+
+There is also a unified local smoke path that exercises CLI + API + console together:
+
+```powershell
+uv run python scripts\smoke_unified_control_plane.py
+```

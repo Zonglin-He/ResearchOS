@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agents.base import BaseAgent
+from app.core.prompts import resolve_prompt_path
 from app.providers.base import BaseProvider
 from app.providers.registry import ProviderRegistry
 from app.roles.prompts import ROLE_PROMPT_REGISTRY, RolePromptRegistry
@@ -173,7 +174,7 @@ class PromptDrivenAgent(BaseAgent):
         }
 
     def _build_system_prompt(self, task: Task) -> str:
-        specialized_prompt = Path(self.prompt_path).read_text(encoding="utf-8").strip()
+        specialized_prompt = resolve_prompt_path(self.prompt_path).read_text(encoding="utf-8").strip()
         if self.role_binding is None or self.role_prompt_registry is None:
             return specialized_prompt
 

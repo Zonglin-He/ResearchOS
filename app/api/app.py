@@ -7,6 +7,7 @@ from app.api.schemas import (
     ArtifactAnnotationCreate,
     ArtifactAnnotationRead,
     ArtifactDetailRead,
+    ArtifactInspectionRead,
     ArtifactRead,
     ArtifactProvenanceRead,
     AuditSubjectRefRead,
@@ -32,15 +33,19 @@ from app.api.schemas import (
     PaperCardRead,
     PaperCardSummaryRead,
     ProjectCreate,
+    ProjectDashboardRead,
     ProjectRead,
     ResultsFreezeRead,
     ResultsFreezeSave,
     ResultsFreezeSaveResponse,
+    RoutingInspectionRead,
     RunEvidenceRefRead,
     RunManifestCreate,
     RunManifestRead,
+    ResolvedDispatchModel,
     SpecFreezeRead,
     SpecFreezeSave,
+    StorageBoundaryRead,
     SpecFreezeSaveResponse,
     TaskCreate,
     TaskRead,
@@ -52,6 +57,7 @@ from app.api.schemas import (
     VerificationLinkRead,
     ProvenanceEvidenceRefRead,
     VerificationSummaryRead,
+    ProviderHealthSnapshotModel,
 )
 from app.bootstrap import build_runtime_services
 from app.core.config import load_config
@@ -110,6 +116,9 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
     app.state.verification_service = services.verification_service
     app.state.audit_service = services.audit_service
     app.state.provenance_service = services.provenance_service
+    app.state.operator_inspection_service = services.operator_inspection_service
+    app.state.provider_health_service = services.provider_health_service
+    app.state.provider_registry = services.provider_registry
     app.state.orchestrator = services.orchestrator
 
     @app.get("/health")
@@ -149,6 +158,14 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         return _to_project_read(project)
+
+    @app.get("/projects/{project_id}/dashboard", response_model=ProjectDashboardRead)
+    def get_project_dashboard(project_id: str) -> ProjectDashboardRead:
+        try:
+            dashboard = app.state.operator_inspection_service.build_project_dashboard(project_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return _to_project_dashboard_read(dashboard)
 
     @app.post("/tasks", response_model=TaskRead)
     def create_task(
@@ -229,6 +246,35 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
     def enqueue_task(task_id: str) -> dict[str, str]:
         result = dispatch_task_job.delay(task_id)
         return {"celery_task_id": result.id, "task_id": task_id}
+
+    @app.get("/routing/system", response_model=RoutingInspectionRead)
+    def inspect_system_routing() -> RoutingInspectionRead:
+        return _to_routing_inspection_read(app.state.operator_inspection_service.inspect_system_routing())
+
+    @app.get("/routing/tasks/{task_id}", response_model=RoutingInspectionRead)
+    def inspect_task_routing(task_id: str) -> RoutingInspectionRead:
+        try:
+            inspection = app.state.operator_inspection_service.inspect_task_routing(task_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return _to_routing_inspection_read(inspection)
+
+    @app.get("/providers/health", response_model=list[ProviderHealthSnapshotModel])
+    def list_provider_health() -> list[ProviderHealthSnapshotModel]:
+        return [
+            ProviderHealthSnapshotModel.model_validate(to_record(snapshot))
+            for snapshot in app.state.operator_inspection_service.list_provider_health()
+        ]
+
+    @app.post("/providers/{provider_name}/disable", response_model=ProviderHealthSnapshotModel)
+    def disable_provider(provider_name: str) -> ProviderHealthSnapshotModel:
+        snapshot = app.state.operator_inspection_service.disable_provider_family(provider_name)
+        return ProviderHealthSnapshotModel.model_validate(to_record(snapshot))
+
+    @app.post("/providers/{provider_name}/enable", response_model=ProviderHealthSnapshotModel)
+    def enable_provider(provider_name: str) -> ProviderHealthSnapshotModel:
+        snapshot = app.state.operator_inspection_service.enable_provider_family(provider_name)
+        return ProviderHealthSnapshotModel.model_validate(to_record(snapshot))
 
     @app.post("/claims", response_model=ClaimRead)
     def create_claim(payload: ClaimCreate) -> ClaimRead:
@@ -331,6 +377,14 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             verification_service=app.state.verification_service,
             audit_service=app.state.audit_service,
         )
+
+    @app.get("/artifacts/{artifact_id}/inspect", response_model=ArtifactInspectionRead)
+    def inspect_artifact(artifact_id: str) -> ArtifactInspectionRead:
+        try:
+            inspection = app.state.operator_inspection_service.inspect_artifact(artifact_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return _to_artifact_inspection_read(inspection)
 
     @app.post("/lessons", response_model=LessonRead)
     def create_lesson(payload: LessonCreate) -> LessonRead:
@@ -678,6 +732,64 @@ def _to_project_read(project: Project) -> ProjectRead:
     )
 
 
+def _to_storage_boundary_read(boundary) -> StorageBoundaryRead:
+    return StorageBoundaryRead(
+        database_backend=boundary.database_backend,
+        database_location=boundary.database_location,
+        registry_dir=boundary.registry_dir,
+        artifacts_dir=boundary.artifacts_dir,
+        freezes_dir=boundary.freezes_dir,
+        state_dir=boundary.state_dir,
+    )
+
+
+def _to_project_dashboard_read(dashboard) -> ProjectDashboardRead:
+    return ProjectDashboardRead(
+        project_id=dashboard.project_id,
+        project_name=dashboard.project_name,
+        project_status=dashboard.project_status,
+        total_tasks=dashboard.total_tasks,
+        queued_tasks=dashboard.queued_tasks,
+        running_tasks=dashboard.running_tasks,
+        waiting_approval_tasks=dashboard.waiting_approval_tasks,
+        succeeded_tasks=dashboard.succeeded_tasks,
+        failed_tasks=dashboard.failed_tasks,
+        cancelled_tasks=dashboard.cancelled_tasks,
+        artifact_count=dashboard.artifact_count,
+        paper_card_count=dashboard.paper_card_count,
+        gap_map_count=dashboard.gap_map_count,
+        run_count=dashboard.run_count,
+        latest_task_ids=list(dashboard.latest_task_ids),
+        topic_freeze_present=dashboard.topic_freeze_present,
+        spec_freeze_present=dashboard.spec_freeze_present,
+        results_freeze_present=dashboard.results_freeze_present,
+        recommended_next_task_kind=dashboard.recommended_next_task_kind,
+        recommendation_reason=dashboard.recommendation_reason,
+        expected_artifact=dashboard.expected_artifact,
+        likely_next_task_kind=dashboard.likely_next_task_kind,
+        storage_boundary=None
+        if dashboard.storage_boundary is None
+        else _to_storage_boundary_read(dashboard.storage_boundary),
+    )
+
+
+def _to_routing_inspection_read(inspection) -> RoutingInspectionRead:
+    return RoutingInspectionRead(
+        scope=inspection.scope,
+        subject_id=inspection.subject_id,
+        resolved_dispatch=ResolvedDispatchModel.model_validate(
+            to_record(inspection.resolved_dispatch)
+        ),
+        provider_health=[
+            ProviderHealthSnapshotModel.model_validate(to_record(snapshot))
+            for snapshot in inspection.provider_health
+        ],
+        storage_boundary=None
+        if inspection.storage_boundary is None
+        else _to_storage_boundary_read(inspection.storage_boundary),
+    )
+
+
 def _to_run_read(run: RunManifest) -> RunManifestRead:
     return RunManifestRead(
         run_id=run.run_id,
@@ -845,6 +957,25 @@ def _to_artifact_annotation_read(annotation: ArtifactAnnotation) -> ArtifactAnno
         review_tags=annotation.review_tags,
         note=annotation.note,
         created_at=annotation.created_at,
+    )
+
+
+def _to_artifact_inspection_read(inspection) -> ArtifactInspectionRead:
+    return ArtifactInspectionRead(
+        artifact_id=inspection.artifact_id,
+        run_id=inspection.run_id,
+        kind=inspection.kind,
+        path=inspection.path,
+        exists_on_disk=inspection.exists_on_disk,
+        verification_count=inspection.verification_count,
+        audit_entry_count=inspection.audit_entry_count,
+        annotation_count=inspection.annotation_count,
+        evidence_refs=list(inspection.evidence_refs),
+        claim_supports=list(inspection.claim_supports),
+        related_freeze_ids=list(inspection.related_freeze_ids),
+        metadata=inspection.metadata,
+        resolved_path=inspection.resolved_path,
+        workspace_relative_path=inspection.workspace_relative_path,
     )
 
 

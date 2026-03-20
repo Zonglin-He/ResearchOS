@@ -13,7 +13,7 @@ from app.services.verification_service import VerificationService
 class VerifierAgent(PromptDrivenAgent):
     name = "verifier_agent"
     description = "Verifies evidence chains and methodological validity."
-    prompt_path = "C:/Anti Project/ResearchOS/prompts/verifier.md"
+    prompt_path = "prompts/verifier.md"
     role_binding = verifier_role_binding()
 
     def __init__(

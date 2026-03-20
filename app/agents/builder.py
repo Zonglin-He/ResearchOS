@@ -19,7 +19,7 @@ from app.services.run_service import RunService
 class BuilderAgent(PromptDrivenAgent):
     name = "builder_agent"
     description = "Builds code and experiments from a frozen spec."
-    prompt_path = "C:/Anti Project/ResearchOS/prompts/builder.md"
+    prompt_path = "prompts/builder.md"
     role_binding = builder_role_binding()
 
     def __init__(

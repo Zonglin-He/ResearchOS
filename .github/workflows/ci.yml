@@ -35,6 +35,14 @@ jobs:
           RESEARCHOS_PROVIDER_MODEL: deterministic-reader
         run: uv run pytest tests/integration/test_dispatch_workflow.py -q
 
+      - name: Unified control-plane smoke
+        env:
+          RESEARCHOS_PROVIDER: local
+          RESEARCHOS_PROVIDER_MODEL: deterministic-reader
+        run: |
+          uv run pytest tests/integration/test_unified_control_plane_smoke.py -q
+          uv run python scripts/smoke_unified_control_plane.py
+
       - name: CLI smoke
         run: |
           uv run researchos --help

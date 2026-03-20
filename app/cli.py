@@ -69,6 +69,10 @@ def build_parser() -> argparse.ArgumentParser:
     list_tasks.add_argument("--project-id")
     list_tasks.set_defaults(handler=_handle_list_tasks)
 
+    project_dashboard = subparsers.add_parser("project-dashboard")
+    project_dashboard.add_argument("--project-id", required=True)
+    project_dashboard.set_defaults(handler=_handle_project_dashboard)
+
     update_status = subparsers.add_parser("update-task-status")
     update_status.add_argument("--task-id", required=True)
     update_status.add_argument("--status", required=True, choices=[status.value for status in TaskStatus])
@@ -91,6 +95,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Enqueue through Celery instead of dispatching inline.",
     )
     dispatch_task.set_defaults(handler=_handle_dispatch_task)
+
+    inspect_system_routing = subparsers.add_parser("inspect-routing-system")
+    inspect_system_routing.set_defaults(handler=_handle_inspect_routing_system)
+
+    inspect_task_routing = subparsers.add_parser("inspect-routing-task")
+    inspect_task_routing.add_argument("--task-id", required=True)
+    inspect_task_routing.set_defaults(handler=_handle_inspect_routing_task)
+
+    provider_health = subparsers.add_parser("provider-health")
+    provider_health.set_defaults(handler=_handle_provider_health)
+
+    disable_provider = subparsers.add_parser("disable-provider")
+    disable_provider.add_argument("--provider-name", required=True)
+    disable_provider.set_defaults(handler=_handle_disable_provider)
+
+    enable_provider = subparsers.add_parser("enable-provider")
+    enable_provider.add_argument("--provider-name", required=True)
+    enable_provider.set_defaults(handler=_handle_enable_provider)
+
+    clear_provider_cooldown = subparsers.add_parser("clear-provider-cooldown")
+    clear_provider_cooldown.add_argument("--provider-name", required=True)
+    clear_provider_cooldown.set_defaults(handler=_handle_clear_provider_cooldown)
 
     create_claim = subparsers.add_parser("create-claim")
     create_claim.add_argument("--claim-id", required=True)
@@ -219,6 +245,10 @@ def build_parser() -> argparse.ArgumentParser:
     list_artifacts = subparsers.add_parser("list-artifacts")
     list_artifacts.add_argument("--run-id")
     list_artifacts.set_defaults(handler=_handle_list_artifacts)
+
+    inspect_artifact = subparsers.add_parser("inspect-artifact")
+    inspect_artifact.add_argument("--artifact-id", required=True)
+    inspect_artifact.set_defaults(handler=_handle_inspect_artifact)
 
     return parser
 
@@ -362,6 +392,36 @@ def _handle_list_tasks(
     return 0
 
 
+def _handle_project_dashboard(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    dashboard = args.runtime_services.operator_inspection_service.build_project_dashboard(args.project_id)
+    print(f"{dashboard.project_id}\t{dashboard.project_name}\t{dashboard.project_status}")
+    print(
+        f"tasks total={dashboard.total_tasks} succeeded={dashboard.succeeded_tasks} "
+        f"running={dashboard.running_tasks} waiting_approval={dashboard.waiting_approval_tasks}"
+    )
+    print(
+        f"artifacts={dashboard.artifact_count} paper_cards={dashboard.paper_card_count} "
+        f"gap_maps={dashboard.gap_map_count} runs={dashboard.run_count}"
+    )
+    if dashboard.recommended_next_task_kind is not None:
+        print(
+            f"next={dashboard.recommended_next_task_kind}\tartifact={dashboard.expected_artifact}\t"
+            f"follow_up={dashboard.likely_next_task_kind or '-'}"
+        )
+        print(dashboard.recommendation_reason)
+    return 0
+
+
 def _handle_update_task_status(
     args: argparse.Namespace,
     project_service: ProjectService,
@@ -441,6 +501,115 @@ def _handle_dispatch_task(
             f"model={dispatch.result.routing.model or '<default>'} "
             f"sources={to_record(dispatch.result.routing.sources)}"
         )
+    return 0
+
+
+def _handle_inspect_routing_system(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    inspection = args.runtime_services.operator_inspection_service.inspect_system_routing()
+    dispatch = inspection.resolved_dispatch
+    print(f"system\t{dispatch.provider_name}\t{dispatch.model or '<default>'}\t{dispatch.decision_reason or '-'}")
+    for snapshot in inspection.provider_health:
+        print(
+            f"provider={snapshot.provider_family}\tstate={snapshot.state}\tcli={snapshot.cli_installed}\t"
+            f"disabled={snapshot.manually_disabled}\tcooldown={snapshot.cooldown_seconds_remaining}"
+        )
+    return 0
+
+
+def _handle_inspect_routing_task(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    inspection = args.runtime_services.operator_inspection_service.inspect_task_routing(args.task_id)
+    dispatch = inspection.resolved_dispatch
+    print(
+        f"task={args.task_id}\tprovider={dispatch.provider_name}\tmodel={dispatch.model or '<default>'}\t"
+        f"role={dispatch.role_name or '-'}\tfallback={dispatch.fallback_reason or '-'}"
+    )
+    return 0
+
+
+def _handle_provider_health(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    for snapshot in args.runtime_services.operator_inspection_service.list_provider_health():
+        print(
+            f"{snapshot.provider_family}\t{snapshot.state}\tcli={snapshot.cli_installed}\t"
+            f"disabled={snapshot.manually_disabled}\tcooldown={snapshot.cooldown_seconds_remaining}"
+        )
+    return 0
+
+
+def _handle_disable_provider(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    snapshot = args.runtime_services.operator_inspection_service.disable_provider_family(args.provider_name)
+    print(f"Disabled {snapshot.provider_family} -> {snapshot.state}")
+    return 0
+
+
+def _handle_enable_provider(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    snapshot = args.runtime_services.operator_inspection_service.enable_provider_family(args.provider_name)
+    print(f"Enabled {snapshot.provider_family} -> {snapshot.state}")
+    return 0
+
+
+def _handle_clear_provider_cooldown(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    snapshot = args.runtime_services.operator_inspection_service.clear_provider_cooldown(args.provider_name)
+    print(f"Cleared cooldown for {snapshot.provider_family} -> {snapshot.state}")
     return 0
 
 
@@ -870,6 +1039,31 @@ def _handle_list_artifacts(
         artifacts = [artifact for artifact in artifacts if artifact.run_id == args.run_id]
     for artifact in artifacts:
         print(f"{artifact.artifact_id}\t{artifact.run_id}\t{artifact.kind}\t{artifact.path}")
+    return 0
+
+
+def _handle_inspect_artifact(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    inspection = args.runtime_services.operator_inspection_service.inspect_artifact(args.artifact_id)
+    print(
+        f"{inspection.artifact_id}\t{inspection.kind}\t{inspection.run_id}\t"
+        f"exists={inspection.exists_on_disk}"
+    )
+    print(
+        f"verifications={inspection.verification_count}\taudit_entries={inspection.audit_entry_count}\t"
+        f"annotations={inspection.annotation_count}"
+    )
+    if inspection.evidence_refs:
+        print(f"evidence_refs={','.join(inspection.evidence_refs)}")
     return 0
 
 

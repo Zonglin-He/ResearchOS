@@ -14,7 +14,7 @@ from app.services.artifact_service import ArtifactService
 class WriterAgent(PromptDrivenAgent):
     name = "writer_agent"
     description = "Writes draft sections from frozen evidence."
-    prompt_path = "C:/Anti Project/ResearchOS/prompts/writer.md"
+    prompt_path = "prompts/writer.md"
     role_binding = writer_role_binding()
 
     def __init__(

@@ -30,6 +30,12 @@ from app.api.schemas.paper_cards import (
     PaperCardRead,
     PaperCardSummaryRead,
 )
+from app.api.schemas.operator import (
+    ArtifactInspectionRead,
+    ProjectDashboardRead,
+    RoutingInspectionRead,
+    StorageBoundaryRead,
+)
 from app.api.schemas.projects import ProjectCreate, ProjectRead
 from app.api.schemas.provenance import (
     ArtifactProvenanceRead,
@@ -54,6 +60,7 @@ __all__ = [
     "ArtifactAnnotationCreate",
     "ArtifactAnnotationRead",
     "ArtifactDetailRead",
+    "ArtifactInspectionRead",
     "ArtifactRead",
     "ArtifactProvenanceRead",
     "AuditSubjectRefRead",
@@ -80,11 +87,13 @@ __all__ = [
     "PaperCardCreateResponse",
     "PaperCardRead",
     "PaperCardSummaryRead",
+    "ProjectDashboardRead",
     "ProjectCreate",
     "ProjectRead",
     "ProvenanceEvidenceRefRead",
     "ProviderSpecModel",
     "ResolvedDispatchModel",
+    "RoutingInspectionRead",
     "ResultsFreezeRead",
     "ResultsFreezeSave",
     "ResultsFreezeSaveResponse",
@@ -104,4 +113,5 @@ __all__ = [
     "TopicFreezeSaveResponse",
     "ClaimSupportRefRead",
     "RunEvidenceRefRead",
+    "StorageBoundaryRead",
 ]

@@ -42,6 +42,18 @@ class Orchestrator:
         for kind in handles or set():
             self._kind_to_agent[kind] = agent.name
 
+    def preview_routing(self, task_id: str) -> ResolvedDispatch | None:
+        task = self.task_service.get_task(task_id)
+        if task is None:
+            raise KeyError(f"Task not found: {task_id}")
+        agent_name = task.assigned_agent or self._kind_to_agent.get(task.kind)
+        if agent_name is None:
+            return task.last_run_routing
+        agent = self._agents.get(agent_name)
+        if agent is None:
+            raise KeyError(f"Agent not found: {agent_name}")
+        return self._resolve_routing(task, agent)
+
     async def dispatch(self, task_id: str) -> OrchestratorDispatch:
         task = self.task_service.get_task(task_id)
         if task is None:

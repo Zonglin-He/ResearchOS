@@ -14,7 +14,7 @@ from app.services.artifact_service import ArtifactService
 class StyleAgent(PromptDrivenAgent):
     name = "style_agent"
     description = "Polishes language while preserving factual meaning."
-    prompt_path = "C:/Anti Project/ResearchOS/prompts/style.md"
+    prompt_path = "prompts/style.md"
     role_binding = style_role_binding()
 
     def __init__(

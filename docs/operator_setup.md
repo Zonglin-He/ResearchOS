@@ -120,10 +120,18 @@ uv run python scripts\smoke_production_stack.py
 - SQLite by default: `data/researchos.db`
 - registry-backed surfaces: `registry/`
 - generated smoke output: `artifacts/`
+- provider health persistence: `state/provider_health.yaml`
 
 These paths are resolved under `RESEARCHOS_WORKSPACE_ROOT` when it is set. Otherwise they resolve under the current working directory.
 
 These paths are ignored in Git and treated as local runtime state.
+
+Storage boundary summary:
+
+- DB: projects, tasks, and related repository-backed state
+- `registry/`: durable workflow registries such as runs, claims, paper cards, gap maps, freezes, lessons, and verifications
+- `artifacts/`: generated files and exported outputs
+- `state/`: operator/runtime state such as provider cooldowns and manual disable flags
 
 ## Operator Inspection Surfaces
 
@@ -131,8 +139,15 @@ Current operator-facing inspection endpoints include:
 
 - `GET /artifacts`
 - `GET /artifacts/{artifact_id}`
+- `GET /artifacts/{artifact_id}/inspect`
 - `GET /artifacts/{artifact_id}/annotations`
 - `POST /artifacts/{artifact_id}/annotations`
+- `GET /projects/{project_id}/dashboard`
+- `GET /routing/system`
+- `GET /routing/tasks/{task_id}`
+- `GET /providers/health`
+- `POST /providers/{provider_name}/disable`
+- `POST /providers/{provider_name}/enable`
 - `GET /verifications`
 - `GET /verifications/summary`
 - `GET /audit/claims`
@@ -148,3 +163,19 @@ Routing transparency is exposed through task/run metadata:
 - dispatch audit notes in agent results
 
 These surfaces now include the resolved role, capability class, chosen provider family, chosen model, fallback chain, and health snapshots used during selection when available.
+
+Equivalent CLI inspection commands:
+
+```powershell
+uv run researchos --db-path data\researchos.db project-dashboard --project-id p1
+uv run researchos --db-path data\researchos.db inspect-routing-system
+uv run researchos --db-path data\researchos.db inspect-routing-task --task-id t1
+uv run researchos --db-path data\researchos.db provider-health
+uv run researchos --db-path data\researchos.db inspect-artifact --artifact-id <artifact-id>
+```
+
+Unified control-plane smoke:
+
+```powershell
+uv run python scripts\smoke_unified_control_plane.py
+```

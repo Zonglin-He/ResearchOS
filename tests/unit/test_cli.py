@@ -131,6 +131,51 @@ def test_cli_create_task_accepts_dispatch_profile(tmp_path: Path) -> None:
     assert task.dispatch_profile.max_steps == 18
 
 
+def test_cli_can_show_project_dashboard_and_provider_health(capsys, tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "researchos.db"
+    monkeypatch.setenv("RESEARCHOS_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("RESEARCHOS_PROVIDER", "local")
+    monkeypatch.setenv("RESEARCHOS_PROVIDER_MODEL", "deterministic-reader")
+
+    assert main(
+        [
+            "--db-path",
+            str(db_path),
+            "create-project",
+            "--project-id",
+            "p-dashboard",
+            "--name",
+            "Dashboard Project",
+            "--description",
+            "dashboard cli project",
+        ]
+    ) == 0
+
+    assert main(["--db-path", str(db_path), "project-dashboard", "--project-id", "p-dashboard"]) == 0
+    assert main(["--db-path", str(db_path), "provider-health"]) == 0
+    output = capsys.readouterr().out
+
+    assert "p-dashboard\tDashboard Project\tactive" in output
+    assert "next=paper_ingest" in output
+    assert "local\tavailable" in output
+
+
+def test_cli_can_disable_enable_and_clear_provider_cooldown(capsys, tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "researchos.db"
+    monkeypatch.setenv("RESEARCHOS_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("RESEARCHOS_PROVIDER", "local")
+    monkeypatch.setenv("RESEARCHOS_PROVIDER_MODEL", "deterministic-reader")
+
+    assert main(["--db-path", str(db_path), "disable-provider", "--provider-name", "gemini"]) == 0
+    assert main(["--db-path", str(db_path), "enable-provider", "--provider-name", "gemini"]) == 0
+    assert main(["--db-path", str(db_path), "clear-provider-cooldown", "--provider-name", "gemini"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Disabled gemini -> disabled" in output
+    assert "Enabled gemini ->" in output
+    assert "Cleared cooldown for gemini ->" in output
+
+
 def test_cli_can_create_lessons_and_verify_runs(capsys, tmp_path: Path) -> None:
     db_path = tmp_path / "researchos.db"
 

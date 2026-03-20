@@ -50,7 +50,7 @@ class ProvenanceService:
             raise KeyError(f"Artifact not found: {artifact_id}")
 
         resolved_path = self.artifact_service.resolve_artifact_path(artifact)
-        workspace_root = self.artifact_service.registry_path.parent.parent
+        workspace_root = self.artifact_service.workspace_root
         try:
             workspace_relative_path = str(resolved_path.relative_to(workspace_root))
         except ValueError:

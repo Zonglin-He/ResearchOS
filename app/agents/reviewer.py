@@ -13,7 +13,7 @@ from app.schemas.task import Task
 class ReviewerAgent(PromptDrivenAgent):
     name = "reviewer_agent"
     description = "Reviews code, experiments, and claims for validity."
-    prompt_path = "C:/Anti Project/ResearchOS/prompts/reviewer.md"
+    prompt_path = "prompts/reviewer.md"
     role_binding = reviewer_role_binding()
 
     def __init__(

@@ -48,6 +48,7 @@ from app.services.experiment_registry import ExperimentRegistry
 from app.services.freeze_service import FreezeService
 from app.services.gap_map_service import GapMapService
 from app.services.lessons_service import LessonsService
+from app.services.operator_inspection_service import OperatorInspectionService
 from app.services.paper_card_service import PaperCardService
 from app.services.project_service import ProjectService
 from app.services.provenance_service import ProvenanceService
@@ -82,6 +83,7 @@ class RuntimeServices:
     lessons_service: LessonsService
     verification_service: VerificationService
     provenance_service: ProvenanceService
+    operator_inspection_service: OperatorInspectionService
     tool_registry: ToolRegistry
     provider_registry: ProviderRegistry
     provider_health_service: ProviderHealthService
@@ -385,7 +387,12 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
     run_service = RunService(workspace_paths.registry_file("runs.jsonl"))
     freeze_service = FreezeService(workspace_paths.freezes_dir)
     approval_service = ApprovalService(workspace_paths.registry_file("approvals.jsonl"))
-    artifact_service = ArtifactService(workspace_paths.registry_file("artifacts.jsonl"))
+    artifact_service = ArtifactService(
+        workspace_paths.registry_file("artifacts.jsonl"),
+        workspace_root=workspace_paths.root,
+    )
+    paper_card_service = PaperCardService(workspace_paths.registry_file("paper_cards.jsonl"))
+    gap_map_service = GapMapService(workspace_paths.registry_file("gap_maps.jsonl"))
     artifact_annotation_service = ArtifactAnnotationService(
         workspace_paths.registry_file("artifact_annotations.jsonl")
     )
@@ -404,20 +411,41 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
     provider_health_service = ProviderHealthService(
         cooldown_seconds=config.provider_cooldown_seconds,
         disabled_families=set(config.disabled_provider_families),
+        state_path=workspace_paths.provider_health_state_file,
     )
     provider_invocation_service = ProviderInvocationService(
         provider_registry,
         provider_health_service,
     )
     routing_resolver = RoutingResolver(build_system_dispatch_profile(config))
+    storage_boundary = workspace_paths.storage_boundary(
+        database_backend="postgres" if config.database_url else "sqlite",
+        database_location=config.database_url or config.db_path,
+    )
+    provenance_service = ProvenanceService(
+        artifact_service=artifact_service,
+        annotation_service=artifact_annotation_service,
+        audit_service=audit_service,
+        verification_service=verification_service,
+        run_service=run_service,
+        claim_service=claim_service,
+        freeze_service=freeze_service,
+    )
+    placeholder_orchestrator = Orchestrator(
+        task_service,
+        project_service=project_service,
+        routing_resolver=routing_resolver,
+        lessons_service=lessons_service,
+        artifacts_dir=workspace_paths.artifacts_dir,
+    )
     services = RuntimeServices(
         project_service=project_service,
         task_service=task_service,
         claim_service=claim_service,
         run_service=run_service,
         freeze_service=freeze_service,
-        paper_card_service=PaperCardService(workspace_paths.registry_file("paper_cards.jsonl")),
-        gap_map_service=GapMapService(workspace_paths.registry_file("gap_maps.jsonl")),
+        paper_card_service=paper_card_service,
+        gap_map_service=gap_map_service,
         approval_service=approval_service,
         artifact_service=artifact_service,
         artifact_annotation_service=artifact_annotation_service,
@@ -431,14 +459,21 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         ),
         lessons_service=lessons_service,
         verification_service=verification_service,
-        provenance_service=ProvenanceService(
-            artifact_service=artifact_service,
-            annotation_service=artifact_annotation_service,
-            audit_service=audit_service,
-            verification_service=verification_service,
+        provenance_service=provenance_service,
+        operator_inspection_service=OperatorInspectionService(
+            project_service=project_service,
+            task_service=task_service,
             run_service=run_service,
-            claim_service=claim_service,
+            artifact_service=artifact_service,
+            artifact_annotation_service=artifact_annotation_service,
+            paper_card_service=paper_card_service,
+            gap_map_service=gap_map_service,
             freeze_service=freeze_service,
+            provenance_service=provenance_service,
+            orchestrator=placeholder_orchestrator,
+            provider_registry=provider_registry,
+            provider_health_service=provider_health_service,
+            storage_boundary=storage_boundary,
         ),
         tool_registry=build_tool_registry(),
         provider_registry=provider_registry,
@@ -447,13 +482,22 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         routing_resolver=routing_resolver,
         role_prompt_registry=ROLE_PROMPT_REGISTRY,
         role_skill_registry=ROLE_SKILL_REGISTRY,
-        orchestrator=Orchestrator(
-            task_service,
-            project_service=project_service,
-            routing_resolver=routing_resolver,
-            lessons_service=lessons_service,
-            artifacts_dir=workspace_paths.artifacts_dir,
-        ),
+        orchestrator=placeholder_orchestrator,
     )
     services.orchestrator = build_orchestrator(config, services)
+    services.operator_inspection_service = OperatorInspectionService(
+        project_service=project_service,
+        task_service=task_service,
+        run_service=run_service,
+        artifact_service=artifact_service,
+        artifact_annotation_service=artifact_annotation_service,
+        paper_card_service=services.paper_card_service,
+        gap_map_service=services.gap_map_service,
+        freeze_service=freeze_service,
+        provenance_service=services.provenance_service,
+        orchestrator=services.orchestrator,
+        provider_registry=provider_registry,
+        provider_health_service=provider_health_service,
+        storage_boundary=storage_boundary,
+    )
     return services

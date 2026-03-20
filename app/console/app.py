@@ -26,9 +26,13 @@ from app.console.render import (
     build_artifacts_table,
     build_gap_maps_table,
     build_paper_cards_table,
+    build_project_dashboard_panel,
     build_projects_table,
+    build_provider_health_table,
+    build_routing_inspection_panel,
     build_runs_table,
     build_tasks_table,
+    build_artifact_inspection_panel,
 )
 
 
@@ -74,15 +78,19 @@ class TerminalControlPlaneApp:
             choice = self._choose(
                 "Main Menu",
                 [
+                    "Dashboard",
                     "Projects",
                     "Tasks",
                     "Approvals",
                     "Runs",
+                    "Routing",
                     "Registries",
                     "Exit",
                 ],
             )
-            if choice == "Projects":
+            if choice == "Dashboard":
+                self._dashboard_menu()
+            elif choice == "Projects":
                 self._projects_menu()
             elif choice == "Tasks":
                 self._tasks_menu()
@@ -90,6 +98,8 @@ class TerminalControlPlaneApp:
                 self._approvals_menu()
             elif choice == "Runs":
                 self._runs_menu()
+            elif choice == "Routing":
+                self._routing_menu()
             elif choice == "Registries":
                 self._registries_menu()
             else:
@@ -133,6 +143,14 @@ class TerminalControlPlaneApp:
                 f"Routing: {result.result.routing.provider_name} / "
                 f"{result.result.routing.model or '<default>'}"
             )
+        if self.control_plane.operator_inspection_service is not None:
+            self.console.print(build_project_dashboard_panel(self.control_plane.project_dashboard(project.project_id)))
+
+    def _dashboard_menu(self) -> None:
+        project_id = self._select_project_id()
+        if project_id is None:
+            return
+        self.console.print(build_project_dashboard_panel(self.control_plane.project_dashboard(project_id)))
 
     def _run_guided_project_creation(self, plan: GuidePlan):
         self.console.print("[bold]Guide Agent[/bold]: I will help you create the project container now.")
@@ -194,7 +212,7 @@ class TerminalControlPlaneApp:
         self.console.print(f"[bold]System routing[/bold]: {provider_name} / {model}")
 
     def _projects_menu(self) -> None:
-        choice = self._choose("Projects", ["List projects", "Create project", "Guide project", "Back"])
+        choice = self._choose("Projects", ["List projects", "Create project", "Guide project", "Project dashboard", "Back"])
         if choice == "List projects":
             self.console.print(build_projects_table(self.control_plane.list_projects()))
         elif choice == "Create project":
@@ -209,6 +227,11 @@ class TerminalControlPlaneApp:
             self.console.print(f"[green]Created project[/green] {project.project_id}")
         elif choice == "Guide project":
             self._guide_project_flow()
+        elif choice == "Project dashboard":
+            project_id = self._select_project_id()
+            if project_id is None:
+                return
+            self.console.print(build_project_dashboard_panel(self.control_plane.project_dashboard(project_id)))
 
     def _tasks_menu(self) -> None:
         choice = self._choose(
@@ -271,11 +294,53 @@ class TerminalControlPlaneApp:
         elif choice == "Watch runs":
             self._watch_runs()
 
+    def _routing_menu(self) -> None:
+        choice = self._choose(
+            "Routing",
+            [
+                "System routing inspector",
+                "Task routing inspector",
+                "Provider health",
+                "Disable provider",
+                "Enable provider",
+                "Clear provider cooldown",
+                "Back",
+            ],
+        )
+        if choice == "System routing inspector":
+            inspection = self.control_plane.inspect_system_routing()
+            self.console.print(build_routing_inspection_panel(inspection))
+            self.console.print(build_provider_health_table(inspection.provider_health))
+        elif choice == "Task routing inspector":
+            task_id = self._select_task_id()
+            if task_id is None:
+                return
+            inspection = self.control_plane.inspect_task_routing(task_id)
+            self.console.print(build_routing_inspection_panel(inspection))
+            self.console.print(build_provider_health_table(inspection.provider_health))
+        elif choice == "Provider health":
+            self.console.print(build_provider_health_table(self.control_plane.list_provider_health()))
+        elif choice == "Disable provider":
+            provider_name = self._choose("Provider", self.control_plane.provider_names())
+            snapshot = self.control_plane.disable_provider_family(provider_name)
+            self.console.print(f"[yellow]Disabled[/yellow] {snapshot.provider_family} -> {snapshot.state}")
+        elif choice == "Enable provider":
+            provider_name = self._choose("Provider", self.control_plane.provider_names())
+            snapshot = self.control_plane.enable_provider_family(provider_name)
+            self.console.print(f"[green]Enabled[/green] {snapshot.provider_family} -> {snapshot.state}")
+        elif choice == "Clear provider cooldown":
+            provider_name = self._choose("Provider", self.control_plane.provider_names())
+            snapshot = self.control_plane.clear_provider_cooldown(provider_name)
+            self.console.print(
+                f"[green]Cleared cooldown[/green] {snapshot.provider_family} -> {snapshot.state}"
+            )
+
     def _registries_menu(self) -> None:
         choice = self._choose(
             "Registries",
             [
                 "Artifacts",
+                "Inspect artifact",
                 "Paper cards",
                 "Gap maps",
                 "Claims",
@@ -285,6 +350,11 @@ class TerminalControlPlaneApp:
         )
         if choice == "Artifacts":
             self.console.print(build_artifacts_table(self.control_plane.list_artifacts()))
+        elif choice == "Inspect artifact":
+            artifact_id = self._select_artifact_id()
+            if artifact_id is None:
+                return
+            self.console.print(build_artifact_inspection_panel(self.control_plane.inspect_artifact(artifact_id)))
         elif choice == "Paper cards":
             self.console.print(build_paper_cards_table(self.control_plane.list_paper_cards()))
         elif choice == "Gap maps":
@@ -385,6 +455,15 @@ class TerminalControlPlaneApp:
             return None
         options = [f"{task.task_id} | {task.kind} | {task.status.value}" for task in tasks]
         selection = self._choose("Select task", options)
+        return selection.split(" | ", 1)[0]
+
+    def _select_artifact_id(self) -> str | None:
+        artifacts = self.control_plane.list_artifacts()
+        if not artifacts:
+            self.console.print("[yellow]No artifacts available.[/yellow]")
+            return None
+        options = [f"{artifact.artifact_id} | {artifact.kind} | {artifact.run_id}" for artifact in artifacts]
+        selection = self._choose("Select artifact", options)
         return selection.split(" | ", 1)[0]
 
     def _select_dispatch_profile(self):

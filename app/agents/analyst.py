@@ -12,7 +12,7 @@ from app.services.artifact_service import ArtifactService
 class AnalystAgent(PromptDrivenAgent):
     name = "analyst_agent"
     description = "Analyzes run outcomes and explains anomalies."
-    prompt_path = "C:/Anti Project/ResearchOS/prompts/analyst.md"
+    prompt_path = "prompts/analyst.md"
     role_binding = analyst_role_binding()
 
     def __init__(

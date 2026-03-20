@@ -14,6 +14,7 @@ from app.services.artifact_service import ArtifactService
 from app.services.claim_service import ClaimService
 from app.services.freeze_service import FreezeService
 from app.services.gap_map_service import GapMapService
+from app.services.operator_inspection_service import OperatorInspectionService
 from app.services.paper_card_service import PaperCardService
 from app.services.project_service import ProjectService
 from app.services.run_service import RunService
@@ -71,6 +72,7 @@ class ConsoleControlPlane:
         routing_resolver,
         provider_registry,
         provider_invocation_service=None,
+        operator_inspection_service: OperatorInspectionService | None = None,
     ) -> None:
         self.project_service = project_service
         self.task_service = task_service
@@ -85,6 +87,7 @@ class ConsoleControlPlane:
         self.routing_resolver = routing_resolver
         self.provider_registry = provider_registry
         self.provider_invocation_service = provider_invocation_service
+        self.operator_inspection_service = operator_inspection_service
 
     @classmethod
     def from_runtime_services(cls, services) -> "ConsoleControlPlane":
@@ -102,6 +105,7 @@ class ConsoleControlPlane:
             routing_resolver=services.routing_resolver,
             provider_registry=services.provider_registry,
             provider_invocation_service=services.provider_invocation_service,
+            operator_inspection_service=services.operator_inspection_service,
         )
 
     def system_dispatch_profile(self) -> DispatchProfile:
@@ -194,6 +198,46 @@ class ConsoleControlPlane:
 
     def get_results_freeze(self):
         return self.freeze_service.load_results_freeze()
+
+    def project_dashboard(self, project_id: str):
+        if self.operator_inspection_service is None:
+            raise RuntimeError("Operator inspection service is not configured.")
+        return self.operator_inspection_service.build_project_dashboard(project_id)
+
+    def inspect_system_routing(self):
+        if self.operator_inspection_service is None:
+            raise RuntimeError("Operator inspection service is not configured.")
+        return self.operator_inspection_service.inspect_system_routing()
+
+    def inspect_task_routing(self, task_id: str):
+        if self.operator_inspection_service is None:
+            raise RuntimeError("Operator inspection service is not configured.")
+        return self.operator_inspection_service.inspect_task_routing(task_id)
+
+    def inspect_artifact(self, artifact_id: str):
+        if self.operator_inspection_service is None:
+            raise RuntimeError("Operator inspection service is not configured.")
+        return self.operator_inspection_service.inspect_artifact(artifact_id)
+
+    def list_provider_health(self):
+        if self.operator_inspection_service is None:
+            raise RuntimeError("Operator inspection service is not configured.")
+        return self.operator_inspection_service.list_provider_health()
+
+    def disable_provider_family(self, provider_name: str):
+        if self.operator_inspection_service is None:
+            raise RuntimeError("Operator inspection service is not configured.")
+        return self.operator_inspection_service.disable_provider_family(provider_name)
+
+    def enable_provider_family(self, provider_name: str):
+        if self.operator_inspection_service is None:
+            raise RuntimeError("Operator inspection service is not configured.")
+        return self.operator_inspection_service.enable_provider_family(provider_name)
+
+    def clear_provider_cooldown(self, provider_name: str):
+        if self.operator_inspection_service is None:
+            raise RuntimeError("Operator inspection service is not configured.")
+        return self.operator_inspection_service.clear_provider_cooldown(provider_name)
 
     @staticmethod
     def build_task_input_payload(
