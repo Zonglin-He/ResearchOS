@@ -23,6 +23,9 @@ uv run researchos
 
 If the workspace has no projects yet, the console now opens a guided setup flow so the operator can create the first project, choose a routing profile, state the primary research goal, receive a recommended first task kind, create the first task, and optionally dispatch it immediately.
 
+Once a project exists, open `Projects -> Guide project` to let the onboarding guide agent inspect current project task state and recommend the next task kind in the workflow.
+The guide also explains why that step is recommended, what artifact it typically produces, and what task kind usually follows it.
+
 Equivalent explicit launch paths:
 
 ```powershell

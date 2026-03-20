@@ -21,6 +21,7 @@ from app.console.control_plane import (
     ProjectCreateInput,
     TaskCreateInput,
 )
+from app.console.guide_agent import GuidePlan, OnboardingGuideAgent
 from app.console.render import (
     build_approvals_table,
     build_artifacts_table,
@@ -54,6 +55,7 @@ class TerminalControlPlaneApp:
         self.control_plane = control_plane
         self.console = Console()
         self.refresh_interval = refresh_interval
+        self.guide_agent = OnboardingGuideAgent()
 
     def run(self) -> int:
         self.console.print(
@@ -140,11 +142,9 @@ class TerminalControlPlaneApp:
 
     def _run_guided_first_task(self, project_id: str):
         research_goal = Prompt.ask("Primary research goal", default="")
+        plan = self.guide_agent.build_first_project_plan(research_goal)
+        self._render_guide_plan(plan)
         recommendation = recommend_first_task_kind(research_goal)
-        self.console.print(
-            "[bold]Guide[/bold]: recommended first task kind -> "
-            f"[cyan]{recommendation.task_kind}[/cyan]\n{recommendation.rationale}"
-        )
         if Confirm.ask("Use the recommended first task kind?", default=True):
             kind = recommendation.task_kind
         else:
@@ -192,7 +192,7 @@ class TerminalControlPlaneApp:
         self.console.print(f"[bold]System routing[/bold]: {provider_name} / {model}")
 
     def _projects_menu(self) -> None:
-        choice = self._choose("Projects", ["List projects", "Create project", "Back"])
+        choice = self._choose("Projects", ["List projects", "Create project", "Guide project", "Back"])
         if choice == "List projects":
             self.console.print(build_projects_table(self.control_plane.list_projects()))
         elif choice == "Create project":
@@ -205,6 +205,8 @@ class TerminalControlPlaneApp:
             )
             project = self.control_plane.create_project(data)
             self.console.print(f"[green]Created project[/green] {project.project_id}")
+        elif choice == "Guide project":
+            self._guide_project_flow()
 
     def _tasks_menu(self) -> None:
         choice = self._choose(
@@ -402,6 +404,72 @@ class TerminalControlPlaneApp:
             return build_dispatch_profile(provider_name, model, max_steps=max_steps, profile_name=profile_name)
         selected_choice = next(choice for choice in choices if choice.label == selected)
         return selected_choice.dispatch_profile
+
+    def _guide_project_flow(self) -> None:
+        project_id = self._select_project_id()
+        if project_id is None:
+            return
+        project = next(project for project in self.control_plane.list_projects() if project.project_id == project_id)
+        tasks = self.control_plane.list_tasks(project_id=project_id)
+        plan = self.guide_agent.build_project_plan(project, tasks)
+        self._render_guide_plan(plan)
+        if plan.recommended_task_kind is None:
+            return
+        if not Confirm.ask("Create the recommended next task now?", default=False):
+            return
+        self._create_guided_project_task(project_id, plan)
+
+    def _create_guided_project_task(self, project_id: str, plan: GuidePlan) -> None:
+        kind = plan.recommended_task_kind or "paper_ingest"
+        topic = Prompt.ask("Topic", default="")
+        source_title = ""
+        source_abstract = ""
+        source_setting = ""
+        if kind in {"paper_ingest", "repo_ingest", "read_source"}:
+            source_title = Prompt.ask("Source title", default="")
+            source_abstract = Prompt.ask("Source abstract", default="")
+            source_setting = Prompt.ask("Source setting", default="")
+        task = self.control_plane.create_task(
+            TaskCreateInput(
+                task_id=Prompt.ask("Task ID"),
+                project_id=project_id,
+                kind=kind,
+                goal=Prompt.ask("Goal", default=plan.suggested_goal),
+                owner=Prompt.ask("Owner", default="operator"),
+                input_payload=self.control_plane.build_task_input_payload(
+                    kind=kind,
+                    topic=topic,
+                    source_title=source_title,
+                    source_abstract=source_abstract,
+                    source_setting=source_setting,
+                ),
+                assigned_agent=None,
+                dispatch_profile=self._select_dispatch_profile(),
+            )
+        )
+        self.console.print(f"[green]Created guided task[/green] {task.task_id}")
+
+    def _render_guide_plan(self, plan: GuidePlan) -> None:
+        body_lines = [plan.summary]
+        if plan.recommended_task_kind is not None:
+            body_lines.extend(
+                [
+                    "",
+                    f"Recommended next task: {plan.recommended_task_kind}",
+                    f"Why: {plan.recommendation_reason}",
+                    f"Expected artifact: {plan.expected_artifact}",
+                ]
+            )
+            if plan.likely_next_task_kind is not None:
+                body_lines.append(f"Likely next step after that: {plan.likely_next_task_kind}")
+        if plan.steps:
+            body_lines.append("")
+            body_lines.append("Workflow steps:")
+            for step in plan.steps:
+                body_lines.append(f"- [{step.status}] {step.title}: {step.detail}")
+        body_lines.append("")
+        body_lines.append(f"Guide prompt: {plan.prompt_id}")
+        self.console.print(Panel.fit("\n".join(body_lines), title=plan.headline))
 
     def _choose(self, title: str, options: Sequence[str]) -> str:
         self.console.print(f"\n[bold]{title}[/bold]")

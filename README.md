@@ -278,6 +278,14 @@ If there are no projects yet, ResearchOS now starts with a guided first-project 
 - create the first task
 - optionally dispatch it immediately
 
+After a project exists, use the Projects menu `Guide project` entry to ask the built-in onboarding guide agent for the next recommended workflow step. It inspects current task state and recommends the next task kind instead of leaving you to guess the project sequence.
+
+The guide now also explains:
+
+- why that step is recommended
+- what artifact it will usually produce
+- which task kind usually comes next after it
+
 Explicit console launch still works:
 
 ```powershell
