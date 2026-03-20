@@ -25,6 +25,7 @@ from app.providers.registry import ProviderRegistry
 from app.routing.models import AgentRoutingPolicy, DispatchProfile, ModelProfile, ProviderSpec
 from app.routing.resolver import RoutingResolver
 from app.services.approval_service import ApprovalService
+from app.services.artifact_annotation_service import ArtifactAnnotationService
 from app.services.artifact_service import ArtifactService
 from app.services.audit_service import AuditService
 from app.services.claim_service import ClaimService
@@ -35,6 +36,7 @@ from app.services.gap_map_service import GapMapService
 from app.services.lessons_service import LessonsService
 from app.services.paper_card_service import PaperCardService
 from app.services.project_service import ProjectService
+from app.services.provenance_service import ProvenanceService
 from app.services.run_service import RunService
 from app.services.task_service import TaskService
 from app.services.verification_service import VerificationService
@@ -60,10 +62,12 @@ class RuntimeServices:
     gap_map_service: GapMapService
     approval_service: ApprovalService
     artifact_service: ArtifactService
+    artifact_annotation_service: ArtifactAnnotationService
     audit_service: AuditService
     experiment_manager: ExperimentManager
     lessons_service: LessonsService
     verification_service: VerificationService
+    provenance_service: ProvenanceService
     tool_registry: ToolRegistry
     provider_registry: ProviderRegistry
     routing_resolver: RoutingResolver
@@ -232,7 +236,11 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
     freeze_service = FreezeService(workspace_paths.freezes_dir)
     approval_service = ApprovalService(workspace_paths.registry_file("approvals.jsonl"))
     artifact_service = ArtifactService(workspace_paths.registry_file("artifacts.jsonl"))
+    artifact_annotation_service = ArtifactAnnotationService(
+        workspace_paths.registry_file("artifact_annotations.jsonl")
+    )
     lessons_service = LessonsService(workspace_paths.registry_file("lessons.jsonl"))
+    audit_service = AuditService(claim_service, run_service)
     verification_service = VerificationService(
         run_service=run_service,
         artifact_service=artifact_service,
@@ -254,7 +262,8 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         gap_map_service=GapMapService(workspace_paths.registry_file("gap_maps.jsonl")),
         approval_service=approval_service,
         artifact_service=artifact_service,
-        audit_service=AuditService(claim_service, run_service),
+        artifact_annotation_service=artifact_annotation_service,
+        audit_service=audit_service,
         experiment_manager=ExperimentManager(
             registry=ExperimentRegistry(workspace_paths.experiments_dir),
             task_service=task_service,
@@ -264,6 +273,15 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         ),
         lessons_service=lessons_service,
         verification_service=verification_service,
+        provenance_service=ProvenanceService(
+            artifact_service=artifact_service,
+            annotation_service=artifact_annotation_service,
+            audit_service=audit_service,
+            verification_service=verification_service,
+            run_service=run_service,
+            claim_service=claim_service,
+            freeze_service=freeze_service,
+        ),
         tool_registry=build_tool_registry(),
         provider_registry=provider_registry,
         routing_resolver=routing_resolver,

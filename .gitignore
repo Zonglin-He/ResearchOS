@@ -27,6 +27,8 @@ dist/
 
 # Local environment
 .env
+.env.*
+!.env.example
 
 # Runtime outputs
 artifacts/
@@ -36,6 +38,8 @@ registry/
 *.sqlite
 *.sqlite3
 *.log
+*.tmp
+*.bak
 
 # OS files
 .DS_Store

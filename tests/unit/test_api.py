@@ -369,6 +369,58 @@ def test_api_can_return_artifact_detail_with_verification_links(tmp_path: Path) 
     assert detail["workspace_relative_path"] == "artifacts\\table.csv" or detail["workspace_relative_path"] == "artifacts/table.csv"
     assert detail["related_verifications"][0]["subject_id"] == "run_001"
     assert "run:run_001" in detail["evidence_refs"]
+    assert detail["provenance"]["artifact_id"] == "artifact_001"
+    assert detail["provenance"]["verification_links"][0]["verification_id"].startswith("verify:run:run_001")
+    assert detail["annotations"] == []
+
+
+def test_api_can_create_and_list_artifact_annotations(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
+    artifact_path = tmp_path / "artifacts" / "note.txt"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text("note", encoding="utf-8")
+
+    client.post(
+        "/runs",
+        json={
+            "run_id": "run_001",
+            "spec_id": "spec_001",
+            "git_commit": "abc123",
+            "config_hash": "sha256:123",
+            "dataset_snapshot": "dataset_v1",
+            "seed": 42,
+            "gpu": "A100",
+        },
+    )
+    client.app.state.artifact_service.register_artifact(
+        ArtifactRecord(
+            artifact_id="artifact_annotated",
+            run_id="run_001",
+            kind="note",
+            path="artifacts/note.txt",
+            hash="sha256:note",
+        )
+    )
+
+    create_response = client.post(
+        "/artifacts/artifact_annotated/annotations",
+        json={
+            "annotation_id": "ann_001",
+            "operator": "gabriel",
+            "status": "reviewed",
+            "review_tags": ["important", "operator-note"],
+            "note": "Reviewed during operator inspection.",
+        },
+    )
+    list_response = client.get("/artifacts/artifact_annotated/annotations")
+    detail_response = client.get("/artifacts/artifact_annotated")
+
+    assert create_response.status_code == 200
+    assert list_response.status_code == 200
+    assert detail_response.status_code == 200
+    assert create_response.json()["status"] == "reviewed"
+    assert list_response.json()[0]["annotation_id"] == "ann_001"
+    assert detail_response.json()["annotations"][0]["review_tags"] == ["important", "operator-note"]
 
 
 def test_api_can_return_audit_and_verification_summaries(tmp_path: Path) -> None:

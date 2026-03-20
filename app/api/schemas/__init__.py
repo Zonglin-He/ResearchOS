@@ -1,3 +1,4 @@
+from app.api.schemas.artifact_annotations import ArtifactAnnotationCreate, ArtifactAnnotationRead
 from app.api.schemas.artifacts import ArtifactDetailRead, ArtifactRead
 from app.api.schemas.audit import AuditEntryRead, AuditReportRead, AuditSummaryRead
 from app.api.schemas.approvals import ApprovalCreate, ApprovalRead
@@ -30,6 +31,14 @@ from app.api.schemas.paper_cards import (
     PaperCardSummaryRead,
 )
 from app.api.schemas.projects import ProjectCreate, ProjectRead
+from app.api.schemas.provenance import (
+    ArtifactProvenanceRead,
+    AuditSubjectRefRead,
+    ClaimSupportRefRead,
+    ProvenanceEvidenceRefRead,
+    RunEvidenceRefRead,
+    VerificationLinkRead,
+)
 from app.api.schemas.routing import (
     DispatchProfileModel,
     ModelProfileModel,
@@ -41,8 +50,12 @@ from app.api.schemas.tasks import TaskCreate, TaskRead, TaskStatusUpdate
 from app.api.schemas.verifications import VerificationRead, VerificationSummaryRead
 
 __all__ = [
+    "ArtifactAnnotationCreate",
+    "ArtifactAnnotationRead",
     "ArtifactDetailRead",
     "ArtifactRead",
+    "ArtifactProvenanceRead",
+    "AuditSubjectRefRead",
     "AuditEntryRead",
     "AuditReportRead",
     "AuditSummaryRead",
@@ -67,6 +80,7 @@ __all__ = [
     "PaperCardSummaryRead",
     "ProjectCreate",
     "ProjectRead",
+    "ProvenanceEvidenceRefRead",
     "ProviderSpecModel",
     "ResolvedDispatchModel",
     "ResultsFreezeRead",
@@ -81,8 +95,11 @@ __all__ = [
     "TaskRead",
     "TaskStatusUpdate",
     "VerificationRead",
+    "VerificationLinkRead",
     "VerificationSummaryRead",
     "TopicFreezeRead",
     "TopicFreezeSave",
     "TopicFreezeSaveResponse",
+    "ClaimSupportRefRead",
+    "RunEvidenceRefRead",
 ]

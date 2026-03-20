@@ -4,14 +4,19 @@ from fastapi import Depends, FastAPI, HTTPException
 
 from app.api.deps import get_project_service, get_task_service
 from app.api.schemas import (
+    ArtifactAnnotationCreate,
+    ArtifactAnnotationRead,
     ArtifactDetailRead,
     ArtifactRead,
+    ArtifactProvenanceRead,
+    AuditSubjectRefRead,
     AuditEntryRead,
     AuditReportRead,
     AuditSummaryRead,
     ApprovalCreate,
     ApprovalRead,
     ClaimCreate,
+    ClaimSupportRefRead,
     ClaimRead,
     EvidenceRefModel,
     GapCreate,
@@ -31,6 +36,7 @@ from app.api.schemas import (
     ResultsFreezeRead,
     ResultsFreezeSave,
     ResultsFreezeSaveResponse,
+    RunEvidenceRefRead,
     RunManifestCreate,
     RunManifestRead,
     SpecFreezeRead,
@@ -43,21 +49,37 @@ from app.api.schemas import (
     TopicFreezeSave,
     TopicFreezeSaveResponse,
     VerificationRead,
+    VerificationLinkRead,
+    ProvenanceEvidenceRefRead,
     VerificationSummaryRead,
 )
 from app.bootstrap import build_runtime_services
 from app.core.config import load_config
 from app.routing import dispatch_profile_from_dict
 from app.schemas.approval import Approval
+from app.schemas.artifact_annotation import ArtifactAnnotation, ArtifactAnnotationStatus
+from app.schemas.audit import AuditEntry
 from app.schemas.claim import Claim
 from app.schemas.freeze import ResultsFreeze, SpecFreeze, TopicFreeze
 from app.schemas.gap_map import Gap, GapCluster, GapMap
 from app.schemas.lesson import LessonKind, LessonRecord
 from app.schemas.paper_card import EvidenceRef, PaperCard
+from app.schemas.provenance import (
+    ArtifactProvenance,
+    AuditSubjectRef,
+    ClaimSupportRef,
+    ProvenanceEvidenceRef,
+    RunEvidenceRef,
+    VerificationLink,
+)
 from app.schemas.project import Project
 from app.schemas.run_manifest import RunManifest
 from app.schemas.task import Task, TaskStatus
-from app.schemas.verification import VerificationCheckType, VerificationStatus
+from app.schemas.verification import (
+    VerificationCheckType,
+    VerificationRecord,
+    VerificationStatus,
+)
 from app.services.audit_service import AuditService
 from app.services.lessons_service import LessonsService
 from app.services.project_service import ProjectService
@@ -83,9 +105,11 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
     app.state.gap_map_service = services.gap_map_service
     app.state.approval_service = services.approval_service
     app.state.artifact_service = services.artifact_service
+    app.state.artifact_annotation_service = services.artifact_annotation_service
     app.state.lessons_service = services.lessons_service
     app.state.verification_service = services.verification_service
     app.state.audit_service = services.audit_service
+    app.state.provenance_service = services.provenance_service
     app.state.orchestrator = services.orchestrator
 
     @app.get("/health")
@@ -262,69 +286,50 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             for artifact in artifacts
         ]
 
-    @app.get("/artifacts/{artifact_id}", response_model=ArtifactDetailRead)
-    def get_artifact(artifact_id: str) -> ArtifactDetailRead:
+    @app.get("/artifacts/{artifact_id}/annotations", response_model=list[ArtifactAnnotationRead])
+    def list_artifact_annotations(artifact_id: str) -> list[ArtifactAnnotationRead]:
         artifact = app.state.artifact_service.get_artifact(artifact_id)
         if artifact is None:
             raise HTTPException(status_code=404, detail="Artifact not found")
-        resolved_path = app.state.artifact_service.resolve_artifact_path(artifact)
-        related_verifications = app.state.verification_service.list_checks_for_artifact(
-            artifact_id,
-            run_id=artifact.run_id,
-        )
-        related_audit_entries = app.state.audit_service.list_artifact_entries(
-            artifact_id,
-            run_id=artifact.run_id,
-            verification_service=app.state.verification_service,
-        )
-        evidence_refs = sorted(
-            {
-                evidence_ref
-                for verification in related_verifications
-                for evidence_ref in verification.evidence_refs
-            }
-            | {
-                evidence_ref
-                for entry in related_audit_entries
-                for evidence_ref in entry.evidence_refs
-            }
-        )
-        try:
-            workspace_relative_path = str(
-                resolved_path.relative_to(app.state.artifact_service.registry_path.parent.parent)
+        return [
+            _to_artifact_annotation_read(annotation)
+            for annotation in app.state.artifact_annotation_service.list_annotations(artifact_id)
+        ]
+
+    @app.post("/artifacts/{artifact_id}/annotations", response_model=ArtifactAnnotationRead)
+    def create_artifact_annotation(
+        artifact_id: str,
+        payload: ArtifactAnnotationCreate,
+    ) -> ArtifactAnnotationRead:
+        artifact = app.state.artifact_service.get_artifact(artifact_id)
+        if artifact is None:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        annotation = app.state.artifact_annotation_service.record_annotation(
+            ArtifactAnnotation(
+                annotation_id=payload.annotation_id,
+                artifact_id=artifact_id,
+                operator=payload.operator,
+                status=ArtifactAnnotationStatus(payload.status),
+                review_tags=payload.review_tags,
+                note=payload.note,
             )
-        except ValueError:
-            workspace_relative_path = None
-        return ArtifactDetailRead(
-            artifact_id=artifact.artifact_id,
-            run_id=artifact.run_id,
-            kind=artifact.kind,
-            path=artifact.path,
-            hash=artifact.hash,
-            metadata=artifact.metadata,
-            resolved_path=str(resolved_path),
-            workspace_relative_path=workspace_relative_path,
-            exists_on_disk=resolved_path.exists(),
-            related_verifications=[
-                _to_verification_read(verification) for verification in related_verifications
-            ],
-            related_audit_entries=[
-                AuditEntryRead(
-                    entry_id=entry.entry_id,
-                    subject_type=entry.subject_type,
-                    subject_id=entry.subject_id,
-                    category=entry.category,
-                    status=entry.status,
-                    rationale=entry.rationale,
-                    evidence_refs=entry.evidence_refs,
-                    artifact_ids=entry.artifact_ids,
-                    related_run_ids=entry.related_run_ids,
-                    related_claim_ids=entry.related_claim_ids,
-                    created_at=entry.created_at,
-                )
-                for entry in related_audit_entries
-            ],
-            evidence_refs=evidence_refs,
+        )
+        return _to_artifact_annotation_read(annotation)
+
+    @app.get("/artifacts/{artifact_id}", response_model=ArtifactDetailRead)
+    def get_artifact(artifact_id: str) -> ArtifactDetailRead:
+        try:
+            artifact, provenance, annotations = app.state.provenance_service.build_artifact_provenance(
+                artifact_id
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return _to_artifact_detail_read(
+            artifact=artifact,
+            provenance=provenance,
+            annotations=annotations,
+            verification_service=app.state.verification_service,
+            audit_service=app.state.audit_service,
         )
 
     @app.post("/lessons", response_model=LessonRead)
@@ -417,7 +422,7 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
 
     @app.get("/verifications/summary", response_model=VerificationSummaryRead)
     def get_verification_summary() -> VerificationSummaryRead:
-        summary = app.state.verification_service.build_summary()
+        summary = app.state.provenance_service.build_verification_summary()
         return VerificationSummaryRead(
             total_checks=summary.total_checks,
             status_counts=summary.status_counts,
@@ -431,7 +436,7 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
 
     @app.get("/audit/summary", response_model=AuditSummaryRead)
     def get_audit_summary() -> AuditSummaryRead:
-        summary = app.state.audit_service.build_summary(app.state.verification_service)
+        summary = app.state.provenance_service.build_audit_summary()
         return AuditSummaryRead(
             total_reports=summary.total_reports,
             total_entries=summary.total_entries,
@@ -756,4 +761,203 @@ def _to_audit_report_read(report) -> AuditReportRead:
             )
             for entry in report.entries
         ],
+    )
+
+
+def _to_artifact_detail_read(
+    *,
+    artifact,
+    provenance: ArtifactProvenance,
+    annotations: list[ArtifactAnnotation],
+    verification_service: VerificationService,
+    audit_service: AuditService,
+) -> ArtifactDetailRead:
+    verification_records = {
+        record.verification_id: record
+        for record in verification_service.list_checks_for_artifact(
+            artifact.artifact_id,
+            run_id=artifact.run_id,
+        )
+    }
+    audit_entries = {
+        entry.entry_id: entry
+        for entry in audit_service.list_artifact_entries(
+            artifact.artifact_id,
+            run_id=artifact.run_id,
+            verification_service=verification_service,
+        )
+    }
+    return ArtifactDetailRead(
+        artifact_id=artifact.artifact_id,
+        run_id=artifact.run_id,
+        kind=artifact.kind,
+        path=artifact.path,
+        hash=artifact.hash,
+        metadata=artifact.metadata,
+        resolved_path=provenance.resolved_path,
+        workspace_relative_path=provenance.workspace_relative_path,
+        exists_on_disk=provenance.exists_on_disk,
+        related_verifications=[
+            _to_verification_read_from_link(link, verification_records)
+            for link in provenance.verification_links
+        ],
+        related_audit_entries=[
+            _to_audit_entry_read_from_ref(ref, artifact.run_id, audit_entries)
+            for ref in provenance.audit_subject_refs
+        ],
+        evidence_refs=_collect_provenance_evidence_refs(provenance),
+        provenance=_to_artifact_provenance_read(provenance),
+        annotations=[_to_artifact_annotation_read(annotation) for annotation in annotations],
+    )
+
+
+def _to_artifact_provenance_read(provenance: ArtifactProvenance) -> ArtifactProvenanceRead:
+    return ArtifactProvenanceRead(
+        artifact_id=provenance.artifact_id,
+        run_id=provenance.run_id,
+        resolved_path=provenance.resolved_path,
+        workspace_relative_path=provenance.workspace_relative_path,
+        exists_on_disk=provenance.exists_on_disk,
+        run_evidence=None
+        if provenance.run_evidence is None
+        else _to_run_evidence_ref_read(provenance.run_evidence),
+        verification_links=[
+            _to_verification_link_read(link) for link in provenance.verification_links
+        ],
+        audit_subject_refs=[
+            _to_audit_subject_ref_read(ref) for ref in provenance.audit_subject_refs
+        ],
+        claim_support_refs=[
+            _to_claim_support_ref_read(ref) for ref in provenance.claim_support_refs
+        ],
+        freeze_subject_refs=[
+            _to_audit_subject_ref_read(ref) for ref in provenance.freeze_subject_refs
+        ],
+    )
+
+
+def _to_artifact_annotation_read(annotation: ArtifactAnnotation) -> ArtifactAnnotationRead:
+    return ArtifactAnnotationRead(
+        annotation_id=annotation.annotation_id,
+        artifact_id=annotation.artifact_id,
+        operator=annotation.operator,
+        status=annotation.status.value,
+        review_tags=annotation.review_tags,
+        note=annotation.note,
+        created_at=annotation.created_at,
+    )
+
+
+def _to_verification_read_from_link(
+    link: VerificationLink,
+    records_by_id: dict[str, VerificationRecord],
+) -> VerificationRead:
+    record = records_by_id.get(link.verification_id)
+    if record is None:
+        raise KeyError(f"Verification record not found: {link.verification_id}")
+    return VerificationRead(
+        verification_id=link.verification_id,
+        subject_type=link.subject_type,
+        subject_id=link.subject_id,
+        check_type=link.check_type,
+        status=link.status,
+        rationale=link.rationale,
+        evidence_refs=[ref.raw_ref for ref in link.evidence_refs],
+        artifact_ids=link.artifact_ids,
+        missing_fields=link.missing_fields,
+        created_at=record.created_at,
+    )
+
+
+def _to_audit_entry_read_from_ref(
+    ref: AuditSubjectRef,
+    run_id: str,
+    entries_by_id: dict[str, AuditEntry],
+) -> AuditEntryRead:
+    if ref.entry_id is None:
+        raise KeyError(f"Audit entry missing id for subject {ref.subject_type}:{ref.subject_id}")
+    entry = entries_by_id.get(ref.entry_id)
+    if entry is None:
+        raise KeyError(f"Audit entry not found: {ref.entry_id}")
+    return AuditEntryRead(
+        entry_id=ref.entry_id,
+        subject_type=ref.subject_type,
+        subject_id=ref.subject_id,
+        category=ref.category,
+        status=ref.status,
+        rationale=ref.rationale,
+        evidence_refs=[evidence.raw_ref for evidence in ref.evidence_refs],
+        artifact_ids=ref.artifact_ids,
+        related_run_ids=[run_id] if ref.subject_type == "run" else [],
+        related_claim_ids=[ref.subject_id] if ref.subject_type == "claim" else [],
+        created_at=entry.created_at,
+    )
+
+
+def _to_verification_link_read(link: VerificationLink) -> VerificationLinkRead:
+    return VerificationLinkRead(
+        verification_id=link.verification_id,
+        subject_type=link.subject_type,
+        subject_id=link.subject_id,
+        check_type=link.check_type,
+        status=link.status,
+        rationale=link.rationale,
+        evidence_refs=[_to_provenance_evidence_ref_read(ref) for ref in link.evidence_refs],
+        artifact_ids=link.artifact_ids,
+        missing_fields=link.missing_fields,
+    )
+
+
+def _to_audit_subject_ref_read(ref: AuditSubjectRef) -> AuditSubjectRefRead:
+    return AuditSubjectRefRead(
+        subject_type=ref.subject_type,
+        subject_id=ref.subject_id,
+        category=ref.category,
+        status=ref.status,
+        rationale=ref.rationale,
+        entry_id=ref.entry_id,
+        evidence_refs=[
+            _to_provenance_evidence_ref_read(evidence) for evidence in ref.evidence_refs
+        ],
+        artifact_ids=ref.artifact_ids,
+    )
+
+
+def _to_claim_support_ref_read(ref: ClaimSupportRef) -> ClaimSupportRefRead:
+    return ClaimSupportRefRead(
+        claim_id=ref.claim_id,
+        support_kind=ref.support_kind,
+        support_value=ref.support_value,
+    )
+
+
+def _to_run_evidence_ref_read(ref: RunEvidenceRef) -> RunEvidenceRefRead:
+    return RunEvidenceRefRead(
+        run_id=ref.run_id,
+        spec_id=ref.spec_id,
+        status=ref.status,
+        artifact_ids=ref.artifact_ids,
+    )
+
+
+def _to_provenance_evidence_ref_read(ref: ProvenanceEvidenceRef) -> ProvenanceEvidenceRefRead:
+    return ProvenanceEvidenceRefRead(
+        ref_type=ref.ref_type,
+        ref_id=ref.ref_id,
+        raw_ref=ref.raw_ref,
+    )
+
+
+def _collect_provenance_evidence_refs(provenance: ArtifactProvenance) -> list[str]:
+    return sorted(
+        {
+            ref.raw_ref
+            for link in provenance.verification_links
+            for ref in link.evidence_refs
+        }
+        | {
+            ref.raw_ref
+            for entry in provenance.audit_subject_refs
+            for ref in entry.evidence_refs
+        }
     )

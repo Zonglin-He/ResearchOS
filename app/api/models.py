@@ -3,8 +3,12 @@
 Deprecated:
     Prefer importing from ``app.api.schemas`` directly.
     This module remains in place for backward compatibility during the
-    Iteration B compatibility window and should be removed only with an
+    Iteration B/C compatibility window and should be removed only with an
     explicit migration note in a future breaking release.
+
+    New API schema additions should prefer canonical imports and should not
+    expand this facade unless a compatibility requirement is explicitly
+    justified.
 """
 
 from app.api.schemas import (

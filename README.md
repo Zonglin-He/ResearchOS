@@ -245,11 +245,21 @@ Operator-facing inspection surfaces now include:
 
 - `GET /artifacts`
 - `GET /artifacts/{artifact_id}`
+- `GET /artifacts/{artifact_id}/annotations`
+- `POST /artifacts/{artifact_id}/annotations`
 - `GET /verifications`
 - `GET /verifications/summary`
 - `GET /audit/claims`
 - `GET /audit/runs/{run_id}`
 - `GET /audit/summary`
+
+Artifact detail now includes a typed provenance view with:
+
+- verification links
+- audit subject references
+- claim support references
+- run evidence
+- constrained operator annotations
 
 ## Example Flows
 

@@ -65,7 +65,7 @@ class AuditService:
         verification_service: VerificationService,
     ) -> AuditReport:
         verification = verification_service.verify_run_manifest(run_id)
-        return self._build_run_verification_report_from_record(run_id, verification)
+        return self.build_run_verification_report_from_record(run_id, verification)
 
     def list_artifact_entries(
         self,
@@ -76,16 +76,14 @@ class AuditService:
     ) -> list[AuditEntry]:
         entries: list[AuditEntry] = []
         for verification in verification_service.list_checks_for_artifact(artifact_id, run_id=run_id):
-            entries.extend(
-                self._build_run_verification_report_from_record(run_id, verification).entries
-            )
+            entries.extend(self.build_run_verification_report_from_record(run_id, verification).entries)
         return entries
 
     def build_summary(self, verification_service: VerificationService) -> AuditSummary:
         reports = [self.build_claim_alignment_report()]
         for verification in verification_service.list_checks(subject_type="run"):
             reports.append(
-                self._build_run_verification_report_from_record(
+                self.build_run_verification_report_from_record(
                     verification.subject_id,
                     verification,
                 )
@@ -113,7 +111,7 @@ class AuditService:
             recommendations=recommendations,
         )
 
-    def _build_run_verification_report_from_record(
+    def build_run_verification_report_from_record(
         self,
         run_id: str,
         verification: VerificationRecord,

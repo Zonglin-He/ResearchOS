@@ -77,3 +77,19 @@ uv run python scripts\smoke_production_stack.py
 These paths are resolved under `RESEARCHOS_WORKSPACE_ROOT` when it is set. Otherwise they resolve under the current working directory.
 
 These paths are ignored in Git and treated as local runtime state.
+
+## Operator Inspection Surfaces
+
+Current operator-facing inspection endpoints include:
+
+- `GET /artifacts`
+- `GET /artifacts/{artifact_id}`
+- `GET /artifacts/{artifact_id}/annotations`
+- `POST /artifacts/{artifact_id}/annotations`
+- `GET /verifications`
+- `GET /verifications/summary`
+- `GET /audit/claims`
+- `GET /audit/runs/{run_id}`
+- `GET /audit/summary`
+
+Artifact annotations are intentionally constrained metadata. They allow operator review notes, review tags, and status updates without mutating the original artifact payload.
