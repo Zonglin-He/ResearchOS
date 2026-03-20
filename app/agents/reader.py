@@ -5,6 +5,7 @@ from typing import Any
 from app.agents.llm_agent import PromptDrivenAgent
 from app.agents.response_schemas import READER_RESPONSE_SCHEMA
 from app.agents.utils import build_child_task
+from app.roles import reader_role_binding
 from app.schemas.artifact import ArtifactRecord
 from app.schemas.paper_card import EvidenceRef, PaperCard
 from app.schemas.result import AgentResult
@@ -17,6 +18,7 @@ class ReaderAgent(PromptDrivenAgent):
     name = "reader_agent"
     description = "Reads papers and repositories into structured research artifacts."
     prompt_path = "C:/Anti Project/ResearchOS/prompts/reader.md"
+    role_binding = reader_role_binding()
 
     def __init__(
         self,
@@ -28,6 +30,7 @@ class ReaderAgent(PromptDrivenAgent):
         tool_registry=None,
         provider_registry=None,
         routing_policy=None,
+        provider_invocation_service=None,
     ) -> None:
         super().__init__(
             provider,
@@ -36,6 +39,8 @@ class ReaderAgent(PromptDrivenAgent):
             tool_registry=tool_registry,
             provider_registry=provider_registry,
             routing_policy=routing_policy,
+            provider_invocation_service=provider_invocation_service,
+            role_binding=self.role_binding,
         )
         self.paper_card_service = paper_card_service
         self.artifact_service = artifact_service

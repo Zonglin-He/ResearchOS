@@ -37,7 +37,18 @@ def test_runtime_bootstrap_uses_sqlite_when_database_url_is_empty(tmp_path: Path
     assert services.experiment_manager is not None
     assert services.lessons_service is not None
     assert services.verification_service is not None
+    assert services.provider_health_service is not None
+    assert services.provider_invocation_service is not None
     assert services.orchestrator is not None
+    assert services.orchestrator._kind_to_agent["paper_ingest"] == "reader_agent"
+    assert services.orchestrator._kind_to_agent["gap_mapping"] == "mapper_agent"
+    assert services.orchestrator._kind_to_agent["implement_experiment"] == "builder_agent"
+    assert services.orchestrator._kind_to_agent["review_build"] == "reviewer_agent"
+    assert services.orchestrator._kind_to_agent["write_draft"] == "writer_agent"
+    assert services.orchestrator._kind_to_agent["style_pass"] == "style_agent"
+    assert services.orchestrator._kind_to_agent["analyze_results"] == "analyst_agent"
+    assert services.orchestrator._kind_to_agent["verify_evidence"] == "verifier_agent"
+    assert services.orchestrator._kind_to_agent["archive_research"] == "archivist_agent"
 
 
 def test_runtime_bootstrap_resolves_workspace_backed_registry_paths(tmp_path: Path) -> None:

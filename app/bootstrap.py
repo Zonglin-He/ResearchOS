@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.agents.analyst import AnalystAgent
+from app.agents.archivist import ArchivistAgent
 from app.agents.builder import BuilderAgent
 from app.agents.mapper import MapperAgent
 from app.agents.orchestrator import Orchestrator
 from app.agents.reader import ReaderAgent
 from app.agents.reviewer import ReviewerAgent
 from app.agents.style import StyleAgent
+from app.agents.verifier import VerifierAgent
 from app.agents.writer import WriterAgent
 from app.core.config import AppConfig
 from app.core.paths import WorkspacePaths
@@ -20,9 +23,21 @@ from app.db.sqlite import SQLiteDatabase
 from app.providers.claude_provider import ClaudeProvider
 from app.providers.codex_provider import CodexProvider
 from app.providers.gemini_provider import GeminiProvider
+from app.providers.health import ProviderHealthService
 from app.providers.local_provider import LocalProvider
 from app.providers.registry import ProviderRegistry
-from app.routing.models import AgentRoutingPolicy, DispatchProfile, ModelProfile, ProviderSpec
+from app.routing.models import (
+    AgentRoutingPolicy,
+    CapabilityClass,
+    DispatchProfile,
+    FallbackChain,
+    InvocationBudgetPolicy,
+    ModelProfile,
+    ProviderFamily,
+    ProviderSpec,
+    RoleRoutingPolicy,
+)
+from app.routing.provider_router import ProviderInvocationService
 from app.routing.resolver import RoutingResolver
 from app.services.approval_service import ApprovalService
 from app.services.artifact_annotation_service import ArtifactAnnotationService
@@ -70,6 +85,8 @@ class RuntimeServices:
     provenance_service: ProvenanceService
     tool_registry: ToolRegistry
     provider_registry: ProviderRegistry
+    provider_health_service: ProviderHealthService
+    provider_invocation_service: ProviderInvocationService
     routing_resolver: RoutingResolver
     orchestrator: Orchestrator
 
@@ -110,29 +127,185 @@ def build_system_dispatch_profile(config: AppConfig) -> DispatchProfile:
             max_steps=config.max_steps,
         ),
         max_steps=config.max_steps,
-        metadata={"source": "env"},
+        metadata={
+            "source": "env_explicit"
+            if config.provider_explicit or config.provider_model_explicit
+            else "implicit_default"
+        },
     )
 
 
 def build_agent_routing_policy(
-    config: AppConfig,
+    *,
     agent_name: str,
-    model: str | None = None,
+    default_role_policy: RoleRoutingPolicy,
+    task_kind_role_policies: dict[str, RoleRoutingPolicy] | None = None,
+    fallback_provider: ProviderSpec | None = None,
+    fallback_model_profile: ModelProfile | None = None,
 ) -> AgentRoutingPolicy:
-    provider_name = config.provider_name.lower()
-    effective_model = model or config.provider_model or None
     return AgentRoutingPolicy(
         agent_name=agent_name,
-        fallback_provider=ProviderSpec(
-            provider_name=provider_name,
-            model=effective_model,
+        fallback_provider=fallback_provider,
+        fallback_model_profile=fallback_model_profile,
+        default_role_policy=default_role_policy,
+        task_kind_role_policies=task_kind_role_policies or {},
+    )
+
+
+def build_role_routing_policy(role_name: str) -> RoleRoutingPolicy:
+    reasoning_models = {
+        ProviderFamily.CLAUDE.value: ["sonnet"],
+        ProviderFamily.CODEX.value: ["gpt-5.4"],
+        ProviderFamily.GEMINI.value: ["gemini-pro"],
+        ProviderFamily.LOCAL.value: ["deterministic-reader"],
+    }
+    retrieval_models = {
+        ProviderFamily.GEMINI.value: ["gemini-auto", "gemini-pro"],
+        ProviderFamily.CLAUDE.value: ["sonnet"],
+        ProviderFamily.CODEX.value: ["gpt-5.4"],
+        ProviderFamily.LOCAL.value: ["deterministic-reader"],
+    }
+    coding_models = {
+        ProviderFamily.CODEX.value: ["gpt-5.3-codex", "gpt-5.4"],
+        ProviderFamily.CLAUDE.value: ["sonnet"],
+        ProviderFamily.LOCAL.value: ["deterministic-reader"],
+    }
+    archival_models = {
+        ProviderFamily.GEMINI.value: ["gemini-flash", "gemini-auto"],
+        ProviderFamily.LOCAL.value: ["deterministic-reader"],
+        ProviderFamily.CLAUDE.value: ["sonnet"],
+        ProviderFamily.CODEX.value: ["gpt-5.4"],
+    }
+    if role_name in {"scoper", "hypothesist", "analyst", "reviewer", "verifier", "publisher"}:
+        return RoleRoutingPolicy(
+            role_name=role_name,
+            capability_class=CapabilityClass.PLANNING.value
+            if role_name in {"scoper", "hypothesist"}
+            else CapabilityClass.REVIEW.value
+            if role_name == "reviewer"
+            else CapabilityClass.VERIFICATION.value
+            if role_name == "verifier"
+            else CapabilityClass.PUBLISHING.value
+            if role_name == "publisher"
+            else CapabilityClass.SYNTHESIS.value,
+            family_priority=[
+                ProviderFamily.CLAUDE.value,
+                ProviderFamily.CODEX.value,
+                ProviderFamily.GEMINI.value,
+                ProviderFamily.LOCAL.value,
+            ],
+            family_model_priority=reasoning_models,
+            fallback_chain=FallbackChain(
+                families=[
+                    ProviderFamily.CLAUDE.value,
+                    ProviderFamily.CODEX.value,
+                    ProviderFamily.GEMINI.value,
+                    ProviderFamily.LOCAL.value,
+                ]
+            ),
+            invocation_budget_policy=InvocationBudgetPolicy(
+                prefer_low_cost=True,
+                allow_expensive_upgrade=False,
+                max_attempts_per_invocation=4,
+            ),
+        )
+    if role_name == "librarian":
+        return RoleRoutingPolicy(
+            role_name=role_name,
+            capability_class=CapabilityClass.RETRIEVAL.value,
+            family_priority=[
+                ProviderFamily.GEMINI.value,
+                ProviderFamily.CLAUDE.value,
+                ProviderFamily.CODEX.value,
+                ProviderFamily.LOCAL.value,
+            ],
+            family_model_priority=retrieval_models,
+            fallback_chain=FallbackChain(
+                families=[
+                    ProviderFamily.GEMINI.value,
+                    ProviderFamily.CLAUDE.value,
+                    ProviderFamily.CODEX.value,
+                    ProviderFamily.LOCAL.value,
+                ]
+            ),
+        )
+    if role_name == "synthesizer":
+        return RoleRoutingPolicy(
+            role_name=role_name,
+            capability_class=CapabilityClass.SYNTHESIS.value,
+            family_priority=[
+                ProviderFamily.GEMINI.value,
+                ProviderFamily.CLAUDE.value,
+                ProviderFamily.CODEX.value,
+                ProviderFamily.LOCAL.value,
+            ],
+            family_model_priority={
+                ProviderFamily.GEMINI.value: ["gemini-pro"],
+                ProviderFamily.CLAUDE.value: ["sonnet"],
+                ProviderFamily.CODEX.value: ["gpt-5.4"],
+                ProviderFamily.LOCAL.value: ["deterministic-reader"],
+            },
+            fallback_chain=FallbackChain(
+                families=[
+                    ProviderFamily.GEMINI.value,
+                    ProviderFamily.CLAUDE.value,
+                    ProviderFamily.CODEX.value,
+                    ProviderFamily.LOCAL.value,
+                ]
+            ),
+        )
+    if role_name == "archivist":
+        return RoleRoutingPolicy(
+            role_name=role_name,
+            capability_class=CapabilityClass.ARCHIVAL.value,
+            family_priority=[
+                ProviderFamily.GEMINI.value,
+                ProviderFamily.LOCAL.value,
+                ProviderFamily.CLAUDE.value,
+                ProviderFamily.CODEX.value,
+            ],
+            family_model_priority=archival_models,
+            fallback_chain=FallbackChain(
+                families=[
+                    ProviderFamily.GEMINI.value,
+                    ProviderFamily.LOCAL.value,
+                    ProviderFamily.CLAUDE.value,
+                    ProviderFamily.CODEX.value,
+                ]
+            ),
+        )
+    return RoleRoutingPolicy(
+        role_name=role_name,
+        capability_class=CapabilityClass.EXECUTION.value,
+        family_priority=[
+            ProviderFamily.CODEX.value,
+            ProviderFamily.CLAUDE.value,
+            ProviderFamily.LOCAL.value,
+        ],
+        family_model_priority=coding_models,
+        fallback_chain=FallbackChain(
+            families=[
+                ProviderFamily.CODEX.value,
+                ProviderFamily.CLAUDE.value,
+                ProviderFamily.LOCAL.value,
+            ]
         ),
-        fallback_model_profile=ModelProfile(
-            profile_name=f"{agent_name}-fallback",
-            provider_name=provider_name,
-            model=effective_model,
-            max_steps=config.max_steps,
-        ),
+    )
+
+
+def build_fallback_provider(config: AppConfig) -> ProviderSpec:
+    return ProviderSpec(
+        provider_name=config.provider_name.lower(),
+        model=config.provider_model or None,
+    )
+
+
+def build_fallback_model_profile(config: AppConfig, agent_name: str) -> ModelProfile:
+    return ModelProfile(
+        profile_name=f"{agent_name}-fallback",
+        provider_name=config.provider_name.lower(),
+        model=config.provider_model or None,
+        max_steps=config.max_steps,
     )
 
 
@@ -155,7 +328,14 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             model=config.provider_model or None,
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
-            routing_policy=build_agent_routing_policy(config, "reader_agent", config.provider_model or None),
+            provider_invocation_service=services.provider_invocation_service,
+            routing_policy=build_agent_routing_policy(
+                agent_name="reader_agent",
+                default_role_policy=build_role_routing_policy("librarian"),
+                task_kind_role_policies={"read_source": build_role_routing_policy("scoper")},
+                fallback_provider=build_fallback_provider(config),
+                fallback_model_profile=build_fallback_model_profile(config, "reader_agent"),
+            ),
         ),
         handles={"paper_ingest", "repo_ingest", "read_source"},
     )
@@ -167,7 +347,13 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             model=config.provider_model or None,
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
-            routing_policy=build_agent_routing_policy(config, "mapper_agent", config.provider_model or None),
+            provider_invocation_service=services.provider_invocation_service,
+            routing_policy=build_agent_routing_policy(
+                agent_name="mapper_agent",
+                default_role_policy=build_role_routing_policy("synthesizer"),
+                fallback_provider=build_fallback_provider(config),
+                fallback_model_profile=build_fallback_model_profile(config, "mapper_agent"),
+            ),
         ),
         handles={"gap_mapping", "map_gaps"},
     )
@@ -180,7 +366,18 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             model=config.provider_model or None,
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
-            routing_policy=build_agent_routing_policy(config, "builder_agent", config.provider_model or None),
+            provider_invocation_service=services.provider_invocation_service,
+            routing_policy=build_agent_routing_policy(
+                agent_name="builder_agent",
+                default_role_policy=build_role_routing_policy("experiment_designer"),
+                task_kind_role_policies={
+                    "implement_experiment": build_role_routing_policy("executor"),
+                    "reproduce_baseline": build_role_routing_policy("executor"),
+                    "build_spec": build_role_routing_policy("hypothesist"),
+                },
+                fallback_provider=build_fallback_provider(config),
+                fallback_model_profile=build_fallback_model_profile(config, "builder_agent"),
+            ),
         ),
         handles={"build_spec", "implement_experiment", "reproduce_baseline"},
     )
@@ -190,7 +387,13 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             model=config.provider_model or None,
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
-            routing_policy=build_agent_routing_policy(config, "reviewer_agent", config.provider_model or None),
+            provider_invocation_service=services.provider_invocation_service,
+            routing_policy=build_agent_routing_policy(
+                agent_name="reviewer_agent",
+                default_role_policy=build_role_routing_policy("reviewer"),
+                fallback_provider=build_fallback_provider(config),
+                fallback_model_profile=build_fallback_model_profile(config, "reviewer_agent"),
+            ),
         ),
         handles={"review_build", "audit_run"},
     )
@@ -201,7 +404,13 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             model=config.provider_model or None,
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
-            routing_policy=build_agent_routing_policy(config, "writer_agent", config.provider_model or None),
+            provider_invocation_service=services.provider_invocation_service,
+            routing_policy=build_agent_routing_policy(
+                agent_name="writer_agent",
+                default_role_policy=build_role_routing_policy("publisher"),
+                fallback_provider=build_fallback_provider(config),
+                fallback_model_profile=build_fallback_model_profile(config, "writer_agent"),
+            ),
         ),
         handles={"write_draft", "write_section"},
     )
@@ -212,9 +421,68 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             model=config.provider_model or None,
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
-            routing_policy=build_agent_routing_policy(config, "style_agent", config.provider_model or None),
+            provider_invocation_service=services.provider_invocation_service,
+            routing_policy=build_agent_routing_policy(
+                agent_name="style_agent",
+                default_role_policy=build_role_routing_policy("publisher"),
+                fallback_provider=build_fallback_provider(config),
+                fallback_model_profile=build_fallback_model_profile(config, "style_agent"),
+            ),
         ),
         handles={"style_pass", "polish_draft"},
+    )
+    orchestrator.register_agent(
+        AnalystAgent(
+            default_provider,
+            artifact_service=services.artifact_service,
+            model=config.provider_model or None,
+            tool_registry=tool_registry,
+            provider_registry=services.provider_registry,
+            provider_invocation_service=services.provider_invocation_service,
+            routing_policy=build_agent_routing_policy(
+                agent_name="analyst_agent",
+                default_role_policy=build_role_routing_policy("analyst"),
+                fallback_provider=build_fallback_provider(config),
+                fallback_model_profile=build_fallback_model_profile(config, "analyst_agent"),
+            ),
+        ),
+        handles={"analyze_results", "analyze_run"},
+    )
+    orchestrator.register_agent(
+        VerifierAgent(
+            default_provider,
+            verification_service=services.verification_service,
+            artifact_service=services.artifact_service,
+            model=config.provider_model or None,
+            tool_registry=tool_registry,
+            provider_registry=services.provider_registry,
+            provider_invocation_service=services.provider_invocation_service,
+            routing_policy=build_agent_routing_policy(
+                agent_name="verifier_agent",
+                default_role_policy=build_role_routing_policy("verifier"),
+                fallback_provider=build_fallback_provider(config),
+                fallback_model_profile=build_fallback_model_profile(config, "verifier_agent"),
+            ),
+        ),
+        handles={"verify_evidence", "verify_claim", "verify_results"},
+    )
+    orchestrator.register_agent(
+        ArchivistAgent(
+            default_provider,
+            lessons_service=services.lessons_service,
+            artifact_service=services.artifact_service,
+            model=config.provider_model or None,
+            tool_registry=tool_registry,
+            provider_registry=services.provider_registry,
+            provider_invocation_service=services.provider_invocation_service,
+            routing_policy=build_agent_routing_policy(
+                agent_name="archivist_agent",
+                default_role_policy=build_role_routing_policy("archivist"),
+                fallback_provider=build_fallback_provider(config),
+                fallback_model_profile=build_fallback_model_profile(config, "archivist_agent"),
+            ),
+        ),
+        handles={"archive_research", "archive_run", "record_lessons"},
     )
     return orchestrator
 
@@ -251,6 +519,14 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
     project_service = ProjectService(project_repository)
     task_service = TaskService(task_repository)
     provider_registry = build_provider_registry()
+    provider_health_service = ProviderHealthService(
+        cooldown_seconds=config.provider_cooldown_seconds,
+        disabled_families=set(config.disabled_provider_families),
+    )
+    provider_invocation_service = ProviderInvocationService(
+        provider_registry,
+        provider_health_service,
+    )
     routing_resolver = RoutingResolver(build_system_dispatch_profile(config))
     services = RuntimeServices(
         project_service=project_service,
@@ -284,6 +560,8 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         ),
         tool_registry=build_tool_registry(),
         provider_registry=provider_registry,
+        provider_health_service=provider_health_service,
+        provider_invocation_service=provider_invocation_service,
         routing_resolver=routing_resolver,
         orchestrator=Orchestrator(
             task_service,

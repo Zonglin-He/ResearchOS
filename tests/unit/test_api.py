@@ -175,6 +175,40 @@ def test_api_can_persist_paper_gap_and_freeze_assets(tmp_path: Path) -> None:
     assert client.get("/freezes/topic").json()["topic_id"] == "topic_001"
 
 
+def test_api_can_persist_spec_and_results_freezes(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+
+    spec_response = client.post(
+        "/freezes/spec",
+        json={
+            "spec_id": "spec_001",
+            "topic_id": "topic_001",
+            "hypothesis": ["robust optimization improves stability"],
+            "must_beat_baselines": ["baseline_a"],
+            "datasets": ["dataset_v1"],
+            "metrics": ["accuracy"],
+            "ablations": ["no_augmentation"],
+            "approved_by": "gabriel",
+        },
+    )
+    results_response = client.post(
+        "/freezes/results",
+        json={
+            "results_id": "results_001",
+            "spec_id": "spec_001",
+            "main_claims": ["claim_001"],
+            "tables": ["main_results"],
+            "figures": ["curve_001"],
+            "approved_by": "gabriel",
+        },
+    )
+
+    assert spec_response.status_code == 200
+    assert results_response.status_code == 200
+    assert client.get("/freezes/spec").json()["spec_id"] == "spec_001"
+    assert client.get("/freezes/results").json()["results_id"] == "results_001"
+
+
 def test_api_rejects_invalid_paper_card_payload(tmp_path: Path) -> None:
     client = TestClient(create_app(str(tmp_path / "researchos.db")))
 

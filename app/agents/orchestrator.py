@@ -72,9 +72,11 @@ class Orchestrator:
             prior_lessons=self._resolve_prior_lessons(task, agent_name, routing),
         )
         result = await agent.run(task, context)
-        if routing is not None:
-            result.routing = routing
-            result.audit_notes.append(self._routing_audit_note(routing))
+        if context.routing is not None:
+            result.routing = context.routing
+            task.last_run_routing = context.routing
+            task = self.task_service.repository.update(task)
+            result.audit_notes.append(self._routing_audit_note(context.routing))
         if self.lessons_service is not None:
             self.lessons_service.capture_agent_outcome(
                 task=task,
@@ -124,8 +126,12 @@ class Orchestrator:
     def _routing_audit_note(routing: ResolvedDispatch) -> str:
         return (
             "dispatch routing resolved "
+            f"role={routing.role_name or '<unknown>'} "
+            f"capability={routing.capability_class or '<unknown>'} "
             f"provider={routing.provider_name} "
             f"model={routing.model or '<default>'} "
+            f"decision_reason={routing.decision_reason or '<none>'} "
+            f"fallback_reason={routing.fallback_reason or '<none>'} "
             f"sources={routing.sources}"
         )
 

@@ -5,6 +5,7 @@ from typing import Any
 from app.agents.llm_agent import PromptDrivenAgent
 from app.agents.response_schemas import WRITER_RESPONSE_SCHEMA
 from app.agents.utils import build_child_task, write_artifact
+from app.roles import writer_role_binding
 from app.schemas.result import AgentResult
 from app.schemas.task import Task
 from app.services.artifact_service import ArtifactService
@@ -14,6 +15,7 @@ class WriterAgent(PromptDrivenAgent):
     name = "writer_agent"
     description = "Writes draft sections from frozen evidence."
     prompt_path = "C:/Anti Project/ResearchOS/prompts/writer.md"
+    role_binding = writer_role_binding()
 
     def __init__(
         self,
@@ -24,6 +26,7 @@ class WriterAgent(PromptDrivenAgent):
         tool_registry=None,
         provider_registry=None,
         routing_policy=None,
+        provider_invocation_service=None,
     ) -> None:
         super().__init__(
             provider,
@@ -32,6 +35,8 @@ class WriterAgent(PromptDrivenAgent):
             tool_registry=tool_registry,
             provider_registry=provider_registry,
             routing_policy=routing_policy,
+            provider_invocation_service=provider_invocation_service,
+            role_binding=self.role_binding,
         )
         self.artifact_service = artifact_service
 

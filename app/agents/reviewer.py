@@ -5,6 +5,7 @@ from typing import Any
 from app.agents.llm_agent import PromptDrivenAgent
 from app.agents.response_schemas import REVIEWER_RESPONSE_SCHEMA
 from app.agents.utils import build_child_task
+from app.roles import reviewer_role_binding
 from app.schemas.result import AgentResult
 from app.schemas.task import Task
 
@@ -13,6 +14,7 @@ class ReviewerAgent(PromptDrivenAgent):
     name = "reviewer_agent"
     description = "Reviews code, experiments, and claims for validity."
     prompt_path = "C:/Anti Project/ResearchOS/prompts/reviewer.md"
+    role_binding = reviewer_role_binding()
 
     def __init__(
         self,
@@ -22,6 +24,7 @@ class ReviewerAgent(PromptDrivenAgent):
         tool_registry=None,
         provider_registry=None,
         routing_policy=None,
+        provider_invocation_service=None,
     ) -> None:
         super().__init__(
             provider,
@@ -30,6 +33,8 @@ class ReviewerAgent(PromptDrivenAgent):
             tool_registry=tool_registry,
             provider_registry=provider_registry,
             routing_policy=routing_policy,
+            provider_invocation_service=provider_invocation_service,
+            role_binding=self.role_binding,
         )
 
     def build_user_payload(self, task, ctx) -> dict[str, Any]:

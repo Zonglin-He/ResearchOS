@@ -2,18 +2,26 @@ import asyncio
 import os
 from pathlib import Path
 
+from app.agents.analyst import AnalystAgent
+from app.agents.archivist import ArchivistAgent
 from app.agents.builder import BuilderAgent
 from app.agents.reader import ReaderAgent
 from app.agents.reviewer import ReviewerAgent
+from app.agents.verifier import VerifierAgent
 from app.agents.writer import WriterAgent
 from app.providers.base import BaseProvider
+from app.schemas.claim import Claim
 from app.schemas.context import RunContext
+from app.schemas.run_manifest import RunManifest
 from app.schemas.task import Task
 from app.services.artifact_service import ArtifactService
 from app.services.claim_service import ClaimService
+from app.services.freeze_service import FreezeService
 from app.services.gap_map_service import GapMapService
+from app.services.lessons_service import LessonsService
 from app.services.paper_card_service import PaperCardService
 from app.services.run_service import RunService
+from app.services.verification_service import VerificationService
 
 
 class StaticProvider(BaseProvider):
@@ -202,3 +210,137 @@ def test_writer_agent_writes_artifact_and_spawns_style_task(tmp_path: Path) -> N
     draft_path = tmp_path / result.output["draft_artifact_path"]
     assert draft_path.exists()
     assert result.next_tasks[0].kind == "style_pass"
+
+
+def test_analyst_agent_writes_result_summary_artifact(tmp_path: Path) -> None:
+    artifacts = ArtifactService(tmp_path / "artifacts.jsonl")
+    agent = AnalystAgent(
+        StaticProvider(
+            {
+                "summary": "Run looks stable overall.",
+                "anomalies": ["small variance spike"],
+                "recommended_actions": ["repeat with a second seed"],
+                "audit_notes": ["analysis completed"],
+            }
+        ),
+        artifact_service=artifacts,
+    )
+    task = Task(
+        task_id="t-analyst",
+        project_id="proj",
+        kind="analyze_results",
+        goal="Analyze results",
+        input_payload={"run_id": "run-1"},
+        owner="gabriel",
+    )
+    ctx = RunContext(run_id="run-analyst", project_id="proj", task_id="t-analyst")
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        result = asyncio.run(agent.run(task, ctx))
+    finally:
+        os.chdir(cwd)
+
+    assert result.artifacts
+    assert artifacts.list_artifacts()[0].kind == "result_summary"
+    assert result.output["recommended_actions"] == ["repeat with a second seed"]
+
+
+def test_verifier_agent_records_verification_and_writes_report(tmp_path: Path) -> None:
+    artifacts = ArtifactService(tmp_path / "artifacts.jsonl")
+    claims = ClaimService(tmp_path / "claims.jsonl")
+    runs = RunService(tmp_path / "runs.jsonl")
+    freezes = FreezeService(tmp_path / "freezes")
+    verification = VerificationService(
+        run_service=runs,
+        artifact_service=artifacts,
+        claim_service=claims,
+        freeze_service=freezes,
+        registry_path=tmp_path / "verifications.jsonl",
+    )
+    runs.register_run(
+        RunManifest(
+            run_id="run-verify",
+            spec_id="spec-1",
+            git_commit="abc123",
+            config_hash="cfg",
+            dataset_snapshot="dataset",
+            seed=1,
+            gpu="cpu",
+        )
+    )
+    agent = VerifierAgent(
+        StaticProvider(
+            {
+                "summary": "Verification report generated.",
+                "recommendations": ["register any missing artifacts before publication"],
+                "audit_notes": ["verification completed"],
+            }
+        ),
+        verification_service=verification,
+        artifact_service=artifacts,
+    )
+    task = Task(
+        task_id="t-verifier",
+        project_id="proj",
+        kind="verify_evidence",
+        goal="Verify run evidence",
+        input_payload={"run_id": "run-verify"},
+        owner="gabriel",
+    )
+    ctx = RunContext(run_id="run-verifier", project_id="proj", task_id="t-verifier")
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        result = asyncio.run(agent.run(task, ctx))
+    finally:
+        os.chdir(cwd)
+
+    records = verification.list_checks(subject_type="run", subject_id="run-verify")
+    assert records
+    assert result.output["verification_status"] == records[0].status.value
+    assert artifacts.list_artifacts()[0].kind == "verification_report"
+
+
+def test_archivist_agent_records_lessons_and_archive_entry(tmp_path: Path) -> None:
+    lessons = LessonsService(tmp_path / "lessons.jsonl")
+    artifacts = ArtifactService(tmp_path / "artifacts.jsonl")
+    agent = ArchivistAgent(
+        StaticProvider(
+            {
+                "summary": "Archive the experiment context and next-step lesson.",
+                "lessons": [
+                    {
+                        "title": "Capture baseline assumptions",
+                        "summary": "Baseline assumptions should be written before the next iteration.",
+                        "recommended_action": "Record baseline deltas explicitly.",
+                        "lesson_kind": "lesson",
+                        "evidence_refs": ["task:t-archivist"],
+                    }
+                ],
+                "provenance_notes": ["Linked to result summary and verification report."],
+                "audit_notes": ["archive completed"],
+            }
+        ),
+        lessons_service=lessons,
+        artifact_service=artifacts,
+    )
+    task = Task(
+        task_id="t-archivist",
+        project_id="proj",
+        kind="archive_research",
+        goal="Archive lessons",
+        input_payload={},
+        owner="gabriel",
+    )
+    ctx = RunContext(run_id="run-archivist", project_id="proj", task_id="t-archivist")
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        result = asyncio.run(agent.run(task, ctx))
+    finally:
+        os.chdir(cwd)
+
+    assert lessons.list_lessons(agent_name="archivist_agent")
+    assert result.output["lesson_ids"]
+    assert artifacts.list_artifacts()[0].kind == "archive_entry"

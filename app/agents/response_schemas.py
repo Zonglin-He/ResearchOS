@@ -233,3 +233,49 @@ STYLE_RESPONSE_SCHEMA = {
     },
     "required": ["revised_markdown"],
 }
+
+ANALYST_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "anomalies": {"type": "array", "items": {"type": "string"}},
+        "recommended_actions": {"type": "array", "items": {"type": "string"}},
+        "audit_notes": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["summary"],
+}
+
+VERIFIER_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "recommendations": {"type": "array", "items": {"type": "string"}},
+        "audit_notes": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["summary"],
+}
+
+ARCHIVIST_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "lessons": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "summary": {"type": "string"},
+                    "recommended_action": {"type": "string"},
+                    "lesson_kind": {"type": "string"},
+                    "failure_type": {"type": "string"},
+                    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["title", "summary"],
+            },
+        },
+        "provenance_notes": {"type": "array", "items": {"type": "string"}},
+        "audit_notes": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["summary"],
+}

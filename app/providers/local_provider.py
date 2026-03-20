@@ -30,6 +30,12 @@ class LocalProvider(BaseProvider):
             return self._mapper_response(task_payload)
         if task_kind in {"build_spec", "implement_experiment", "reproduce_baseline"}:
             return self._builder_response(task_payload)
+        if task_kind in {"analyze_results", "analyze_run"}:
+            return self._analyst_response(task_payload)
+        if task_kind in {"verify_evidence", "verify_claim", "verify_results"}:
+            return self._verifier_response(task_payload)
+        if task_kind in {"archive_research", "archive_run", "record_lessons"}:
+            return self._archivist_response(task_payload)
         if task_kind in {"review_build", "audit_run"}:
             return self._reviewer_response(task_payload)
         if task_kind in {"write_draft", "write_section"}:
@@ -159,6 +165,40 @@ class LocalProvider(BaseProvider):
             "blocking_issues": [],
             "audit_notes": ["local provider generated deterministic reviewer output"],
             "claim_updates": [],
+        }
+
+    def _analyst_response(self, task_payload: dict[str, Any]) -> dict[str, Any]:
+        run_id = task_payload.get("input_payload", {}).get("run_id", "run-local")
+        return {
+            "summary": f"Deterministic analysis for {run_id}.",
+            "anomalies": [f"No severe anomalies detected for {run_id}."],
+            "recommended_actions": ["Review metrics drift against baseline."],
+            "audit_notes": ["local provider generated deterministic analyst output"],
+        }
+
+    def _verifier_response(self, task_payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "summary": "Deterministic verification summary from the local provider.",
+            "recommendations": ["Inspect missing fields if verification is incomplete."],
+            "audit_notes": ["local provider generated deterministic verifier output"],
+        }
+
+    def _archivist_response(self, task_payload: dict[str, Any]) -> dict[str, Any]:
+        task_id = task_payload.get("task_id", "task")
+        return {
+            "summary": f"Deterministic archive summary for {task_id}.",
+            "lessons": [
+                {
+                    "title": f"Archive lesson for {task_id}",
+                    "summary": "Record the key execution assumptions before the next run.",
+                    "recommended_action": "Capture baseline comparison context.",
+                    "lesson_kind": "lesson",
+                    "failure_type": "",
+                    "evidence_refs": [f"task:{task_id}"],
+                }
+            ],
+            "provenance_notes": ["Deterministic archival note linked to the task."],
+            "audit_notes": ["local provider generated deterministic archivist output"],
         }
 
     def _writer_response(self, task_payload: dict[str, Any]) -> dict[str, Any]:

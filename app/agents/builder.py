@@ -5,6 +5,7 @@ from typing import Any
 from app.agents.llm_agent import PromptDrivenAgent
 from app.agents.response_schemas import BUILDER_RESPONSE_SCHEMA
 from app.agents.utils import build_child_task
+from app.roles import builder_role_binding
 from app.schemas.artifact import ArtifactRecord
 from app.schemas.claim import Claim
 from app.schemas.result import AgentResult
@@ -19,6 +20,7 @@ class BuilderAgent(PromptDrivenAgent):
     name = "builder_agent"
     description = "Builds code and experiments from a frozen spec."
     prompt_path = "C:/Anti Project/ResearchOS/prompts/builder.md"
+    role_binding = builder_role_binding()
 
     def __init__(
         self,
@@ -31,6 +33,7 @@ class BuilderAgent(PromptDrivenAgent):
         tool_registry=None,
         provider_registry=None,
         routing_policy=None,
+        provider_invocation_service=None,
     ) -> None:
         super().__init__(
             provider,
@@ -39,6 +42,8 @@ class BuilderAgent(PromptDrivenAgent):
             tool_registry=tool_registry,
             provider_registry=provider_registry,
             routing_policy=routing_policy,
+            provider_invocation_service=provider_invocation_service,
+            role_binding=self.role_binding,
         )
         self.artifact_service = artifact_service
         self.claim_service = claim_service

@@ -7,6 +7,8 @@ from typing import Any
 from app.agents.base import BaseAgent
 from app.providers.base import BaseProvider
 from app.providers.registry import ProviderRegistry
+from app.roles.models import AgentRoleBinding
+from app.routing.provider_router import ProviderInvocationService
 from app.routing.models import AgentRoutingPolicy
 from app.schemas.context import RunContext
 from app.schemas.result import AgentResult
@@ -27,6 +29,8 @@ class PromptDrivenAgent(BaseAgent):
         tool_registry: ToolRegistry | None = None,
         provider_registry: ProviderRegistry | None = None,
         routing_policy: AgentRoutingPolicy | None = None,
+        provider_invocation_service: ProviderInvocationService | None = None,
+        role_binding: AgentRoleBinding | None = None,
     ) -> None:
         self.provider = provider
         self.model = model
@@ -34,18 +38,35 @@ class PromptDrivenAgent(BaseAgent):
         self.tool_registry = tool_registry
         self.provider_registry = provider_registry
         self.routing_policy = routing_policy
+        self.provider_invocation_service = provider_invocation_service
+        self.role_binding = role_binding
 
     async def run(self, task: Task, ctx: RunContext) -> AgentResult:
         system_prompt = Path(self.prompt_path).read_text(encoding="utf-8")
         user_payload = self.build_user_payload(task, ctx)
-        provider = self._resolve_provider(ctx)
-        output = await provider.generate(
-            system_prompt=system_prompt,
-            user_input=json.dumps(user_payload, ensure_ascii=False, default=str),
-            tools=self._tool_definitions(),
-            response_schema=self.get_response_schema(task, ctx),
-            model=self._resolve_model(ctx),
-        )
+        user_input = json.dumps(user_payload, ensure_ascii=False, default=str)
+        if (
+            self.provider_invocation_service is not None
+            and self.provider_registry is not None
+            and ctx.routing is not None
+        ):
+            output, final_routing = await self.provider_invocation_service.generate(
+                routing=ctx.routing,
+                system_prompt=system_prompt,
+                user_input=user_input,
+                tools=self._tool_definitions(),
+                response_schema=self.get_response_schema(task, ctx),
+            )
+            ctx.routing = final_routing
+        else:
+            provider = self._resolve_provider(ctx)
+            output = await provider.generate(
+                system_prompt=system_prompt,
+                user_input=user_input,
+                tools=self._tool_definitions(),
+                response_schema=self.get_response_schema(task, ctx),
+                model=self._resolve_model(ctx),
+            )
         return self.build_result(task, ctx, output)
 
     def _resolve_provider(self, ctx: RunContext) -> BaseProvider:
@@ -71,6 +92,7 @@ class PromptDrivenAgent(BaseAgent):
                 "routing": to_record(ctx.routing),
                 "prior_lessons": to_record(ctx.prior_lessons),
             },
+            "role_contract": self._build_role_contract(task),
         }
 
     def get_response_schema(
@@ -99,3 +121,14 @@ class PromptDrivenAgent(BaseAgent):
             }
             for tool in self.tool_registry.list_tools()
         ]
+
+    def _build_role_contract(self, task: Task) -> dict[str, Any] | None:
+        if self.role_binding is None:
+            return None
+        role = self.role_binding.resolve_role(task.kind)
+        return {
+            "agent_name": self.role_binding.agent_name,
+            "resolved_role": role.value,
+            "secondary_roles": [role.value for role in self.role_binding.secondary_roles],
+            "artifact_contracts": self.role_binding.expected_artifact_types(task.kind),
+        }

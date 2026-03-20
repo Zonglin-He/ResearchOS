@@ -15,6 +15,19 @@ uv sync --dev
 uv run researchos --db-path data\researchos.db init-db
 ```
 
+Then open the terminal control plane directly:
+
+```powershell
+uv run researchos
+```
+
+Equivalent explicit launch paths:
+
+```powershell
+uv run researchos console
+uv run ros
+```
+
 4. Run tests:
 
 ```powershell
@@ -37,6 +50,13 @@ Common env setup:
 ```powershell
 $env:RESEARCHOS_PROVIDER = "claude"
 $env:RESEARCHOS_PROVIDER_MODEL = "sonnet"
+```
+
+Optional provider-health controls:
+
+```powershell
+$env:RESEARCHOS_DISABLED_PROVIDER_FAMILIES = "gemini"
+$env:RESEARCHOS_PROVIDER_COOLDOWN_SECONDS = "300"
 ```
 
 To isolate registry and artifact state per workspace, set:
@@ -93,3 +113,11 @@ Current operator-facing inspection endpoints include:
 - `GET /audit/summary`
 
 Artifact annotations are intentionally constrained metadata. They allow operator review notes, review tags, and status updates without mutating the original artifact payload.
+
+Routing transparency is exposed through task/run metadata:
+
+- task `last_run_routing`
+- run manifest `dispatch_routing`
+- dispatch audit notes in agent results
+
+These surfaces now include the resolved role, capability class, chosen provider family, chosen model, fallback chain, and health snapshots used during selection when available.

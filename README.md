@@ -4,6 +4,7 @@ ResearchOS is a code-first multi-agent research workflow runtime. It is a backen
 
 - typed task and run state
 - specialized agents
+- role-driven execution contracts
 - CLI and terminal control plane
 - FastAPI control plane
 - worker-based async dispatch
@@ -24,6 +25,48 @@ ResearchOS manages a research workflow around explicit objects:
 - `Claim`, `PaperCard`, `GapMap`, `Freeze`: durable research artifacts
 - `ExperimentProposal`, `ExperimentDecision`: explicit experiment loop primitives
 - `LessonRecord`, `VerificationRecord`: reusable memory and verification surfaces
+
+## Role System
+
+ResearchOS now uses a typed workflow-role layer on top of the existing specialized agents.
+
+Workflow roles:
+
+- Scoper
+- Librarian
+- Synthesizer
+- Hypothesist
+- ExperimentDesigner
+- Executor
+- Analyst
+- Reviewer
+- Verifier
+- Publisher
+- Archivist
+
+Current specialized-agent overlay:
+
+- Reader = Librarian + part of Scoper
+- Mapper = Synthesizer
+- Builder = Hypothesist + ExperimentDesigner + part of Executor
+- Reviewer = Reviewer
+- Writer = Publisher
+- Style = Publisher post-processing
+- Analyst = result analysis
+- Verifier = evidence and methodology verification
+- Archivist = lessons / provenance / registry curation
+
+Fallback does not change role obligations. Provider family changes are allowed, but the expected artifact contract stays the same for the role.
+
+Examples:
+
+- Librarian -> `paper_card`
+- Synthesizer -> `gap_map`
+- Executor -> `run_manifest`
+- Analyst -> `result_summary`
+- Verifier -> `verification_report`
+- Publisher -> `paper_draft`
+- Archivist -> `archive_entry`
 
 ## Architecture Overview
 
@@ -103,6 +146,46 @@ Recommended usage:
 
 - use `local` for deterministic local development, CI, demos, and teaching
 - use `codex` / `claude` / `gemini` only when the corresponding external CLI is already installed and working
+
+## Claude-First Routing Philosophy
+
+ResearchOS is Claude-first for core reasoning roles, but Claude is not forced for every role.
+
+Default intent:
+
+- prefer Claude family for:
+  - Scoper
+  - Hypothesist
+  - Analyst
+  - Reviewer
+  - Verifier
+  - Publisher
+- do not spend Claude by default for:
+  - Librarian
+  - Synthesizer
+  - Archivist
+  - Executor
+
+Default role-family tendency:
+
+- Librarian -> Gemini
+- Synthesizer -> Gemini
+- Executor -> Codex
+- Archivist -> Gemini or local
+- core reasoning roles -> Claude first
+
+Fallback is capability-aware rather than one global order:
+
+- planning / review / verification:
+  - Claude -> Codex -> Gemini -> local
+- retrieval / synthesis / archival:
+  - Gemini -> Claude -> Codex -> local
+- coding / execution:
+  - Codex -> Claude -> local
+
+If a provider family is unavailable, rate-limited, exhausted, disabled, or unhealthy, ResearchOS will fall back honestly. It does not pretend to know token quotas exactly; it relies on CLI availability, invocation failures, cooldowns, and known failure signatures.
+
+You can override routing through dispatch profiles at the project or task level. If an explicit env provider is set, that still wins over role defaults.
 
 If you use live provider execution, make sure the relevant provider CLI or command path is already working on your machine.
 

@@ -59,3 +59,48 @@ def test_local_provider_uses_explicit_fixture_override() -> None:
     )
 
     assert result == fixture
+
+
+def test_local_provider_supports_analyst_verifier_and_archivist_tasks() -> None:
+    provider = LocalProvider()
+
+    analyst = asyncio.run(
+        _generate(
+            provider,
+            {
+                "task": {
+                    "task_id": "t-analyst",
+                    "kind": "analyze_results",
+                    "input_payload": {"run_id": "run-1"},
+                }
+            },
+        )
+    )
+    verifier = asyncio.run(
+        _generate(
+            provider,
+            {
+                "task": {
+                    "task_id": "t-verifier",
+                    "kind": "verify_evidence",
+                    "input_payload": {"run_id": "run-1"},
+                }
+            },
+        )
+    )
+    archivist = asyncio.run(
+        _generate(
+            provider,
+            {
+                "task": {
+                    "task_id": "t-archivist",
+                    "kind": "archive_research",
+                    "input_payload": {},
+                }
+            },
+        )
+    )
+
+    assert analyst["summary"] == "Deterministic analysis for run-1."
+    assert verifier["recommendations"] == ["Inspect missing fields if verification is incomplete."]
+    assert archivist["lessons"][0]["title"] == "Archive lesson for t-archivist"

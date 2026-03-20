@@ -10,4 +10,5 @@
 - Phase 6: repository hygiene, onboarding, examples, CI, and release readiness
 - Iteration A: workspace-root-aware registries, deterministic local provider, API smoke in CI, direct console launch
 - Iteration B: artifact detail APIs, audit/verification aggregation views, compatibility facade deprecation notes, hygiene cleanup
+- Architecture upgrade: role-driven provider-family-aware routing with Claude-first fallback, provider health snapshots, Analyst/Verifier/Archivist agents, and deterministic local support for the expanded role set
 - Iteration C: typed provenance models, provenance-driven audit/verification aggregation, constrained artifact annotations, operator-surface documentation alignment

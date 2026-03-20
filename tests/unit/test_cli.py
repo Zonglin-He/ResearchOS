@@ -195,3 +195,17 @@ def test_cli_no_subcommand_launches_console(monkeypatch, tmp_path: Path) -> None
 
     assert main(["--db-path", str(db_path)]) == 0
     assert launched["value"] is True
+
+
+def test_cli_console_subcommand_launches_same_console(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "researchos.db"
+    launched: dict[str, bool] = {"value": False}
+
+    def fake_run(self) -> int:
+        launched["value"] = True
+        return 0
+
+    monkeypatch.setattr(cli_module.TerminalControlPlaneApp, "run", fake_run)
+
+    assert main(["--db-path", str(db_path), "console"]) == 0
+    assert launched["value"] is True

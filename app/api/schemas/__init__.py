@@ -42,6 +42,7 @@ from app.api.schemas.provenance import (
 from app.api.schemas.routing import (
     DispatchProfileModel,
     ModelProfileModel,
+    ProviderHealthSnapshotModel,
     ProviderSpecModel,
     ResolvedDispatchModel,
 )
@@ -74,6 +75,7 @@ __all__ = [
     "LessonCreate",
     "LessonRead",
     "ModelProfileModel",
+    "ProviderHealthSnapshotModel",
     "PaperCardCreate",
     "PaperCardCreateResponse",
     "PaperCardRead",

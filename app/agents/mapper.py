@@ -5,6 +5,7 @@ from typing import Any
 from app.agents.llm_agent import PromptDrivenAgent
 from app.agents.response_schemas import MAPPER_RESPONSE_SCHEMA
 from app.agents.utils import build_child_task
+from app.roles import mapper_role_binding
 from app.schemas.gap_map import Gap, GapCluster, GapMap
 from app.schemas.paper_card import PaperCard
 from app.schemas.result import AgentResult
@@ -17,6 +18,7 @@ class MapperAgent(PromptDrivenAgent):
     name = "mapper_agent"
     description = "Maps paper cards into structured gaps and ranked candidates."
     prompt_path = "C:/Anti Project/ResearchOS/prompts/mapper.md"
+    role_binding = mapper_role_binding()
 
     def __init__(
         self,
@@ -28,6 +30,7 @@ class MapperAgent(PromptDrivenAgent):
         tool_registry=None,
         provider_registry=None,
         routing_policy=None,
+        provider_invocation_service=None,
     ) -> None:
         super().__init__(
             provider,
@@ -36,6 +39,8 @@ class MapperAgent(PromptDrivenAgent):
             tool_registry=tool_registry,
             provider_registry=provider_registry,
             routing_policy=routing_policy,
+            provider_invocation_service=provider_invocation_service,
+            role_binding=self.role_binding,
         )
         self.gap_map_service = gap_map_service
         self.paper_card_service = paper_card_service
