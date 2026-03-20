@@ -64,9 +64,11 @@ from app.services.verification_service import VerificationService
 from app.worker.tasks import dispatch_task as dispatch_task_job
 
 
-def create_app(db_path: str = "data/researchos.db") -> FastAPI:
+def create_app(db_path: str = "data/researchos.db", workspace_root: str | None = None) -> FastAPI:
     config = load_config()
     config.db_path = db_path
+    if workspace_root is not None:
+        config.workspace_root = workspace_root
     services = build_runtime_services(config)
     app = FastAPI(title="ResearchOS", version="0.1.0")
     app.state.project_service = services.project_service

@@ -10,6 +10,7 @@ from app.agents.reviewer import ReviewerAgent
 from app.agents.style import StyleAgent
 from app.agents.writer import WriterAgent
 from app.core.config import AppConfig
+from app.core.paths import WorkspacePaths
 from app.db.repositories.sa_project_repository import SAProjectRepository
 from app.db.repositories.sa_task_repository import SATaskRepository
 from app.db.repositories.sqlite_project_repository import SQLiteProjectRepository
@@ -140,6 +141,7 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
         project_service=services.project_service,
         routing_resolver=services.routing_resolver,
         lessons_service=services.lessons_service,
+        artifacts_dir=WorkspacePaths.from_root(config.workspace_root).artifacts_dir,
     )
     orchestrator.register_agent(
         ReaderAgent(
@@ -214,6 +216,7 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
 
 
 def build_runtime_services(config: AppConfig) -> RuntimeServices:
+    workspace_paths = WorkspacePaths.from_root(config.workspace_root)
     if config.database_url:
         session_factory = create_session_factory(config.database_url)
         project_repository = SAProjectRepository(session_factory)
@@ -224,17 +227,18 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         project_repository = SQLiteProjectRepository(database)
         task_repository = SQLiteTaskRepository(database)
 
-    claim_service = ClaimService()
-    run_service = RunService()
-    freeze_service = FreezeService()
-    approval_service = ApprovalService()
-    artifact_service = ArtifactService()
-    lessons_service = LessonsService()
+    claim_service = ClaimService(workspace_paths.registry_file("claims.jsonl"))
+    run_service = RunService(workspace_paths.registry_file("runs.jsonl"))
+    freeze_service = FreezeService(workspace_paths.freezes_dir)
+    approval_service = ApprovalService(workspace_paths.registry_file("approvals.jsonl"))
+    artifact_service = ArtifactService(workspace_paths.registry_file("artifacts.jsonl"))
+    lessons_service = LessonsService(workspace_paths.registry_file("lessons.jsonl"))
     verification_service = VerificationService(
         run_service=run_service,
         artifact_service=artifact_service,
         claim_service=claim_service,
         freeze_service=freeze_service,
+        registry_path=workspace_paths.registry_file("verifications.jsonl"),
     )
     project_service = ProjectService(project_repository)
     task_service = TaskService(task_repository)
@@ -246,13 +250,13 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         claim_service=claim_service,
         run_service=run_service,
         freeze_service=freeze_service,
-        paper_card_service=PaperCardService(),
-        gap_map_service=GapMapService(),
+        paper_card_service=PaperCardService(workspace_paths.registry_file("paper_cards.jsonl")),
+        gap_map_service=GapMapService(workspace_paths.registry_file("gap_maps.jsonl")),
         approval_service=approval_service,
         artifact_service=artifact_service,
         audit_service=AuditService(claim_service, run_service),
         experiment_manager=ExperimentManager(
-            registry=ExperimentRegistry(),
+            registry=ExperimentRegistry(workspace_paths.experiments_dir),
             task_service=task_service,
             run_service=run_service,
             freeze_service=freeze_service,
@@ -268,6 +272,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
             project_service=project_service,
             routing_resolver=routing_resolver,
             lessons_service=lessons_service,
+            artifacts_dir=workspace_paths.artifacts_dir,
         ),
     )
     services.orchestrator = build_orchestrator(config, services)

@@ -41,8 +41,9 @@ def write_artifact(
     content: str,
     extension: str,
     metadata: dict[str, Any] | None = None,
+    artifacts_dir: str | Path = "artifacts",
 ) -> ArtifactRecord:
-    path = Path("artifacts") / run_id / f"{artifact_id}.{extension.lstrip('.')}"
+    path = Path(artifacts_dir) / run_id / f"{artifact_id}.{extension.lstrip('.')}"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()

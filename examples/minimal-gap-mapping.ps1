@@ -1,6 +1,9 @@
 $ErrorActionPreference = "Stop"
 
 $db = "data\researchos.db"
+$env:RESEARCHOS_PROVIDER = "local"
+$env:RESEARCHOS_PROVIDER_MODEL = "deterministic-mapper"
+$env:RESEARCHOS_WORKSPACE_ROOT = (Resolve-Path ".").Path
 
 uv run researchos --db-path $db create-project `
   --project-id gap-demo `

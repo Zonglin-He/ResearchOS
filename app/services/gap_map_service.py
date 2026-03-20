@@ -8,7 +8,7 @@ from app.services.registry_store import append_jsonl, read_jsonl, to_record
 
 class GapMapService:
     def __init__(self, registry_path: str | Path = "registry/gap_maps.jsonl") -> None:
-        self.registry_path = Path(registry_path)
+        self.registry_path = Path(registry_path).expanduser().resolve()
 
     def register_gap_map(self, gap_map: GapMap) -> GapMap:
         append_jsonl(self.registry_path, to_record(gap_map))

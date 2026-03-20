@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from app.agents.base import BaseAgent
 from app.routing.models import ResolvedDispatch
@@ -26,11 +27,13 @@ class Orchestrator:
         project_service: ProjectService | None = None,
         routing_resolver: RoutingResolver | None = None,
         lessons_service: LessonsService | None = None,
+        artifacts_dir: str | Path = "artifacts",
     ) -> None:
         self.task_service = task_service
         self.project_service = project_service
         self.routing_resolver = routing_resolver
         self.lessons_service = lessons_service
+        self.artifacts_dir = Path(artifacts_dir)
         self._agents: dict[str, BaseAgent] = {}
         self._kind_to_agent: dict[str, str] = {}
 
@@ -63,6 +66,7 @@ class Orchestrator:
             run_id=f"run-{task.task_id}",
             project_id=task.project_id,
             task_id=task.task_id,
+            artifacts_dir=str(self.artifacts_dir),
             max_steps=routing.max_steps if routing is not None and routing.max_steps is not None else 12,
             routing=routing,
             prior_lessons=self._resolve_prior_lessons(task, agent_name, routing),

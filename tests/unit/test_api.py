@@ -227,6 +227,38 @@ def test_api_rejects_invalid_topic_freeze_payload(tmp_path: Path) -> None:
     assert "selected_gap_ids" in response.text
 
 
+def test_api_rejects_invalid_spec_freeze_payload(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+
+    response = client.post(
+        "/freezes/spec",
+        json={
+            "spec_id": "spec_001",
+            "topic_id": "topic_001",
+            "hypothesis": "should be a list",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "hypothesis" in response.text
+
+
+def test_api_rejects_invalid_results_freeze_payload(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+
+    response = client.post(
+        "/freezes/results",
+        json={
+            "results_id": "results_001",
+            "spec_id": "spec_001",
+            "main_claims": "claim-1",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "main_claims" in response.text
+
+
 def test_api_can_create_and_filter_lessons(tmp_path: Path) -> None:
     client = TestClient(create_app(str(tmp_path / "researchos.db")))
 

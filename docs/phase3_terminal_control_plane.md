@@ -15,7 +15,9 @@ The goal of this phase is not a chat shell and not a web UI rewrite. It is a ter
 ## Launch Command
 
 ```powershell
+uv run researchos
 uv run researchos console
+uv run ros
 ```
 
 Optional:

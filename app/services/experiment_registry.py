@@ -15,7 +15,7 @@ from app.services.registry_store import append_jsonl, read_jsonl, to_record, ups
 
 class ExperimentRegistry:
     def __init__(self, base_dir: str | Path = "registry/experiments") -> None:
-        self.base_dir = Path(base_dir)
+        self.base_dir = Path(base_dir).expanduser().resolve()
         self.proposals_path = self.base_dir / "proposals.jsonl"
         self.budgets_path = self.base_dir / "budgets.jsonl"
         self.results_path = self.base_dir / "results.jsonl"

@@ -8,7 +8,7 @@ from app.services.registry_store import append_jsonl, read_jsonl, to_record
 
 class PaperCardService:
     def __init__(self, registry_path: str | Path = "registry/paper_cards.jsonl") -> None:
-        self.registry_path = Path(registry_path)
+        self.registry_path = Path(registry_path).expanduser().resolve()
 
     def register_card(self, card: PaperCard) -> PaperCard:
         append_jsonl(self.registry_path, to_record(card))

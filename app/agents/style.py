@@ -55,6 +55,7 @@ class StyleAgent(PromptDrivenAgent):
             content=output["revised_markdown"],
             extension="md",
             metadata={"source_task_id": task.task_id},
+            artifacts_dir=ctx.artifacts_dir or "artifacts",
         )
         if self.artifact_service is not None:
             self.artifact_service.register_artifact(artifact)

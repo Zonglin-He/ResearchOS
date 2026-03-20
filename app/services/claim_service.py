@@ -8,7 +8,7 @@ from app.services.registry_store import append_jsonl, read_jsonl, to_record
 
 class ClaimService:
     def __init__(self, registry_path: str | Path = "registry/claims.jsonl") -> None:
-        self.registry_path = Path(registry_path)
+        self.registry_path = Path(registry_path).expanduser().resolve()
 
     def register_claim(self, claim: Claim) -> Claim:
         append_jsonl(self.registry_path, to_record(claim))

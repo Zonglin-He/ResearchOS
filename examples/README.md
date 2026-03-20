@@ -4,6 +4,9 @@ These examples are intentionally small and copy-pastable. They assume you alread
 
 ```powershell
 uv sync --dev
+$env:RESEARCHOS_PROVIDER = "local"
+$env:RESEARCHOS_PROVIDER_MODEL = "deterministic-reader"
+$env:RESEARCHOS_WORKSPACE_ROOT = (Resolve-Path ".").Path
 uv run researchos --db-path data\researchos.db init-db
 ```
 

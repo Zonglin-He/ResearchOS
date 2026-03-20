@@ -10,7 +10,7 @@ from app.services.registry_store import append_jsonl, read_jsonl, to_record, ups
 
 class RunService:
     def __init__(self, registry_path: str | Path = "registry/runs.jsonl") -> None:
-        self.registry_path = Path(registry_path)
+        self.registry_path = Path(registry_path).expanduser().resolve()
 
     def register_run(self, manifest: RunManifest) -> RunManifest:
         append_jsonl(self.registry_path, to_record(manifest))

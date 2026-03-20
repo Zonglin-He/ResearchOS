@@ -60,6 +60,14 @@ Install dependencies:
 uv sync --dev
 ```
 
+Recommended deterministic local setup for demos, CI-style checks, and first-time onboarding:
+
+```powershell
+$env:RESEARCHOS_PROVIDER = "local"
+$env:RESEARCHOS_PROVIDER_MODEL = "deterministic-reader"
+$env:RESEARCHOS_WORKSPACE_ROOT = (Resolve-Path ".").Path
+```
+
 Initialize a local SQLite database:
 
 ```powershell
@@ -90,6 +98,11 @@ Supported provider families in the current repo:
 - `claude`
 - `gemini`
 - `local`
+
+Recommended usage:
+
+- use `local` for deterministic local development, CI, demos, and teaching
+- use `codex` / `claude` / `gemini` only when the corresponding external CLI is already installed and working
 
 If you use live provider execution, make sure the relevant provider CLI or command path is already working on your machine.
 
@@ -132,7 +145,14 @@ uv run researchos --db-path data\researchos.db list-artifacts
 Open the interactive terminal control plane:
 
 ```powershell
+uv run researchos
+```
+
+Explicit console launch still works:
+
+```powershell
 uv run researchos console
+uv run ros
 ```
 
 ## API Quickstart
@@ -192,7 +212,11 @@ uv run python scripts\smoke_production_stack.py
 
 ## Registries and Artifacts
 
-ResearchOS persists several durable research surfaces outside the task table:
+ResearchOS persists several durable research surfaces outside the task table.
+
+By default they are created under the current workspace root. If `RESEARCHOS_WORKSPACE_ROOT` is unset, the current working directory is used.
+
+Relative to the workspace root, the main registry files are:
 
 - `registry/claims.jsonl`
 - `registry/runs.jsonl`
@@ -209,6 +233,10 @@ Artifacts produced by runs are registered via [`app/services/artifact_service.py
 The artifact registry file is:
 
 - `registry/artifacts.jsonl`
+
+Generated draft/style artifacts are written under:
+
+- `artifacts/`
 
 ## Example Flows
 
@@ -232,6 +260,7 @@ GitHub Actions runs:
 - dependency install with `uv`
 - Python bytecode compilation for import sanity
 - unit tests
+- API dispatch smoke using the deterministic local provider
 - a small CLI smoke path
 
 Workflow file:

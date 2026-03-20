@@ -8,7 +8,7 @@ from app.services.registry_store import read_yaml, to_record, write_yaml
 
 class FreezeService:
     def __init__(self, freeze_dir: str | Path = "registry/freezes") -> None:
-        self.freeze_dir = Path(freeze_dir)
+        self.freeze_dir = Path(freeze_dir).expanduser().resolve()
 
     def save_topic_freeze(self, freeze: TopicFreeze) -> TopicFreeze:
         write_yaml(self.freeze_dir / "topic_freeze.yaml", to_record(freeze))

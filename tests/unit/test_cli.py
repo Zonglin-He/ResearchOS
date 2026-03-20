@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import app.cli as cli_module
 from app.cli import main
 from app.db.repositories.sqlite_task_repository import SQLiteTaskRepository
 from app.db.sqlite import SQLiteDatabase
@@ -180,3 +181,17 @@ def test_cli_can_create_lessons_and_verify_runs(capsys, tmp_path: Path) -> None:
     assert "Created lesson lesson-1" in output
     assert "lesson-1\tfailure_signature\timplement_experiment\tbuilder_agent" in output
     assert "run:run-1\trun_manifest_sanity\tverified" in output
+
+
+def test_cli_no_subcommand_launches_console(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "researchos.db"
+    launched: dict[str, bool] = {"value": False}
+
+    def fake_run(self) -> int:
+        launched["value"] = True
+        return 0
+
+    monkeypatch.setattr(cli_module.TerminalControlPlaneApp, "run", fake_run)
+
+    assert main(["--db-path", str(db_path)]) == 0
+    assert launched["value"] is True

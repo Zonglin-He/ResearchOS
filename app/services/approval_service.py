@@ -9,7 +9,7 @@ from app.services.registry_store import append_jsonl, read_jsonl, to_record
 
 class ApprovalService:
     def __init__(self, registry_path: str | Path = "registry/approvals.jsonl") -> None:
-        self.registry_path = Path(registry_path)
+        self.registry_path = Path(registry_path).expanduser().resolve()
 
     def record_approval(self, approval: Approval) -> Approval:
         append_jsonl(self.registry_path, to_record(approval))

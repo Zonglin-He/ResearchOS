@@ -2,6 +2,8 @@ from pathlib import Path
 
 from app.bootstrap import build_runtime_services
 from app.core.config import AppConfig
+from app.core.paths import WorkspacePaths
+from app.schemas.claim import Claim
 from app.schemas.project import Project
 from app.schemas.task import Task
 
@@ -36,3 +38,32 @@ def test_runtime_bootstrap_uses_sqlite_when_database_url_is_empty(tmp_path: Path
     assert services.lessons_service is not None
     assert services.verification_service is not None
     assert services.orchestrator is not None
+
+
+def test_runtime_bootstrap_resolves_workspace_backed_registry_paths(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    config = AppConfig(
+        db_path=str(tmp_path / "researchos.db"),
+        workspace_root=str(workspace_root),
+        provider_name="local",
+    )
+
+    services = build_runtime_services(config)
+    paths = WorkspacePaths.from_root(workspace_root)
+
+    services.claim_service.register_claim(
+        Claim(
+            claim_id="claim-1",
+            text="Local workspace-backed claim",
+            claim_type="result",
+        )
+    )
+
+    assert services.claim_service.registry_path == paths.registry_file("claims.jsonl")
+    assert services.run_service.registry_path == paths.registry_file("runs.jsonl")
+    assert services.freeze_service.freeze_dir == paths.freezes_dir
+    assert services.artifact_service.registry_path == paths.registry_file("artifacts.jsonl")
+    assert services.lessons_service.registry_path == paths.registry_file("lessons.jsonl")
+    assert services.verification_service.registry_path == paths.registry_file("verifications.jsonl")
+    assert services.experiment_manager.registry.base_dir == paths.experiments_dir
+    assert paths.registry_file("claims.jsonl").exists()

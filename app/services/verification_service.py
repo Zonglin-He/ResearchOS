@@ -29,7 +29,7 @@ class VerificationService:
         self.artifact_service = artifact_service
         self.claim_service = claim_service
         self.freeze_service = freeze_service
-        self.registry_path = Path(registry_path)
+        self.registry_path = Path(registry_path).expanduser().resolve()
 
     def record_check(self, record: VerificationRecord) -> VerificationRecord:
         append_jsonl(self.registry_path, to_record(record))

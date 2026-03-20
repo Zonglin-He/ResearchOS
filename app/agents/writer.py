@@ -61,6 +61,7 @@ class WriterAgent(PromptDrivenAgent):
             content="\n".join(markdown).strip() + "\n",
             extension="md",
             metadata={"section_count": len(sections)},
+            artifacts_dir=ctx.artifacts_dir or "artifacts",
         )
         if self.artifact_service is not None:
             self.artifact_service.register_artifact(artifact)

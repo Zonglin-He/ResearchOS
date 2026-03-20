@@ -21,6 +21,13 @@ uv run researchos --db-path data\researchos.db init-db
 uv run pytest -q
 ```
 
+5. For deterministic local runs, prefer the built-in local provider:
+
+```powershell
+$env:RESEARCHOS_PROVIDER = "local"
+$env:RESEARCHOS_PROVIDER_MODEL = "deterministic-reader"
+```
+
 ## Live Provider Notes
 
 ResearchOS can run with env defaults or explicit dispatch profiles.
@@ -30,6 +37,12 @@ Common env setup:
 ```powershell
 $env:RESEARCHOS_PROVIDER = "claude"
 $env:RESEARCHOS_PROVIDER_MODEL = "sonnet"
+```
+
+To isolate registry and artifact state per workspace, set:
+
+```powershell
+$env:RESEARCHOS_WORKSPACE_ROOT = "C:\\path\\to\\workspace"
 ```
 
 For live execution, make sure the provider command path itself works before debugging ResearchOS.
@@ -60,5 +73,7 @@ uv run python scripts\smoke_production_stack.py
 - SQLite by default: `data/researchos.db`
 - registry-backed surfaces: `registry/`
 - generated smoke output: `artifacts/`
+
+These paths are resolved under `RESEARCHOS_WORKSPACE_ROOT` when it is set. Otherwise they resolve under the current working directory.
 
 These paths are ignored in Git and treated as local runtime state.

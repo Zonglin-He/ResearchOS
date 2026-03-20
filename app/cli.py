@@ -32,7 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=str(Path("data") / "researchos.db"),
         help="SQLite database path",
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    parser.set_defaults(command="console", handler=_handle_console, refresh_interval=2.0)
+    subparsers = parser.add_subparsers(dest="command")
 
     init_db = subparsers.add_parser("init-db")
     init_db.set_defaults(handler=_handle_init_db)
@@ -748,6 +749,9 @@ def _handle_save_spec_freeze(
     claim_service: ClaimService,
     run_service: RunService,
     freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
 ) -> int:
     freeze_service.save_spec_freeze(
         SpecFreeze(
