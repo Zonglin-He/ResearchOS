@@ -7,15 +7,20 @@ import sys
 from pathlib import Path
 
 from app.bootstrap import build_runtime_services
+from app.console.app import TerminalControlPlaneApp
+from app.console.control_plane import ConsoleControlPlane
 from app.core.config import load_config
+from app.routing import dispatch_profile_from_dict
 from app.schemas.claim import Claim
 from app.schemas.gap_map import Gap, GapCluster, GapMap
 from app.schemas.freeze import ResultsFreeze, SpecFreeze, TopicFreeze
+from app.schemas.lesson import LessonKind, LessonRecord
 from app.schemas.paper_card import EvidenceRef, PaperCard
 from app.schemas.project import Project
 from app.schemas.run_manifest import RunManifest
 from app.schemas.task import Task, TaskStatus
 from app.services.project_service import ProjectService
+from app.services.registry_store import to_record
 from app.services.task_service import TaskService
 from app.worker.tasks import dispatch_task as dispatch_task_job
 
@@ -32,11 +37,16 @@ def build_parser() -> argparse.ArgumentParser:
     init_db = subparsers.add_parser("init-db")
     init_db.set_defaults(handler=_handle_init_db)
 
+    console = subparsers.add_parser("console")
+    console.add_argument("--refresh-interval", type=float, default=2.0)
+    console.set_defaults(handler=_handle_console)
+
     create_project = subparsers.add_parser("create-project")
     create_project.add_argument("--project-id", required=True)
     create_project.add_argument("--name", required=True)
     create_project.add_argument("--description", required=True)
     create_project.add_argument("--status", default="active")
+    create_project.add_argument("--dispatch-profile")
     create_project.set_defaults(handler=_handle_create_project)
 
     list_projects = subparsers.add_parser("list-projects")
@@ -51,6 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     create_task.add_argument("--input-payload", default="{}")
     create_task.add_argument("--assigned-agent")
     create_task.add_argument("--parent-task-id")
+    create_task.add_argument("--dispatch-profile")
     create_task.set_defaults(handler=_handle_create_task)
 
     list_tasks = subparsers.add_parser("list-tasks")
@@ -90,6 +101,41 @@ def build_parser() -> argparse.ArgumentParser:
     list_claims = subparsers.add_parser("list-claims")
     list_claims.set_defaults(handler=_handle_list_claims)
 
+    create_lesson = subparsers.add_parser("create-lesson")
+    create_lesson.add_argument("--lesson-id", required=True)
+    create_lesson.add_argument("--lesson-kind", required=True, choices=[kind.value for kind in LessonKind])
+    create_lesson.add_argument("--title", required=True)
+    create_lesson.add_argument("--summary", required=True)
+    create_lesson.add_argument("--rationale", default="")
+    create_lesson.add_argument("--recommended-action", default="")
+    create_lesson.add_argument("--task-kind")
+    create_lesson.add_argument("--agent-name")
+    create_lesson.add_argument("--tool-name")
+    create_lesson.add_argument("--provider-name")
+    create_lesson.add_argument("--model-name")
+    create_lesson.add_argument("--failure-type")
+    create_lesson.add_argument("--repository-ref")
+    create_lesson.add_argument("--dataset-ref")
+    create_lesson.add_argument("--context-tag", action="append", dest="context_tags", default=[])
+    create_lesson.add_argument("--evidence-ref", action="append", dest="evidence_refs", default=[])
+    create_lesson.add_argument("--artifact-id", action="append", dest="artifact_ids", default=[])
+    create_lesson.add_argument("--source-task-id")
+    create_lesson.add_argument("--source-run-id")
+    create_lesson.add_argument("--source-claim-id")
+    create_lesson.set_defaults(handler=_handle_create_lesson)
+
+    list_lessons = subparsers.add_parser("list-lessons")
+    list_lessons.add_argument("--task-kind")
+    list_lessons.add_argument("--agent-name")
+    list_lessons.add_argument("--tool-name")
+    list_lessons.add_argument("--provider-name")
+    list_lessons.add_argument("--model-name")
+    list_lessons.add_argument("--failure-type")
+    list_lessons.add_argument("--repository-ref")
+    list_lessons.add_argument("--dataset-ref")
+    list_lessons.add_argument("--lesson-kind", choices=[kind.value for kind in LessonKind])
+    list_lessons.set_defaults(handler=_handle_list_lessons)
+
     create_run = subparsers.add_parser("create-run")
     create_run.add_argument("--run-id", required=True)
     create_run.add_argument("--spec-id", required=True)
@@ -102,6 +148,31 @@ def build_parser() -> argparse.ArgumentParser:
 
     list_runs = subparsers.add_parser("list-runs")
     list_runs.set_defaults(handler=_handle_list_runs)
+
+    verify_run = subparsers.add_parser("verify-run")
+    verify_run.add_argument("--run-id", required=True)
+    verify_run.set_defaults(handler=_handle_verify_run)
+
+    verify_claim = subparsers.add_parser("verify-claim")
+    verify_claim.add_argument("--claim-id", required=True)
+    verify_claim.set_defaults(handler=_handle_verify_claim)
+
+    verify_results_freeze = subparsers.add_parser("verify-results-freeze")
+    verify_results_freeze.set_defaults(handler=_handle_verify_results_freeze)
+
+    list_verifications = subparsers.add_parser("list-verifications")
+    list_verifications.add_argument("--subject-type")
+    list_verifications.add_argument("--subject-id")
+    list_verifications.add_argument("--check-type")
+    list_verifications.add_argument("--status")
+    list_verifications.set_defaults(handler=_handle_list_verifications)
+
+    audit_claims = subparsers.add_parser("audit-claims")
+    audit_claims.set_defaults(handler=_handle_audit_claims)
+
+    audit_run = subparsers.add_parser("audit-run")
+    audit_run.add_argument("--run-id", required=True)
+    audit_run.set_defaults(handler=_handle_audit_run)
 
     save_topic_freeze = subparsers.add_parser("save-topic-freeze")
     save_topic_freeze.add_argument("--topic-id", required=True)
@@ -153,6 +224,8 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config()
     config.db_path = args.db_path
     services = build_runtime_services(config)
+    args.runtime_services = services
+    args.runtime_config = config
     return args.handler(
         args,
         services.project_service,
@@ -164,6 +237,22 @@ def main(argv: list[str] | None = None) -> int:
         services.gap_map_service,
         services.approval_service,
     )
+
+
+def _handle_console(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    control_plane = ConsoleControlPlane.from_runtime_services(args.runtime_services)
+    app = TerminalControlPlaneApp(control_plane, refresh_interval=args.refresh_interval)
+    return app.run()
 
 
 def _handle_init_db(
@@ -197,6 +286,7 @@ def _handle_create_project(
         name=args.name,
         description=args.description,
         status=args.status,
+        dispatch_profile=_load_dispatch_profile_arg(args.dispatch_profile),
     )
     project_service.create_project(project)
     print(f"Created project {project.project_id}")
@@ -241,6 +331,7 @@ def _handle_create_task(
         owner=args.owner,
         assigned_agent=args.assigned_agent,
         parent_task_id=args.parent_task_id,
+        dispatch_profile=_load_dispatch_profile_arg(args.dispatch_profile),
     )
     task_service.create_task(task)
     print(f"Created task {task.task_id}")
@@ -338,7 +429,20 @@ def _handle_dispatch_task(
         f"Dispatched task {dispatch.task.task_id} -> "
         f"{dispatch.task.status.value} ({dispatch.result.status})"
     )
+    if dispatch.result.routing is not None:
+        print(
+            "Routing "
+            f"provider={dispatch.result.routing.provider_name} "
+            f"model={dispatch.result.routing.model or '<default>'} "
+            f"sources={to_record(dispatch.result.routing.sources)}"
+        )
     return 0
+
+
+def _load_dispatch_profile_arg(raw_value: str | None):
+    if raw_value is None:
+        return None
+    return dispatch_profile_from_dict(json.loads(raw_value))
 
 
 def _handle_create_claim(
@@ -376,6 +480,74 @@ def _handle_list_claims(
 ) -> int:
     for claim in claim_service.list_claims():
         print(f"{claim.claim_id}\t{claim.claim_type}\t{claim.risk_level}")
+    return 0
+
+
+def _handle_create_lesson(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    lesson = LessonRecord(
+        lesson_id=args.lesson_id,
+        lesson_kind=LessonKind(args.lesson_kind),
+        title=args.title,
+        summary=args.summary,
+        rationale=args.rationale,
+        recommended_action=args.recommended_action,
+        task_kind=args.task_kind,
+        agent_name=args.agent_name,
+        tool_name=args.tool_name,
+        provider_name=args.provider_name,
+        model_name=args.model_name,
+        failure_type=args.failure_type,
+        repository_ref=args.repository_ref,
+        dataset_ref=args.dataset_ref,
+        context_tags=args.context_tags,
+        evidence_refs=args.evidence_refs,
+        artifact_ids=args.artifact_ids,
+        source_task_id=args.source_task_id,
+        source_run_id=args.source_run_id,
+        source_claim_id=args.source_claim_id,
+    )
+    args.runtime_services.lessons_service.record_lesson(lesson)
+    print(f"Created lesson {lesson.lesson_id}")
+    return 0
+
+
+def _handle_list_lessons(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    lessons = args.runtime_services.lessons_service.list_lessons(
+        task_kind=args.task_kind,
+        agent_name=args.agent_name,
+        tool_name=args.tool_name,
+        provider_name=args.provider_name,
+        model_name=args.model_name,
+        failure_type=args.failure_type,
+        repository_ref=args.repository_ref,
+        dataset_ref=args.dataset_ref,
+        lesson_kind=LessonKind(args.lesson_kind) if args.lesson_kind else None,
+    )
+    for lesson in lessons:
+        print(
+            f"{lesson.lesson_id}\t{lesson.lesson_kind.value}\t"
+            f"{lesson.task_kind or '-'}\t{lesson.agent_name or '-'}\t{lesson.title}"
+        )
     return 0
 
 
@@ -417,6 +589,127 @@ def _handle_list_runs(
 ) -> int:
     for run in run_service.list_runs():
         print(f"{run.run_id}\t{run.spec_id}\t{run.status}")
+    return 0
+
+
+def _handle_verify_run(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    record = args.runtime_services.verification_service.verify_run_manifest(args.run_id)
+    print(f"{record.subject_type}:{record.subject_id}\t{record.check_type.value}\t{record.status.value}")
+    if record.missing_fields:
+        print(f"missing={','.join(record.missing_fields)}")
+    print(record.rationale)
+    return 0
+
+
+def _handle_verify_claim(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    record = args.runtime_services.verification_service.verify_claim_evidence(args.claim_id)
+    print(f"{record.subject_type}:{record.subject_id}\t{record.check_type.value}\t{record.status.value}")
+    if record.missing_fields:
+        print(f"missing={','.join(record.missing_fields)}")
+    print(record.rationale)
+    return 0
+
+
+def _handle_verify_results_freeze(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    record = args.runtime_services.verification_service.verify_results_freeze()
+    print(f"{record.subject_type}:{record.subject_id}\t{record.check_type.value}\t{record.status.value}")
+    if record.missing_fields:
+        print(f"missing={','.join(record.missing_fields)}")
+    print(record.rationale)
+    return 0
+
+
+def _handle_list_verifications(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    records = args.runtime_services.verification_service.list_checks(
+        subject_type=args.subject_type,
+        subject_id=args.subject_id,
+        check_type=args.check_type,
+        status=args.status,
+    )
+    for record in records:
+        print(
+            f"{record.verification_id}\t{record.subject_type}\t{record.subject_id}\t"
+            f"{record.check_type.value}\t{record.status.value}"
+        )
+    return 0
+
+
+def _handle_audit_claims(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    report = args.runtime_services.audit_service.build_claim_alignment_report()
+    print(f"{report.report_type}\t{report.status}")
+    for entry in report.entries:
+        print(f"{entry.category}\t{entry.status}\t{entry.subject_id}\t{entry.rationale}")
+    return 0
+
+
+def _handle_audit_run(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    report = args.runtime_services.audit_service.build_run_verification_report(
+        args.run_id,
+        args.runtime_services.verification_service,
+    )
+    print(f"{report.report_type}\t{report.status}")
+    for entry in report.entries:
+        print(f"{entry.category}\t{entry.status}\t{entry.subject_id}\t{entry.rationale}")
     return 0
 
 

@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Literal
+
+from app.routing.models import ResolvedDispatch
 from app.schemas.task import Task
 
 AgentResultStatus = Literal["success",
@@ -14,3 +16,4 @@ class AgentResult:
     artifacts: list[str] = field(default_factory=list)
     next_tasks: list[Task] = field(default_factory=list)
     audit_notes: list[str] = field(default_factory=list)
+    routing: ResolvedDispatch | None = None

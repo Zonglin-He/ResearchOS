@@ -1,5 +1,5 @@
 {
-  "ran_at": "2026-03-20T02:08:04.381435+00:00",
+  "ran_at": "2026-03-20T03:20:38.166814+00:00",
   "results": [
     {
       "provider": "codex",
@@ -10,15 +10,15 @@
         "--skip-git-repo-check",
         "--ephemeral",
         "-C",
-        "C:\\Users\\25011\\AppData\\Local\\Temp\\researchos-provider-smoke-jrqnvt0m",
+        "C:\\Users\\25011\\AppData\\Local\\Temp\\researchos-provider-smoke-jrjns0g0",
         "--model",
         "gpt-5.4"
       ],
       "returncode": 0,
       "ok": true,
       "stdout": "pong",
-      "stderr": "2026-03-20T02:07:24.792086Z ERROR codex_core::models_manager::manager: failed to refresh available models: timeout waiting for child process to exit\n2026-03-20T02:07:24.792642Z  WARN codex_protocol::openai_models: Model personality requested but model_messages is missing, falling back to base instructions. model=gpt-5.4 personality=pragmatic\n2026-03-20T02:07:24.805856Z  WARN codex_core::shell_snapshot: Failed to create shell snapshot for powershell: Shell snapshot not supported yet for PowerShell\nOpenAI Codex v0.111.0 (research preview)\n--------\nworkdir: C:\\Users\\25011\\AppData\\Local\\Temp\\researchos-provider-smoke-jrqnvt0m\nmodel: gpt-5.4\nprovider: openai\napproval: never\nsandbox: read-only\nreasoning effort: high\nreasoning summaries: none\nsession id: 019d08ff-5678-74e2-b8c8-9720e8b9f2a2\n--------\nuser\nReturn exactly the text pong and nothing else.\nmcp startup: no servers\n2026-03-20T02:07:33.749244Z  WARN codex_protocol::openai_models: Model personality requested but model_messages is missing, falling back to base instructions. model=gpt-5.4 personality=pragmatic\ncodex\npong\ntokens used\n6,817",
-      "started_at": "2026-03-20T02:07:19.534330+00:00"
+      "stderr": "2026-03-20T03:19:56.971102Z  WARN codex_core::shell_snapshot: Failed to create shell snapshot for powershell: Shell snapshot not supported yet for PowerShell\nOpenAI Codex v0.111.0 (research preview)\n--------\nworkdir: C:\\Users\\25011\\AppData\\Local\\Temp\\researchos-provider-smoke-jrjns0g0\nmodel: gpt-5.4\nprovider: openai\napproval: never\nsandbox: read-only\nreasoning effort: high\nreasoning summaries: none\nsession id: 019d0941-bf24-7f72-807e-3b7c9763ff53\n--------\nuser\nReturn exactly the text pong and nothing else.\nmcp startup: no servers\ncodex\npong\ntokens used\n1,336",
+      "started_at": "2026-03-20T03:19:56.711532+00:00"
     },
     {
       "provider": "claude",
@@ -36,7 +36,7 @@
       "ok": true,
       "stdout": "pong",
       "stderr": "",
-      "started_at": "2026-03-20T02:07:37.892513+00:00"
+      "started_at": "2026-03-20T03:20:04.432528+00:00"
     },
     {
       "provider": "gemini",
@@ -53,7 +53,7 @@
       "ok": true,
       "stdout": "pong",
       "stderr": "Loaded cached credentials.",
-      "started_at": "2026-03-20T02:07:43.237406+00:00"
+      "started_at": "2026-03-20T03:20:10.233745+00:00"
     }
   ]
 }

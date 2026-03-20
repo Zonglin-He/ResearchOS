@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from app.db.models import ProjectModel
+from app.routing import dispatch_profile_from_dict
 from app.schemas.project import Project
+from app.services.registry_store import to_record
 
 
 class SAProjectRepository:
@@ -14,6 +16,7 @@ class SAProjectRepository:
             name=project.name,
             description=project.description,
             status=project.status,
+            dispatch_profile=to_record(project.dispatch_profile),
             created_at=project.created_at,
         )
         with self.session_factory() as session:
@@ -31,6 +34,7 @@ class SAProjectRepository:
                 name=model.name,
                 description=model.description,
                 status=model.status,
+                dispatch_profile=dispatch_profile_from_dict(model.dispatch_profile),
                 created_at=model.created_at,
             )
 
@@ -43,6 +47,7 @@ class SAProjectRepository:
                 name=model.name,
                 description=model.description,
                 status=model.status,
+                dispatch_profile=dispatch_profile_from_dict(model.dispatch_profile),
                 created_at=model.created_at,
             )
             for model in models

@@ -12,6 +12,7 @@ dependencies = [
     "pypdf>=6.9.1",
     "pyyaml>=6.0.3",
     "redis>=7.3.0",
+    "rich>=14.3.0",
     "sqlalchemy>=2.0.48",
     "uvicorn>=0.42.0",
 ]

@@ -45,4 +45,10 @@ class TaskService:
     def cancel_task(self, task_id: str) -> Task:
         return self.update_status(task_id, TaskStatus.CANCELLED)
 
+    def attach_experiment_proposal(self, task_id: str, proposal_id: str) -> Task:
+        task = self.repository.get_by_id(task_id)
+        if task is None:
+            raise KeyError(f"Task not found: {task_id}")
+        task.experiment_proposal_id = proposal_id
+        return self.repository.update(task)
 

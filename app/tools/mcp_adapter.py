@@ -123,7 +123,7 @@ class MCPAdapterTool(BaseTool):
             **(kwargs.get("headers") or {}),
         }
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
             session_id = await self._initialize_http_session(client, kwargs["url"], request_headers)
             if session_id:
                 request_headers[MCP_SESSION_ID_HEADER] = session_id

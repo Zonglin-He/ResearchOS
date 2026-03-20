@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from app.db.models import TaskModel
+from app.routing import dispatch_profile_from_dict, resolved_dispatch_from_dict
 from app.schemas.task import Task, TaskStatus
+from app.services.registry_store import to_record
 
 
 class SATaskRepository:
@@ -51,6 +53,9 @@ class SATaskRepository:
             assigned_agent=task.assigned_agent,
             status=task.status.value,
             parent_task_id=task.parent_task_id,
+            experiment_proposal_id=task.experiment_proposal_id,
+            dispatch_profile=to_record(task.dispatch_profile),
+            last_run_routing=to_record(task.last_run_routing),
             created_at=task.created_at,
         )
 
@@ -66,5 +71,8 @@ class SATaskRepository:
             assigned_agent=model.assigned_agent,
             status=TaskStatus(model.status),
             parent_task_id=model.parent_task_id,
+            experiment_proposal_id=model.experiment_proposal_id,
+            dispatch_profile=dispatch_profile_from_dict(model.dispatch_profile),
+            last_run_routing=resolved_dispatch_from_dict(model.last_run_routing),
             created_at=model.created_at,
         )

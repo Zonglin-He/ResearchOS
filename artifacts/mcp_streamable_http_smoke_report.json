@@ -1,0 +1,52 @@
+{
+  "ran_at": "2026-03-20T03:24:22.913178+00:00",
+  "tools": [
+    {
+      "name": "add",
+      "description": "",
+      "inputSchema": {
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "integer"
+          },
+          "b": {
+            "title": "B",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "a",
+          "b"
+        ],
+        "title": "addArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "result": {
+            "title": "Result",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "title": "addOutput",
+        "type": "object"
+      }
+    }
+  ],
+  "call_tool": {
+    "content": [
+      {
+        "type": "text",
+        "text": "15"
+      }
+    ],
+    "structuredContent": {
+      "result": 15
+    },
+    "isError": false
+  }
+}

@@ -27,6 +27,23 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
         return [json.loads(line) for line in file if line.strip()]
 
 
+def upsert_jsonl(path: Path, key_name: str, record: dict[str, Any]) -> None:
+    ensure_parent(path)
+    rows = read_jsonl(path)
+    key_value = record[key_name]
+    updated = False
+    for index, row in enumerate(rows):
+        if row.get(key_name) == key_value:
+            rows[index] = record
+            updated = True
+            break
+    if not updated:
+        rows.append(record)
+    with path.open("w", encoding="utf-8") as file:
+        for row in rows:
+            file.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 def write_yaml(path: Path, record: dict[str, Any]) -> None:
     ensure_parent(path)
     with path.open("w", encoding="utf-8") as file:

@@ -29,12 +29,16 @@ class BuilderAgent(PromptDrivenAgent):
         run_service: RunService | None = None,
         model: str | None = None,
         tool_registry=None,
+        provider_registry=None,
+        routing_policy=None,
     ) -> None:
         super().__init__(
             provider,
             model=model,
             response_schema=BUILDER_RESPONSE_SCHEMA,
             tool_registry=tool_registry,
+            provider_registry=provider_registry,
+            routing_policy=routing_policy,
         )
         self.artifact_service = artifact_service
         self.claim_service = claim_service
@@ -62,9 +66,12 @@ class BuilderAgent(PromptDrivenAgent):
             dataset_snapshot=run_payload["dataset_snapshot"],
             seed=run_payload["seed"],
             gpu=run_payload["gpu"],
+            experiment_proposal_id=task.experiment_proposal_id,
+            experiment_branch=run_payload.get("experiment_branch") or task.input_payload.get("branch_name"),
             status=run_payload.get("status", "completed"),
             metrics=run_payload.get("metrics", {}),
             artifacts=run_payload.get("artifacts", []),
+            dispatch_routing=ctx.routing,
         )
         if self.run_service is not None:
             self.run_service.register_run(manifest)

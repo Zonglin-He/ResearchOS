@@ -15,6 +15,7 @@ class ProjectModel(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
+    dispatch_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -43,6 +44,9 @@ class TaskModel(Base):
     assigned_agent: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False)
     parent_task_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    experiment_proposal_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    dispatch_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_run_routing: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

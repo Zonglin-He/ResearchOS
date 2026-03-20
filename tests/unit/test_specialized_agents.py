@@ -123,12 +123,15 @@ def test_builder_agent_registers_run_claims_and_review_task(tmp_path: Path) -> N
         goal="Build the experiment",
         input_payload={"spec_id": "spec-1"},
         owner="gabriel",
+        experiment_proposal_id="proposal-1",
     )
     ctx = RunContext(run_id="run-builder", project_id="proj", task_id="t-builder")
 
     result = asyncio.run(agent.run(task, ctx))
 
-    assert runs.get_run("run-builder") is not None
+    persisted_run = runs.get_run("run-builder")
+    assert persisted_run is not None
+    assert persisted_run.experiment_proposal_id == "proposal-1"
     assert claims.get_claim("claim-1") is not None
     assert artifacts.list_artifacts()[0].artifact_id == "model-ckpt"
     assert result.next_tasks[0].kind == "review_build"

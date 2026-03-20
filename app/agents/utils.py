@@ -29,6 +29,7 @@ def build_child_task(
         owner=parent_task.owner,
         assigned_agent=assigned_agent,
         parent_task_id=parent_task.task_id,
+        dispatch_profile=parent_task.dispatch_profile,
     )
 
 

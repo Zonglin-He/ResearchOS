@@ -32,4 +32,7 @@ def test_runtime_bootstrap_uses_sqlite_when_database_url_is_empty(tmp_path: Path
     assert services.project_service.get_project("p1") is not None
     assert services.task_service.get_task("t1") is not None
     assert services.tool_registry.get("filesystem").name == "filesystem"
+    assert services.experiment_manager is not None
+    assert services.lessons_service is not None
+    assert services.verification_service is not None
     assert services.orchestrator is not None

@@ -26,12 +26,16 @@ class ReaderAgent(PromptDrivenAgent):
         artifact_service: ArtifactService | None = None,
         model: str | None = None,
         tool_registry=None,
+        provider_registry=None,
+        routing_policy=None,
     ) -> None:
         super().__init__(
             provider,
             model=model,
             response_schema=READER_RESPONSE_SCHEMA,
             tool_registry=tool_registry,
+            provider_registry=provider_registry,
+            routing_policy=routing_policy,
         )
         self.paper_card_service = paper_card_service
         self.artifact_service = artifact_service

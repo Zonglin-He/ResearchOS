@@ -5,7 +5,9 @@ from datetime import datetime
 
 from app.db.repositories.task_repository import TaskRepository
 from app.db.sqlite import SQLiteDatabase
+from app.routing import dispatch_profile_from_dict, resolved_dispatch_from_dict
 from app.schemas.task import Task, TaskStatus
+from app.services.registry_store import to_record
 
 
 class SQLiteTaskRepository(TaskRepository):
@@ -26,8 +28,11 @@ class SQLiteTaskRepository(TaskRepository):
                     assigned_agent,
                     status,
                     parent_task_id,
+                    experiment_proposal_id,
+                    dispatch_profile_json,
+                    last_run_routing_json,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     task.task_id,
@@ -39,6 +44,13 @@ class SQLiteTaskRepository(TaskRepository):
                     task.assigned_agent,
                     task.status.value,
                     task.parent_task_id,
+                    task.experiment_proposal_id,
+                    json.dumps(to_record(task.dispatch_profile))
+                    if task.dispatch_profile is not None
+                    else None,
+                    json.dumps(to_record(task.last_run_routing))
+                    if task.last_run_routing is not None
+                    else None,
                     task.created_at.isoformat(),
                 ),
             )
@@ -57,6 +69,9 @@ class SQLiteTaskRepository(TaskRepository):
                     assigned_agent = ?,
                     status = ?,
                     parent_task_id = ?,
+                    experiment_proposal_id = ?,
+                    dispatch_profile_json = ?,
+                    last_run_routing_json = ?,
                     created_at = ?
                 WHERE task_id = ?
                 """,
@@ -69,6 +84,13 @@ class SQLiteTaskRepository(TaskRepository):
                     task.assigned_agent,
                     task.status.value,
                     task.parent_task_id,
+                    task.experiment_proposal_id,
+                    json.dumps(to_record(task.dispatch_profile))
+                    if task.dispatch_profile is not None
+                    else None,
+                    json.dumps(to_record(task.last_run_routing))
+                    if task.last_run_routing is not None
+                    else None,
                     task.created_at.isoformat(),
                     task.task_id,
                 ),
@@ -108,5 +130,16 @@ class SQLiteTaskRepository(TaskRepository):
             assigned_agent=row["assigned_agent"],
             status=TaskStatus(row["status"]),
             parent_task_id=row["parent_task_id"],
+            experiment_proposal_id=row["experiment_proposal_id"],
+            dispatch_profile=dispatch_profile_from_dict(
+                json.loads(row["dispatch_profile_json"])
+                if row["dispatch_profile_json"]
+                else None
+            ),
+            last_run_routing=resolved_dispatch_from_dict(
+                json.loads(row["last_run_routing_json"])
+                if row["last_run_routing_json"]
+                else None
+            ),
             created_at=datetime.fromisoformat(row["created_at"]),
         )

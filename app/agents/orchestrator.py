@@ -3,10 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.agents.base import BaseAgent
+from app.routing.models import ResolvedDispatch
+from app.routing.resolver import RoutingResolver
 from app.schemas.context import RunContext
 from app.schemas.result import AgentResult
 from app.schemas.task import Task, TaskStatus
+from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
+from app.services.lessons_service import LessonsService
 
 
 @dataclass
@@ -16,8 +20,17 @@ class OrchestratorDispatch:
 
 
 class Orchestrator:
-    def __init__(self, task_service: TaskService) -> None:
+    def __init__(
+        self,
+        task_service: TaskService,
+        project_service: ProjectService | None = None,
+        routing_resolver: RoutingResolver | None = None,
+        lessons_service: LessonsService | None = None,
+    ) -> None:
         self.task_service = task_service
+        self.project_service = project_service
+        self.routing_resolver = routing_resolver
+        self.lessons_service = lessons_service
         self._agents: dict[str, BaseAgent] = {}
         self._kind_to_agent: dict[str, str] = {}
 
@@ -39,17 +52,31 @@ class Orchestrator:
         if agent is None:
             raise KeyError(f"Agent not found: {agent_name}")
 
+        routing = self._resolve_routing(task, agent)
         if task.status != TaskStatus.RUNNING:
             task = self.task_service.update_status(task.task_id, TaskStatus.RUNNING)
         task.assigned_agent = agent_name
+        task.last_run_routing = routing
         task = self.task_service.repository.update(task)
 
         context = RunContext(
             run_id=f"run-{task.task_id}",
             project_id=task.project_id,
             task_id=task.task_id,
+            max_steps=routing.max_steps if routing is not None and routing.max_steps is not None else 12,
+            routing=routing,
+            prior_lessons=self._resolve_prior_lessons(task, agent_name, routing),
         )
         result = await agent.run(task, context)
+        if routing is not None:
+            result.routing = routing
+            result.audit_notes.append(self._routing_audit_note(routing))
+        if self.lessons_service is not None:
+            self.lessons_service.capture_agent_outcome(
+                task=task,
+                agent_name=agent_name,
+                result=result,
+            )
 
         for next_task in result.next_tasks:
             self.task_service.create_task(next_task)
@@ -58,6 +85,45 @@ class Orchestrator:
         if final_status is not None:
             task = self.task_service.update_status(task.task_id, final_status)
         return OrchestratorDispatch(task=task, result=result)
+
+    def _resolve_routing(self, task: Task, agent: BaseAgent) -> ResolvedDispatch | None:
+        if self.routing_resolver is None:
+            return task.last_run_routing
+        project = None
+        if self.project_service is not None:
+            project = self.project_service.get_project(task.project_id)
+        return self.routing_resolver.resolve(
+            task=task,
+            project=project,
+            agent_policy=getattr(agent, "routing_policy", None),
+        )
+
+    def _resolve_prior_lessons(
+        self,
+        task: Task,
+        agent_name: str,
+        routing: ResolvedDispatch | None,
+    ):
+        if self.lessons_service is None:
+            return []
+        return self.lessons_service.get_relevant_lessons(
+            task_kind=task.kind,
+            agent_name=agent_name,
+            provider_name=routing.provider_name if routing is not None else None,
+            model_name=routing.model if routing is not None else None,
+            repository_ref=task.input_payload.get("repository"),
+            dataset_ref=task.input_payload.get("dataset_snapshot")
+            or task.input_payload.get("dataset"),
+        )
+
+    @staticmethod
+    def _routing_audit_note(routing: ResolvedDispatch) -> str:
+        return (
+            "dispatch routing resolved "
+            f"provider={routing.provider_name} "
+            f"model={routing.model or '<default>'} "
+            f"sources={routing.sources}"
+        )
 
     @staticmethod
     def _result_to_status(result_status: str) -> TaskStatus | None:

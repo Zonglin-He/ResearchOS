@@ -1034,6 +1034,7 @@ dependencies = [
     { name = "pypdf" },
     { name = "pyyaml" },
     { name = "redis" },
+    { name = "rich" },
     { name = "sqlalchemy" },
     { name = "uvicorn" },
 ]
@@ -1054,6 +1055,7 @@ requires-dist = [
     { name = "pypdf", specifier = ">=6.9.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "redis", specifier = ">=7.3.0" },
+    { name = "rich", specifier = ">=14.3.0" },
     { name = "sqlalchemy", specifier = ">=2.0.48" },
     { name = "uvicorn", specifier = ">=0.42.0" },
 ]

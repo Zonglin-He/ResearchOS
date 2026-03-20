@@ -1,5 +1,5 @@
 {
-  "ran_at": "2026-03-20T02:28:59.188754+00:00",
+  "ran_at": "2026-03-20T03:26:09.546457+00:00",
   "checks": [
     {
       "name": "postgres",
@@ -19,12 +19,12 @@
     {
       "name": "api_create_project",
       "ok": true,
-      "detail": "{\"project_id\": \"stack-project\", \"name\": \"Stack Smoke\", \"description\": \"production stack smoke test\", \"status\": \"active\", \"created_at\": \"2026-03-20T02:28:59.740567Z\"}"
+      "detail": "{\"project_id\": \"stack-project\", \"name\": \"Stack Smoke\", \"description\": \"production stack smoke test\", \"status\": \"active\", \"created_at\": \"2026-03-20T03:26:09.864719Z\"}"
     },
     {
       "name": "api_create_task",
       "ok": true,
-      "detail": "{\"task_id\": \"stack-task\", \"project_id\": \"stack-project\", \"kind\": \"paper_ingest\", \"goal\": \"Smoke the Celery task path\", \"input_payload\": {\"topic\": \"smoke\"}, \"owner\": \"system\", \"assigned_agent\": null, \"parent_task_id\": null, \"status\": \"queued\", \"created_at\": \"2026-03-20T02:28:59.823212Z\"}"
+      "detail": "{\"task_id\": \"stack-task\", \"project_id\": \"stack-project\", \"kind\": \"paper_ingest\", \"goal\": \"Smoke the Celery task path\", \"input_payload\": {\"topic\": \"smoke\"}, \"owner\": \"system\", \"assigned_agent\": null, \"parent_task_id\": null, \"status\": \"queued\", \"created_at\": \"2026-03-20T03:26:09.928516Z\"}"
     },
     {
       "name": "celery_ping",

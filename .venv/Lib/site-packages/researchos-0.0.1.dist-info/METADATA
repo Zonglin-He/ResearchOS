@@ -11,5 +11,6 @@ Requires-Dist: psycopg[binary]>=3.3.3
 Requires-Dist: pypdf>=6.9.1
 Requires-Dist: pyyaml>=6.0.3
 Requires-Dist: redis>=7.3.0
+Requires-Dist: rich>=14.3.0
 Requires-Dist: sqlalchemy>=2.0.48
 Requires-Dist: uvicorn>=0.42.0
