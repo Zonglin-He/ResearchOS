@@ -26,14 +26,11 @@ from app.providers.gemini_provider import GeminiProvider
 from app.providers.health import ProviderHealthService
 from app.providers.local_provider import LocalProvider
 from app.providers.registry import ProviderRegistry
+from app.roles import WorkflowRole, role_routing_policy_for_role
 from app.routing.models import (
     AgentRoutingPolicy,
-    CapabilityClass,
     DispatchProfile,
-    FallbackChain,
-    InvocationBudgetPolicy,
     ModelProfile,
-    ProviderFamily,
     ProviderSpec,
     RoleRoutingPolicy,
 )
@@ -153,144 +150,7 @@ def build_agent_routing_policy(
 
 
 def build_role_routing_policy(role_name: str) -> RoleRoutingPolicy:
-    reasoning_models = {
-        ProviderFamily.CLAUDE.value: ["sonnet"],
-        ProviderFamily.CODEX.value: ["gpt-5.4"],
-        ProviderFamily.GEMINI.value: ["gemini-pro"],
-        ProviderFamily.LOCAL.value: ["deterministic-reader"],
-    }
-    retrieval_models = {
-        ProviderFamily.GEMINI.value: ["gemini-auto", "gemini-pro"],
-        ProviderFamily.CLAUDE.value: ["sonnet"],
-        ProviderFamily.CODEX.value: ["gpt-5.4"],
-        ProviderFamily.LOCAL.value: ["deterministic-reader"],
-    }
-    coding_models = {
-        ProviderFamily.CODEX.value: ["gpt-5.3-codex", "gpt-5.4"],
-        ProviderFamily.CLAUDE.value: ["sonnet"],
-        ProviderFamily.LOCAL.value: ["deterministic-reader"],
-    }
-    archival_models = {
-        ProviderFamily.GEMINI.value: ["gemini-flash", "gemini-auto"],
-        ProviderFamily.LOCAL.value: ["deterministic-reader"],
-        ProviderFamily.CLAUDE.value: ["sonnet"],
-        ProviderFamily.CODEX.value: ["gpt-5.4"],
-    }
-    if role_name in {"scoper", "hypothesist", "analyst", "reviewer", "verifier", "publisher"}:
-        return RoleRoutingPolicy(
-            role_name=role_name,
-            capability_class=CapabilityClass.PLANNING.value
-            if role_name in {"scoper", "hypothesist"}
-            else CapabilityClass.REVIEW.value
-            if role_name == "reviewer"
-            else CapabilityClass.VERIFICATION.value
-            if role_name == "verifier"
-            else CapabilityClass.PUBLISHING.value
-            if role_name == "publisher"
-            else CapabilityClass.SYNTHESIS.value,
-            family_priority=[
-                ProviderFamily.CLAUDE.value,
-                ProviderFamily.CODEX.value,
-                ProviderFamily.GEMINI.value,
-                ProviderFamily.LOCAL.value,
-            ],
-            family_model_priority=reasoning_models,
-            fallback_chain=FallbackChain(
-                families=[
-                    ProviderFamily.CLAUDE.value,
-                    ProviderFamily.CODEX.value,
-                    ProviderFamily.GEMINI.value,
-                    ProviderFamily.LOCAL.value,
-                ]
-            ),
-            invocation_budget_policy=InvocationBudgetPolicy(
-                prefer_low_cost=True,
-                allow_expensive_upgrade=False,
-                max_attempts_per_invocation=4,
-            ),
-        )
-    if role_name == "librarian":
-        return RoleRoutingPolicy(
-            role_name=role_name,
-            capability_class=CapabilityClass.RETRIEVAL.value,
-            family_priority=[
-                ProviderFamily.GEMINI.value,
-                ProviderFamily.CLAUDE.value,
-                ProviderFamily.CODEX.value,
-                ProviderFamily.LOCAL.value,
-            ],
-            family_model_priority=retrieval_models,
-            fallback_chain=FallbackChain(
-                families=[
-                    ProviderFamily.GEMINI.value,
-                    ProviderFamily.CLAUDE.value,
-                    ProviderFamily.CODEX.value,
-                    ProviderFamily.LOCAL.value,
-                ]
-            ),
-        )
-    if role_name == "synthesizer":
-        return RoleRoutingPolicy(
-            role_name=role_name,
-            capability_class=CapabilityClass.SYNTHESIS.value,
-            family_priority=[
-                ProviderFamily.GEMINI.value,
-                ProviderFamily.CLAUDE.value,
-                ProviderFamily.CODEX.value,
-                ProviderFamily.LOCAL.value,
-            ],
-            family_model_priority={
-                ProviderFamily.GEMINI.value: ["gemini-pro"],
-                ProviderFamily.CLAUDE.value: ["sonnet"],
-                ProviderFamily.CODEX.value: ["gpt-5.4"],
-                ProviderFamily.LOCAL.value: ["deterministic-reader"],
-            },
-            fallback_chain=FallbackChain(
-                families=[
-                    ProviderFamily.GEMINI.value,
-                    ProviderFamily.CLAUDE.value,
-                    ProviderFamily.CODEX.value,
-                    ProviderFamily.LOCAL.value,
-                ]
-            ),
-        )
-    if role_name == "archivist":
-        return RoleRoutingPolicy(
-            role_name=role_name,
-            capability_class=CapabilityClass.ARCHIVAL.value,
-            family_priority=[
-                ProviderFamily.GEMINI.value,
-                ProviderFamily.LOCAL.value,
-                ProviderFamily.CLAUDE.value,
-                ProviderFamily.CODEX.value,
-            ],
-            family_model_priority=archival_models,
-            fallback_chain=FallbackChain(
-                families=[
-                    ProviderFamily.GEMINI.value,
-                    ProviderFamily.LOCAL.value,
-                    ProviderFamily.CLAUDE.value,
-                    ProviderFamily.CODEX.value,
-                ]
-            ),
-        )
-    return RoleRoutingPolicy(
-        role_name=role_name,
-        capability_class=CapabilityClass.EXECUTION.value,
-        family_priority=[
-            ProviderFamily.CODEX.value,
-            ProviderFamily.CLAUDE.value,
-            ProviderFamily.LOCAL.value,
-        ],
-        family_model_priority=coding_models,
-        fallback_chain=FallbackChain(
-            families=[
-                ProviderFamily.CODEX.value,
-                ProviderFamily.CLAUDE.value,
-                ProviderFamily.LOCAL.value,
-            ]
-        ),
-    )
+    return role_routing_policy_for_role(WorkflowRole(role_name))
 
 
 def build_fallback_provider(config: AppConfig) -> ProviderSpec:

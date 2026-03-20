@@ -30,6 +30,19 @@ ResearchOS manages a research workflow around explicit objects:
 
 ResearchOS now uses a typed workflow-role layer on top of the existing specialized agents.
 
+The role layer is not just a label. Each workflow role now has an inspectable contract in
+[`app/roles/catalog.py`](app/roles/catalog.py) and [`app/roles/models.py`](app/roles/models.py)
+covering:
+
+- mission
+- required inputs
+- required outputs
+- allowed / forbidden tools
+- success criteria
+- review checklist
+- default capability class
+- default and fallback provider-family preferences
+
 Workflow roles:
 
 - Scoper

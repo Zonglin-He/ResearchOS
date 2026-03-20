@@ -1,84 +1,460 @@
 from __future__ import annotations
 
-from app.roles.models import AgentRoleBinding, RoleArtifactContract, WorkflowRole
+from app.roles.models import (
+    AgentRoleBinding,
+    RoleArtifactContract,
+    RoleProviderPreference,
+    RoleRegistry,
+    RoleSpec,
+    WorkflowRole,
+)
+from app.routing.models import (
+    CapabilityClass,
+    FallbackChain,
+    InvocationBudgetPolicy,
+    ProviderFamily,
+    RoleRoutingPolicy,
+)
 
 
+def _artifact_contract(role: WorkflowRole, artifact_type: str, description: str) -> RoleArtifactContract:
+    return RoleArtifactContract(
+        role_name=role.value,
+        artifact_type=artifact_type,
+        description=description,
+    )
+
+
+_REASONING_DEFAULT = RoleProviderPreference(
+    family_priority=(
+        ProviderFamily.CLAUDE.value,
+        ProviderFamily.CODEX.value,
+        ProviderFamily.GEMINI.value,
+        ProviderFamily.LOCAL.value,
+    ),
+    model_priority={
+        ProviderFamily.CLAUDE.value: ("sonnet",),
+        ProviderFamily.CODEX.value: ("gpt-5.4",),
+        ProviderFamily.GEMINI.value: ("gemini-pro",),
+        ProviderFamily.LOCAL.value: ("deterministic-reader",),
+    },
+)
+_REASONING_FALLBACK = RoleProviderPreference(
+    family_priority=(
+        ProviderFamily.CODEX.value,
+        ProviderFamily.GEMINI.value,
+        ProviderFamily.LOCAL.value,
+    ),
+    model_priority={
+        ProviderFamily.CODEX.value: ("gpt-5.4",),
+        ProviderFamily.GEMINI.value: ("gemini-pro",),
+        ProviderFamily.LOCAL.value: ("deterministic-reader",),
+    },
+)
+_RETRIEVAL_DEFAULT = RoleProviderPreference(
+    family_priority=(
+        ProviderFamily.GEMINI.value,
+        ProviderFamily.CLAUDE.value,
+        ProviderFamily.CODEX.value,
+        ProviderFamily.LOCAL.value,
+    ),
+    model_priority={
+        ProviderFamily.GEMINI.value: ("gemini-auto", "gemini-pro"),
+        ProviderFamily.CLAUDE.value: ("sonnet",),
+        ProviderFamily.CODEX.value: ("gpt-5.4",),
+        ProviderFamily.LOCAL.value: ("deterministic-reader",),
+    },
+)
+_SYNTHESIS_DEFAULT = RoleProviderPreference(
+    family_priority=(
+        ProviderFamily.GEMINI.value,
+        ProviderFamily.CLAUDE.value,
+        ProviderFamily.CODEX.value,
+        ProviderFamily.LOCAL.value,
+    ),
+    model_priority={
+        ProviderFamily.GEMINI.value: ("gemini-pro",),
+        ProviderFamily.CLAUDE.value: ("sonnet",),
+        ProviderFamily.CODEX.value: ("gpt-5.4",),
+        ProviderFamily.LOCAL.value: ("deterministic-reader",),
+    },
+)
+_EXECUTION_DEFAULT = RoleProviderPreference(
+    family_priority=(
+        ProviderFamily.CODEX.value,
+        ProviderFamily.CLAUDE.value,
+        ProviderFamily.LOCAL.value,
+    ),
+    model_priority={
+        ProviderFamily.CODEX.value: ("gpt-5.3-codex", "gpt-5.4"),
+        ProviderFamily.CLAUDE.value: ("sonnet",),
+        ProviderFamily.LOCAL.value: ("deterministic-reader",),
+    },
+)
+_ARCHIVAL_DEFAULT = RoleProviderPreference(
+    family_priority=(
+        ProviderFamily.GEMINI.value,
+        ProviderFamily.LOCAL.value,
+        ProviderFamily.CLAUDE.value,
+        ProviderFamily.CODEX.value,
+    ),
+    model_priority={
+        ProviderFamily.GEMINI.value: ("gemini-flash", "gemini-auto"),
+        ProviderFamily.LOCAL.value: ("deterministic-reader",),
+        ProviderFamily.CLAUDE.value: ("sonnet",),
+        ProviderFamily.CODEX.value: ("gpt-5.4",),
+    },
+)
+
+
+ROLE_SPECS: tuple[RoleSpec, ...] = (
+    RoleSpec(
+        role_id=WorkflowRole.SCOPER,
+        mission="Define the research problem, sharpen scope, and decompose work into tractable questions.",
+        required_inputs=("topic", "current_constraints", "source_context"),
+        required_outputs=("research_question_tree", "scoping_notes"),
+        allowed_tools=("filesystem", "paper_search", "pdf_parse"),
+        forbidden_tools=("experiment_runner",),
+        success_criteria=(
+            "Research question is explicit and bounded.",
+            "Subtasks are independently actionable.",
+        ),
+        review_checklist=(
+            "State assumptions explicitly.",
+            "Do not overclaim beyond provided evidence.",
+        ),
+        default_capability_class=CapabilityClass.PLANNING,
+        default_provider_preference=_REASONING_DEFAULT,
+        fallback_provider_preference=_REASONING_FALLBACK,
+    ),
+    RoleSpec(
+        role_id=WorkflowRole.LIBRARIAN,
+        mission="Retrieve, filter, and normalize sources into structured paper cards.",
+        required_inputs=("source_material", "topic", "selection_criteria"),
+        required_outputs=("paper_card",),
+        artifact_contracts=(
+            _artifact_contract(
+                WorkflowRole.LIBRARIAN,
+                "paper_card",
+                "Structured retrieval summary for a paper or source.",
+            ),
+        ),
+        allowed_tools=("paper_search", "pdf_parse", "filesystem"),
+        forbidden_tools=("experiment_runner", "python_exec", "shell"),
+        success_criteria=(
+            "At least one source is captured as a structured paper card when evidence is available.",
+            "Uncertainties and missing evidence remain explicit.",
+        ),
+        review_checklist=(
+            "Preserve evidence references.",
+            "Do not collapse unsupported details into confident claims.",
+        ),
+        default_capability_class=CapabilityClass.RETRIEVAL,
+        default_provider_preference=_RETRIEVAL_DEFAULT,
+        fallback_provider_preference=_REASONING_FALLBACK,
+    ),
+    RoleSpec(
+        role_id=WorkflowRole.SYNTHESIZER,
+        mission="Aggregate knowledge into gap maps, claim clusters, and candidate directions.",
+        required_inputs=("paper_cards", "topic", "known_constraints"),
+        required_outputs=("gap_map",),
+        artifact_contracts=(
+            _artifact_contract(
+                WorkflowRole.SYNTHESIZER,
+                "gap_map",
+                "Clustered research gaps and candidate directions.",
+            ),
+        ),
+        allowed_tools=("filesystem", "paper_search"),
+        forbidden_tools=("experiment_runner",),
+        success_criteria=(
+            "Gap map groups related evidence cleanly.",
+            "Novelty and difficulty are explicit where possible.",
+        ),
+        review_checklist=(
+            "Separate observed gaps from speculative directions.",
+            "Keep supporting papers attached to each gap when available.",
+        ),
+        default_capability_class=CapabilityClass.SYNTHESIS,
+        default_provider_preference=_SYNTHESIS_DEFAULT,
+        fallback_provider_preference=_REASONING_FALLBACK,
+    ),
+    RoleSpec(
+        role_id=WorkflowRole.HYPOTHESIST,
+        mission="Generate hypotheses and candidate research directions grounded in current evidence.",
+        required_inputs=("gap_map", "paper_cards", "frozen_topic"),
+        required_outputs=("hypothesis_set",),
+        artifact_contracts=(
+            _artifact_contract(
+                WorkflowRole.HYPOTHESIST,
+                "hypothesis_set",
+                "Explicit hypotheses and proposed research directions.",
+            ),
+        ),
+        allowed_tools=("filesystem", "paper_search"),
+        forbidden_tools=("experiment_runner",),
+        success_criteria=(
+            "Hypotheses are falsifiable.",
+            "Each proposed direction is grounded in current evidence.",
+        ),
+        review_checklist=(
+            "State what would invalidate the hypothesis.",
+            "Do not skip baseline alternatives.",
+        ),
+        default_capability_class=CapabilityClass.PLANNING,
+        default_provider_preference=_REASONING_DEFAULT,
+        fallback_provider_preference=_REASONING_FALLBACK,
+    ),
+    RoleSpec(
+        role_id=WorkflowRole.EXPERIMENT_DESIGNER,
+        mission="Turn research directions into executable experiment specs with explicit metrics and budget.",
+        required_inputs=("hypothesis_set", "topic_freeze", "resource_constraints"),
+        required_outputs=("experiment_spec",),
+        artifact_contracts=(
+            _artifact_contract(
+                WorkflowRole.EXPERIMENT_DESIGNER,
+                "experiment_spec",
+                "Experiment plan, baselines, metrics, and budget assumptions.",
+            ),
+        ),
+        allowed_tools=("filesystem", "git", "python_exec"),
+        forbidden_tools=(),
+        success_criteria=(
+            "Spec names baselines, datasets, metrics, and failure criteria.",
+            "Budget and execution assumptions are explicit.",
+        ),
+        review_checklist=(
+            "Baseline comparisons are mandatory.",
+            "Success and failure criteria are both present.",
+        ),
+        default_capability_class=CapabilityClass.PLANNING,
+        default_provider_preference=_REASONING_DEFAULT,
+        fallback_provider_preference=_REASONING_FALLBACK,
+    ),
+    RoleSpec(
+        role_id=WorkflowRole.EXECUTOR,
+        mission="Execute experiments and record run manifests and artifacts faithfully.",
+        required_inputs=("experiment_spec", "code_state", "dataset_snapshot"),
+        required_outputs=("run_manifest",),
+        artifact_contracts=(
+            _artifact_contract(
+                WorkflowRole.EXECUTOR,
+                "run_manifest",
+                "Execution record with metrics and explicit produced artifacts.",
+            ),
+        ),
+        allowed_tools=("experiment_runner", "python_exec", "filesystem", "git", "shell"),
+        forbidden_tools=(),
+        success_criteria=(
+            "Run manifest is complete and reproducible.",
+            "Produced artifacts are explicitly registered.",
+        ),
+        review_checklist=(
+            "Record code/config provenance.",
+            "Do not hide failed runs.",
+        ),
+        default_capability_class=CapabilityClass.EXECUTION,
+        default_provider_preference=_EXECUTION_DEFAULT,
+        fallback_provider_preference=RoleProviderPreference(
+            family_priority=(ProviderFamily.CLAUDE.value, ProviderFamily.LOCAL.value),
+            model_priority={
+                ProviderFamily.CLAUDE.value: ("sonnet",),
+                ProviderFamily.LOCAL.value: ("deterministic-reader",),
+            },
+        ),
+    ),
+    RoleSpec(
+        role_id=WorkflowRole.ANALYST,
+        mission="Analyze run outcomes, surface anomalies, and relate results back to the experiment intent.",
+        required_inputs=("run_manifest", "metrics", "artifacts"),
+        required_outputs=("result_summary",),
+        artifact_contracts=(
+            _artifact_contract(
+                WorkflowRole.ANALYST,
+                "result_summary",
+                "Structured analysis of run outcomes and anomalies.",
+            ),
+        ),
+        allowed_tools=("filesystem", "python_exec"),
+        forbidden_tools=("experiment_runner",),
+        success_criteria=(
+            "Result summary explains notable outcomes and anomalies.",
+            "Recommended next actions are specific.",
+        ),
+        review_checklist=(
+            "Separate observed outcomes from speculation.",
+            "Reference run evidence when possible.",
+        ),
+        default_capability_class=CapabilityClass.SYNTHESIS,
+        default_provider_preference=_REASONING_DEFAULT,
+        fallback_provider_preference=_REASONING_FALLBACK,
+    ),
+    RoleSpec(
+        role_id=WorkflowRole.REVIEWER,
+        mission="Review structure, quality, and blocking issues before downstream publication or approval.",
+        required_inputs=("artifacts", "claims", "review_scope"),
+        required_outputs=("review_report",),
+        artifact_contracts=(
+            _artifact_contract(
+                WorkflowRole.REVIEWER,
+                "review_report",
+                "Quality review report covering blocking issues and decision.",
+            ),
+        ),
+        allowed_tools=("filesystem",),
+        forbidden_tools=("experiment_runner",),
+        success_criteria=(
+            "Decision and blocking issues are explicit.",
+            "Human approvals are requested where required.",
+        ),
+        review_checklist=(
+            "Flag missing baselines and missing evidence.",
+            "Do not hide uncertainty behind a binary decision.",
+        ),
+        default_capability_class=CapabilityClass.REVIEW,
+        default_provider_preference=_REASONING_DEFAULT,
+        fallback_provider_preference=_REASONING_FALLBACK,
+    ),
+    RoleSpec(
+        role_id=WorkflowRole.VERIFIER,
+        mission="Check evidence chains, methodological validity, and verification state honestly.",
+        required_inputs=("run_manifest", "claims", "freeze_state"),
+        required_outputs=("verification_report",),
+        artifact_contracts=(
+            _artifact_contract(
+                WorkflowRole.VERIFIER,
+                "verification_report",
+                "Evidence-chain and methodological verification report.",
+            ),
+        ),
+        allowed_tools=("filesystem",),
+        forbidden_tools=("experiment_runner",),
+        success_criteria=(
+            "Verification status is explicit and honest.",
+            "Missing evidence is called out rather than guessed.",
+        ),
+        review_checklist=(
+            "Do not claim verification beyond recorded checks.",
+            "Link recommendations to missing evidence or missing artifacts.",
+        ),
+        default_capability_class=CapabilityClass.VERIFICATION,
+        default_provider_preference=_REASONING_DEFAULT,
+        fallback_provider_preference=_REASONING_FALLBACK,
+    ),
+    RoleSpec(
+        role_id=WorkflowRole.PUBLISHER,
+        mission="Turn frozen evidence and approved claims into publishable drafts or sections.",
+        required_inputs=("frozen_claims", "supporting_artifacts", "writing_scope"),
+        required_outputs=("paper_draft",),
+        artifact_contracts=(
+            _artifact_contract(
+                WorkflowRole.PUBLISHER,
+                "paper_draft",
+                "Draft section or paper content aligned with frozen evidence.",
+            ),
+        ),
+        allowed_tools=("filesystem",),
+        forbidden_tools=("experiment_runner",),
+        success_criteria=(
+            "Draft structure matches requested scope.",
+            "Claims stay aligned with frozen evidence.",
+        ),
+        review_checklist=(
+            "Avoid unsupported claims.",
+            "Keep traceability to supporting claims or artifacts.",
+        ),
+        default_capability_class=CapabilityClass.PUBLISHING,
+        default_provider_preference=_REASONING_DEFAULT,
+        fallback_provider_preference=_REASONING_FALLBACK,
+    ),
+    RoleSpec(
+        role_id=WorkflowRole.ARCHIVIST,
+        mission="Curate archive entries, lessons, and provenance notes for future reuse.",
+        required_inputs=("run_summary", "lessons", "provenance_notes"),
+        required_outputs=("archive_entry",),
+        artifact_contracts=(
+            _artifact_contract(
+                WorkflowRole.ARCHIVIST,
+                "archive_entry",
+                "Registry curation note with lesson/provenance linkage.",
+            ),
+        ),
+        allowed_tools=("filesystem",),
+        forbidden_tools=("experiment_runner", "shell"),
+        success_criteria=(
+            "Archive entry links lessons and provenance cleanly.",
+            "Curated lessons remain reusable across runs.",
+        ),
+        review_checklist=(
+            "Separate durable lessons from transient logs.",
+            "Preserve source references where available.",
+        ),
+        default_capability_class=CapabilityClass.ARCHIVAL,
+        default_provider_preference=_ARCHIVAL_DEFAULT,
+        fallback_provider_preference=RoleProviderPreference(
+            family_priority=(
+                ProviderFamily.LOCAL.value,
+                ProviderFamily.CLAUDE.value,
+                ProviderFamily.CODEX.value,
+            ),
+            model_priority={
+                ProviderFamily.LOCAL.value: ("deterministic-reader",),
+                ProviderFamily.CLAUDE.value: ("sonnet",),
+                ProviderFamily.CODEX.value: ("gpt-5.4",),
+            },
+        ),
+    ),
+)
+
+ROLE_REGISTRY = RoleRegistry(ROLE_SPECS)
+ROLE_SPECS_BY_NAME: dict[str, RoleSpec] = {spec.role_name: spec for spec in ROLE_SPECS}
 ROLE_ARTIFACT_CONTRACTS: dict[str, tuple[RoleArtifactContract, ...]] = {
-    WorkflowRole.LIBRARIAN.value: (
-        RoleArtifactContract(
-            role_name=WorkflowRole.LIBRARIAN.value,
-            artifact_type="paper_card",
-            description="Structured retrieval summary for a paper or source.",
-        ),
-    ),
-    WorkflowRole.SYNTHESIZER.value: (
-        RoleArtifactContract(
-            role_name=WorkflowRole.SYNTHESIZER.value,
-            artifact_type="gap_map",
-            description="Clustered research gaps and candidate directions.",
-        ),
-    ),
-    WorkflowRole.HYPOTHESIST.value: (
-        RoleArtifactContract(
-            role_name=WorkflowRole.HYPOTHESIST.value,
-            artifact_type="hypothesis_set",
-            description="Explicit hypotheses and proposed research directions.",
-        ),
-    ),
-    WorkflowRole.EXPERIMENT_DESIGNER.value: (
-        RoleArtifactContract(
-            role_name=WorkflowRole.EXPERIMENT_DESIGNER.value,
-            artifact_type="experiment_spec",
-            description="Experiment plan, baselines, metrics, and budget assumptions.",
-        ),
-    ),
-    WorkflowRole.EXECUTOR.value: (
-        RoleArtifactContract(
-            role_name=WorkflowRole.EXECUTOR.value,
-            artifact_type="run_manifest",
-            description="Execution record with metrics and explicit produced artifacts.",
-        ),
-    ),
-    WorkflowRole.ANALYST.value: (
-        RoleArtifactContract(
-            role_name=WorkflowRole.ANALYST.value,
-            artifact_type="result_summary",
-            description="Structured analysis of run outcomes and anomalies.",
-        ),
-    ),
-    WorkflowRole.REVIEWER.value: (
-        RoleArtifactContract(
-            role_name=WorkflowRole.REVIEWER.value,
-            artifact_type="review_report",
-            description="Quality review report covering blocking issues and decision.",
-        ),
-    ),
-    WorkflowRole.VERIFIER.value: (
-        RoleArtifactContract(
-            role_name=WorkflowRole.VERIFIER.value,
-            artifact_type="verification_report",
-            description="Evidence-chain and methodological verification report.",
-        ),
-    ),
-    WorkflowRole.PUBLISHER.value: (
-        RoleArtifactContract(
-            role_name=WorkflowRole.PUBLISHER.value,
-            artifact_type="paper_draft",
-            description="Draft section or paper content aligned with frozen evidence.",
-        ),
-    ),
-    WorkflowRole.ARCHIVIST.value: (
-        RoleArtifactContract(
-            role_name=WorkflowRole.ARCHIVIST.value,
-            artifact_type="archive_entry",
-            description="Registry curation note with lesson/provenance linkage.",
-        ),
-    ),
+    spec.role_name: spec.artifact_contracts for spec in ROLE_SPECS
 }
 
 
-def reader_role_binding() -> AgentRoleBinding:
+def get_role_spec(role: WorkflowRole | str) -> RoleSpec:
+    return ROLE_REGISTRY.require(role)
+
+
+def role_routing_policy_for_role(role: WorkflowRole | str) -> RoleRoutingPolicy:
+    spec = get_role_spec(role)
+    return RoleRoutingPolicy(
+        role_name=spec.role_name,
+        capability_class=spec.default_capability_class.value,
+        family_priority=list(spec.default_provider_preference.family_priority),
+        family_model_priority={
+            family: list(models)
+            for family, models in spec.default_provider_preference.model_priority.items()
+        },
+        fallback_chain=FallbackChain(families=list(spec.default_provider_preference.family_priority)),
+        invocation_budget_policy=InvocationBudgetPolicy(
+            prefer_low_cost=True,
+            allow_expensive_upgrade=False,
+            max_attempts_per_invocation=max(2, len(spec.default_provider_preference.family_priority)),
+        ),
+    )
+
+
+def _binding(
+    *,
+    agent_name: str,
+    default_role: WorkflowRole,
+    secondary_roles: tuple[WorkflowRole, ...] = (),
+    task_kind_roles: dict[str, WorkflowRole] | None = None,
+) -> AgentRoleBinding:
     return AgentRoleBinding(
+        agent_name=agent_name,
+        default_role=default_role,
+        secondary_roles=secondary_roles,
+        task_kind_roles=task_kind_roles or {},
+        artifact_contracts=ROLE_ARTIFACT_CONTRACTS,
+        role_registry=ROLE_REGISTRY,
+    )
+
+
+def reader_role_binding() -> AgentRoleBinding:
+    return _binding(
         agent_name="reader_agent",
         default_role=WorkflowRole.LIBRARIAN,
         secondary_roles=(WorkflowRole.SCOPER,),
@@ -87,76 +463,66 @@ def reader_role_binding() -> AgentRoleBinding:
             "repo_ingest": WorkflowRole.LIBRARIAN,
             "read_source": WorkflowRole.SCOPER,
         },
-        artifact_contracts=ROLE_ARTIFACT_CONTRACTS,
     )
 
 
 def mapper_role_binding() -> AgentRoleBinding:
-    return AgentRoleBinding(
+    return _binding(
         agent_name="mapper_agent",
         default_role=WorkflowRole.SYNTHESIZER,
-        artifact_contracts=ROLE_ARTIFACT_CONTRACTS,
     )
 
 
 def builder_role_binding() -> AgentRoleBinding:
-    return AgentRoleBinding(
+    return _binding(
         agent_name="builder_agent",
         default_role=WorkflowRole.EXPERIMENT_DESIGNER,
         secondary_roles=(WorkflowRole.HYPOTHESIST, WorkflowRole.EXECUTOR),
         task_kind_roles={
-            "build_spec": WorkflowRole.EXPERIMENT_DESIGNER,
+            "build_spec": WorkflowRole.HYPOTHESIST,
             "implement_experiment": WorkflowRole.EXECUTOR,
             "reproduce_baseline": WorkflowRole.EXECUTOR,
         },
-        artifact_contracts=ROLE_ARTIFACT_CONTRACTS,
     )
 
 
 def reviewer_role_binding() -> AgentRoleBinding:
-    return AgentRoleBinding(
+    return _binding(
         agent_name="reviewer_agent",
         default_role=WorkflowRole.REVIEWER,
-        artifact_contracts=ROLE_ARTIFACT_CONTRACTS,
     )
 
 
 def writer_role_binding() -> AgentRoleBinding:
-    return AgentRoleBinding(
+    return _binding(
         agent_name="writer_agent",
         default_role=WorkflowRole.PUBLISHER,
-        artifact_contracts=ROLE_ARTIFACT_CONTRACTS,
     )
 
 
 def style_role_binding() -> AgentRoleBinding:
-    return AgentRoleBinding(
+    return _binding(
         agent_name="style_agent",
         default_role=WorkflowRole.PUBLISHER,
-        artifact_contracts=ROLE_ARTIFACT_CONTRACTS,
     )
 
 
 def analyst_role_binding() -> AgentRoleBinding:
-    return AgentRoleBinding(
+    return _binding(
         agent_name="analyst_agent",
         default_role=WorkflowRole.ANALYST,
-        artifact_contracts=ROLE_ARTIFACT_CONTRACTS,
     )
 
 
 def verifier_role_binding() -> AgentRoleBinding:
-    return AgentRoleBinding(
+    return _binding(
         agent_name="verifier_agent",
         default_role=WorkflowRole.VERIFIER,
-        artifact_contracts=ROLE_ARTIFACT_CONTRACTS,
     )
 
 
 def archivist_role_binding() -> AgentRoleBinding:
-    return AgentRoleBinding(
+    return _binding(
         agent_name="archivist_agent",
         default_role=WorkflowRole.ARCHIVIST,
-        artifact_contracts=ROLE_ARTIFACT_CONTRACTS,
     )
-

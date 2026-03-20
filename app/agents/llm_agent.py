@@ -126,9 +126,14 @@ class PromptDrivenAgent(BaseAgent):
         if self.role_binding is None:
             return None
         role = self.role_binding.resolve_role(task.kind)
+        role_spec = self.role_binding.resolve_role_spec(task.kind)
         return {
             "agent_name": self.role_binding.agent_name,
             "resolved_role": role.value,
             "secondary_roles": [role.value for role in self.role_binding.secondary_roles],
             "artifact_contracts": self.role_binding.expected_artifact_types(task.kind),
+            "role_spec": None if role_spec is None else role_spec.to_contract_record(),
+            "secondary_role_specs": [
+                spec.to_contract_record() for spec in self.role_binding.secondary_role_specs()
+            ],
         }

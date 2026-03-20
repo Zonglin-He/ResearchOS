@@ -1,4 +1,5 @@
 from pathlib import Path
+import tomllib
 
 import app.cli as cli_module
 from app.cli import main
@@ -209,3 +210,12 @@ def test_cli_console_subcommand_launches_same_console(monkeypatch, tmp_path: Pat
 
     assert main(["--db-path", str(db_path), "console"]) == 0
     assert launched["value"] is True
+
+
+def test_pyproject_registers_researchos_and_ros_entrypoints() -> None:
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    scripts = data["project"]["scripts"]
+
+    assert scripts["researchos"] == "app.cli:main"
+    assert scripts["ros"] == "app.cli:main"
