@@ -6,6 +6,11 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.ipynb_checkpoints/
 
 # Virtual environments
 .venv/
@@ -22,7 +27,6 @@ dist/
 
 # Local environment
 .env
-query
 
 # Runtime outputs
 artifacts/

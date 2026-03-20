@@ -25,3 +25,12 @@ class AuditReportRead(BaseModel):
     findings: list[str] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
     entries: list[AuditEntryRead] = Field(default_factory=list)
+
+
+class AuditSummaryRead(BaseModel):
+    total_reports: int
+    total_entries: int
+    report_status_counts: dict[str, int] = Field(default_factory=dict)
+    entry_status_counts: dict[str, int] = Field(default_factory=dict)
+    findings: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)

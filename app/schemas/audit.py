@@ -24,3 +24,13 @@ class AuditReport:
     findings: list[str] = field(default_factory=list)
     recommendations: list[str] = field(default_factory=list)
     entries: list[AuditEntry] = field(default_factory=list)
+
+
+@dataclass
+class AuditSummary:
+    total_reports: int
+    total_entries: int
+    report_status_counts: dict[str, int] = field(default_factory=dict)
+    entry_status_counts: dict[str, int] = field(default_factory=dict)
+    findings: list[str] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)

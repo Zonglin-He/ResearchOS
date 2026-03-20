@@ -187,6 +187,9 @@ Inspect artifacts:
 
 ```powershell
 Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/artifacts"
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/artifacts/<artifact-id>"
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/verifications/summary"
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/audit/summary"
 ```
 
 ## Docker / Production Quickstart
@@ -237,6 +240,16 @@ The artifact registry file is:
 Generated draft/style artifacts are written under:
 
 - `artifacts/`
+
+Operator-facing inspection surfaces now include:
+
+- `GET /artifacts`
+- `GET /artifacts/{artifact_id}`
+- `GET /verifications`
+- `GET /verifications/summary`
+- `GET /audit/claims`
+- `GET /audit/runs/{run_id}`
+- `GET /audit/summary`
 
 ## Example Flows
 

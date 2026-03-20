@@ -31,3 +31,11 @@ class VerificationRecord:
     artifact_ids: list[str] = field(default_factory=list)
     missing_fields: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass
+class VerificationSummary:
+    total_checks: int
+    status_counts: dict[str, int] = field(default_factory=dict)
+    check_type_counts: dict[str, int] = field(default_factory=dict)
+    subject_type_counts: dict[str, int] = field(default_factory=dict)

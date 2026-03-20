@@ -16,3 +16,10 @@ class VerificationRead(BaseModel):
     artifact_ids: list[str] = Field(default_factory=list)
     missing_fields: list[str] = Field(default_factory=list)
     created_at: datetime
+
+
+class VerificationSummaryRead(BaseModel):
+    total_checks: int
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    check_type_counts: dict[str, int] = Field(default_factory=dict)
+    subject_type_counts: dict[str, int] = Field(default_factory=dict)

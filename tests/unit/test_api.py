@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.api.app import create_app
+from app.schemas.artifact import ArtifactRecord
 
 
 def test_api_can_create_project_and_task(tmp_path: Path) -> None:
@@ -322,3 +323,101 @@ def test_api_rejects_invalid_lesson_kind(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert "lesson_kind" in response.text
+
+
+def test_api_can_return_artifact_detail_with_verification_links(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
+    artifact_path = tmp_path / "artifacts" / "table.csv"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text("metric,value\nacc,0.91\n", encoding="utf-8")
+
+    client.post(
+        "/runs",
+        json={
+            "run_id": "run_001",
+            "spec_id": "spec_001",
+            "git_commit": "abc123",
+            "config_hash": "sha256:123",
+            "dataset_snapshot": "dataset_v1",
+            "seed": 42,
+            "gpu": "A100",
+        },
+    )
+    run = client.app.state.run_service.get_run("run_001")
+    assert run is not None
+    run.artifacts = ["artifact_001"]
+    client.app.state.run_service.update_run(run)
+    client.app.state.artifact_service.register_artifact(
+        ArtifactRecord(
+            artifact_id="artifact_001",
+            run_id="run_001",
+            kind="table",
+            path="artifacts/table.csv",
+            hash="sha256:table",
+            metadata={"table_name": "main_results"},
+        )
+    )
+    verification_response = client.post("/verifications/runs/run_001")
+    assert verification_response.status_code == 200
+
+    detail_response = client.get("/artifacts/artifact_001")
+
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["artifact_id"] == "artifact_001"
+    assert detail["exists_on_disk"] is True
+    assert detail["workspace_relative_path"] == "artifacts\\table.csv" or detail["workspace_relative_path"] == "artifacts/table.csv"
+    assert detail["related_verifications"][0]["subject_id"] == "run_001"
+    assert "run:run_001" in detail["evidence_refs"]
+
+
+def test_api_can_return_audit_and_verification_summaries(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
+    artifact_path = tmp_path / "artifacts" / "summary.txt"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text("hello", encoding="utf-8")
+
+    client.post(
+        "/claims",
+        json={
+            "claim_id": "claim_001",
+            "text": "Model improves robustness",
+            "claim_type": "performance",
+        },
+    )
+    client.post(
+        "/runs",
+        json={
+            "run_id": "run_001",
+            "spec_id": "spec_001",
+            "git_commit": "abc123",
+            "config_hash": "sha256:123",
+            "dataset_snapshot": "dataset_v1",
+            "seed": 42,
+            "gpu": "A100",
+        },
+    )
+    run = client.app.state.run_service.get_run("run_001")
+    assert run is not None
+    run.artifacts = ["artifact_001"]
+    client.app.state.run_service.update_run(run)
+    client.app.state.artifact_service.register_artifact(
+        ArtifactRecord(
+            artifact_id="artifact_001",
+            run_id="run_001",
+            kind="note",
+            path="artifacts/summary.txt",
+            hash="sha256:note",
+        )
+    )
+    client.post("/verifications/runs/run_001")
+
+    audit_summary = client.get("/audit/summary")
+    verification_summary = client.get("/verifications/summary")
+
+    assert audit_summary.status_code == 200
+    assert verification_summary.status_code == 200
+    assert audit_summary.json()["total_reports"] >= 2
+    assert audit_summary.json()["entry_status_counts"]["warn"] >= 1
+    assert verification_summary.json()["total_checks"] >= 1
+    assert verification_summary.json()["status_counts"]["verified"] >= 1

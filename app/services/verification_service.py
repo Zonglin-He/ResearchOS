@@ -7,6 +7,7 @@ from app.schemas.verification import (
     VerificationCheckType,
     VerificationRecord,
     VerificationStatus,
+    VerificationSummary,
 )
 from app.services.artifact_service import ArtifactService
 from app.services.claim_service import ClaimService
@@ -60,6 +61,35 @@ class VerificationService:
                 continue
             filtered.append(record)
         return filtered
+
+    def list_checks_for_artifact(self, artifact_id: str, *, run_id: str | None = None) -> list[VerificationRecord]:
+        records = self._read_checks()
+        filtered: list[VerificationRecord] = []
+        for record in records:
+            if artifact_id not in record.artifact_ids:
+                continue
+            if run_id is not None and record.subject_type == "run" and record.subject_id != run_id:
+                continue
+            filtered.append(record)
+        return filtered
+
+    def build_summary(self) -> VerificationSummary:
+        records = self._read_checks()
+        status_counts: dict[str, int] = {}
+        check_type_counts: dict[str, int] = {}
+        subject_type_counts: dict[str, int] = {}
+        for record in records:
+            status_counts[record.status.value] = status_counts.get(record.status.value, 0) + 1
+            check_type_counts[record.check_type.value] = (
+                check_type_counts.get(record.check_type.value, 0) + 1
+            )
+            subject_type_counts[record.subject_type] = subject_type_counts.get(record.subject_type, 0) + 1
+        return VerificationSummary(
+            total_checks=len(records),
+            status_counts=status_counts,
+            check_type_counts=check_type_counts,
+            subject_type_counts=subject_type_counts,
+        )
 
     def verify_run_manifest(self, run_id: str) -> VerificationRecord:
         run = self.run_service.get_run(run_id)

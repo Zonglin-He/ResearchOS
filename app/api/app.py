@@ -4,9 +4,11 @@ from fastapi import Depends, FastAPI, HTTPException
 
 from app.api.deps import get_project_service, get_task_service
 from app.api.schemas import (
+    ArtifactDetailRead,
     ArtifactRead,
     AuditEntryRead,
     AuditReportRead,
+    AuditSummaryRead,
     ApprovalCreate,
     ApprovalRead,
     ClaimCreate,
@@ -41,6 +43,7 @@ from app.api.schemas import (
     TopicFreezeSave,
     TopicFreezeSaveResponse,
     VerificationRead,
+    VerificationSummaryRead,
 )
 from app.bootstrap import build_runtime_services
 from app.core.config import load_config
@@ -259,6 +262,71 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             for artifact in artifacts
         ]
 
+    @app.get("/artifacts/{artifact_id}", response_model=ArtifactDetailRead)
+    def get_artifact(artifact_id: str) -> ArtifactDetailRead:
+        artifact = app.state.artifact_service.get_artifact(artifact_id)
+        if artifact is None:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        resolved_path = app.state.artifact_service.resolve_artifact_path(artifact)
+        related_verifications = app.state.verification_service.list_checks_for_artifact(
+            artifact_id,
+            run_id=artifact.run_id,
+        )
+        related_audit_entries = app.state.audit_service.list_artifact_entries(
+            artifact_id,
+            run_id=artifact.run_id,
+            verification_service=app.state.verification_service,
+        )
+        evidence_refs = sorted(
+            {
+                evidence_ref
+                for verification in related_verifications
+                for evidence_ref in verification.evidence_refs
+            }
+            | {
+                evidence_ref
+                for entry in related_audit_entries
+                for evidence_ref in entry.evidence_refs
+            }
+        )
+        try:
+            workspace_relative_path = str(
+                resolved_path.relative_to(app.state.artifact_service.registry_path.parent.parent)
+            )
+        except ValueError:
+            workspace_relative_path = None
+        return ArtifactDetailRead(
+            artifact_id=artifact.artifact_id,
+            run_id=artifact.run_id,
+            kind=artifact.kind,
+            path=artifact.path,
+            hash=artifact.hash,
+            metadata=artifact.metadata,
+            resolved_path=str(resolved_path),
+            workspace_relative_path=workspace_relative_path,
+            exists_on_disk=resolved_path.exists(),
+            related_verifications=[
+                _to_verification_read(verification) for verification in related_verifications
+            ],
+            related_audit_entries=[
+                AuditEntryRead(
+                    entry_id=entry.entry_id,
+                    subject_type=entry.subject_type,
+                    subject_id=entry.subject_id,
+                    category=entry.category,
+                    status=entry.status,
+                    rationale=entry.rationale,
+                    evidence_refs=entry.evidence_refs,
+                    artifact_ids=entry.artifact_ids,
+                    related_run_ids=entry.related_run_ids,
+                    related_claim_ids=entry.related_claim_ids,
+                    created_at=entry.created_at,
+                )
+                for entry in related_audit_entries
+            ],
+            evidence_refs=evidence_refs,
+        )
+
     @app.post("/lessons", response_model=LessonRead)
     def create_lesson(payload: LessonCreate) -> LessonRead:
         lesson = app.state.lessons_service.record_lesson(
@@ -347,9 +415,31 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
         )
         return [_to_verification_read(record) for record in records]
 
+    @app.get("/verifications/summary", response_model=VerificationSummaryRead)
+    def get_verification_summary() -> VerificationSummaryRead:
+        summary = app.state.verification_service.build_summary()
+        return VerificationSummaryRead(
+            total_checks=summary.total_checks,
+            status_counts=summary.status_counts,
+            check_type_counts=summary.check_type_counts,
+            subject_type_counts=summary.subject_type_counts,
+        )
+
     @app.get("/audit/claims", response_model=AuditReportRead)
     def get_claim_audit_report() -> AuditReportRead:
         return _to_audit_report_read(app.state.audit_service.build_claim_alignment_report())
+
+    @app.get("/audit/summary", response_model=AuditSummaryRead)
+    def get_audit_summary() -> AuditSummaryRead:
+        summary = app.state.audit_service.build_summary(app.state.verification_service)
+        return AuditSummaryRead(
+            total_reports=summary.total_reports,
+            total_entries=summary.total_entries,
+            report_status_counts=summary.report_status_counts,
+            entry_status_counts=summary.entry_status_counts,
+            findings=summary.findings,
+            recommendations=summary.recommendations,
+        )
 
     @app.get("/audit/runs/{run_id}", response_model=AuditReportRead)
     def get_run_audit_report(run_id: str) -> AuditReportRead:

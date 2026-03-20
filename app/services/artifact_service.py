@@ -14,6 +14,18 @@ class ArtifactService:
         append_jsonl(self.registry_path, to_record(artifact))
         return artifact
 
+    def get_artifact(self, artifact_id: str) -> ArtifactRecord | None:
+        for artifact in self.list_artifacts():
+            if artifact.artifact_id == artifact_id:
+                return artifact
+        return None
+
+    def resolve_artifact_path(self, artifact: ArtifactRecord) -> Path:
+        path = Path(artifact.path)
+        if path.is_absolute():
+            return path
+        return self.registry_path.parent.parent / path
+
     def list_artifacts(self) -> list[ArtifactRecord]:
         rows = read_jsonl(self.registry_path)
         return [
