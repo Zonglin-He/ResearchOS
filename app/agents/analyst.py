@@ -25,6 +25,8 @@ class AnalystAgent(PromptDrivenAgent):
         provider_registry=None,
         routing_policy=None,
         provider_invocation_service=None,
+        role_prompt_registry=None,
+        role_skill_registry=None,
     ) -> None:
         super().__init__(
             provider,
@@ -35,6 +37,8 @@ class AnalystAgent(PromptDrivenAgent):
             routing_policy=routing_policy,
             provider_invocation_service=provider_invocation_service,
             role_binding=self.role_binding,
+            role_prompt_registry=role_prompt_registry,
+            role_skill_registry=role_skill_registry,
         )
         self.artifact_service = artifact_service
 

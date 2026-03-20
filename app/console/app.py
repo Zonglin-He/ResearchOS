@@ -13,6 +13,7 @@ from app.console.catalog import (
     available_dispatch_profile_choices,
     available_model_choices,
     build_dispatch_profile,
+    recommend_first_task_kind,
 )
 from app.console.control_plane import (
     ApprovalCreateInput,
@@ -138,19 +139,24 @@ class TerminalControlPlaneApp:
         return self.control_plane.create_project(data)
 
     def _run_guided_first_task(self, project_id: str):
+        research_goal = Prompt.ask("Primary research goal", default="")
+        recommendation = recommend_first_task_kind(research_goal)
         self.console.print(
-            "[bold]Guide[/bold]: the safest first step is usually [cyan]paper_ingest[/cyan] "
-            "so ResearchOS can create a paper card before mapping gaps."
+            "[bold]Guide[/bold]: recommended first task kind -> "
+            f"[cyan]{recommendation.task_kind}[/cyan]\n{recommendation.rationale}"
         )
-        kind = self._choose(
-            "Choose the first task kind",
-            [
-                "paper_ingest",
-                "gap_mapping",
-                "build_spec",
-                "write_draft",
-            ],
-        )
+        if Confirm.ask("Use the recommended first task kind?", default=True):
+            kind = recommendation.task_kind
+        else:
+            kind = self._choose(
+                "Choose the first task kind",
+                [
+                    "paper_ingest",
+                    "gap_mapping",
+                    "build_spec",
+                    "write_draft",
+                ],
+            )
         topic = Prompt.ask("Topic", default="")
         source_title = ""
         source_abstract = ""
@@ -165,7 +171,7 @@ class TerminalControlPlaneApp:
                 task_id=Prompt.ask("Task ID"),
                 project_id=project_id,
                 kind=kind,
-                goal=Prompt.ask("Goal"),
+                goal=Prompt.ask("Goal", default=research_goal),
                 owner=Prompt.ask("Owner", default="operator"),
                 input_payload=self.control_plane.build_task_input_payload(
                     kind=kind,

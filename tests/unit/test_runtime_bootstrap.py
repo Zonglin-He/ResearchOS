@@ -53,6 +53,10 @@ def test_runtime_bootstrap_uses_sqlite_when_database_url_is_empty(tmp_path: Path
     reader_role_spec = reader_agent.role_binding.resolve_role_spec("paper_ingest")
     assert reader_role_spec is not None
     assert reader_role_spec.role_id.value == "librarian"
+    assert services.role_prompt_registry.require_for_role("librarian").path.exists()
+    assert services.role_skill_registry.list_for_role("librarian")
+    assert reader_agent.role_prompt_registry is services.role_prompt_registry
+    assert reader_agent.role_skill_registry is services.role_skill_registry
 
 
 def test_runtime_bootstrap_resolves_workspace_backed_registry_paths(tmp_path: Path) -> None:

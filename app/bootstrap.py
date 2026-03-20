@@ -27,6 +27,7 @@ from app.providers.health import ProviderHealthService
 from app.providers.local_provider import LocalProvider
 from app.providers.registry import ProviderRegistry
 from app.roles import WorkflowRole, role_routing_policy_for_role
+from app.roles.prompts import ROLE_PROMPT_REGISTRY, RolePromptRegistry
 from app.routing.models import (
     AgentRoutingPolicy,
     DispatchProfile,
@@ -36,6 +37,7 @@ from app.routing.models import (
 )
 from app.routing.provider_router import ProviderInvocationService
 from app.routing.resolver import RoutingResolver
+from app.skills import ROLE_SKILL_REGISTRY, RoleSkillRegistry
 from app.services.approval_service import ApprovalService
 from app.services.artifact_annotation_service import ArtifactAnnotationService
 from app.services.artifact_service import ArtifactService
@@ -85,6 +87,8 @@ class RuntimeServices:
     provider_health_service: ProviderHealthService
     provider_invocation_service: ProviderInvocationService
     routing_resolver: RoutingResolver
+    role_prompt_registry: RolePromptRegistry
+    role_skill_registry: RoleSkillRegistry
     orchestrator: Orchestrator
 
 
@@ -189,6 +193,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
             provider_invocation_service=services.provider_invocation_service,
+            role_prompt_registry=services.role_prompt_registry,
+            role_skill_registry=services.role_skill_registry,
             routing_policy=build_agent_routing_policy(
                 agent_name="reader_agent",
                 default_role_policy=build_role_routing_policy("librarian"),
@@ -208,6 +214,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
             provider_invocation_service=services.provider_invocation_service,
+            role_prompt_registry=services.role_prompt_registry,
+            role_skill_registry=services.role_skill_registry,
             routing_policy=build_agent_routing_policy(
                 agent_name="mapper_agent",
                 default_role_policy=build_role_routing_policy("synthesizer"),
@@ -227,6 +235,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
             provider_invocation_service=services.provider_invocation_service,
+            role_prompt_registry=services.role_prompt_registry,
+            role_skill_registry=services.role_skill_registry,
             routing_policy=build_agent_routing_policy(
                 agent_name="builder_agent",
                 default_role_policy=build_role_routing_policy("experiment_designer"),
@@ -248,6 +258,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
             provider_invocation_service=services.provider_invocation_service,
+            role_prompt_registry=services.role_prompt_registry,
+            role_skill_registry=services.role_skill_registry,
             routing_policy=build_agent_routing_policy(
                 agent_name="reviewer_agent",
                 default_role_policy=build_role_routing_policy("reviewer"),
@@ -265,6 +277,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
             provider_invocation_service=services.provider_invocation_service,
+            role_prompt_registry=services.role_prompt_registry,
+            role_skill_registry=services.role_skill_registry,
             routing_policy=build_agent_routing_policy(
                 agent_name="writer_agent",
                 default_role_policy=build_role_routing_policy("publisher"),
@@ -282,6 +296,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
             provider_invocation_service=services.provider_invocation_service,
+            role_prompt_registry=services.role_prompt_registry,
+            role_skill_registry=services.role_skill_registry,
             routing_policy=build_agent_routing_policy(
                 agent_name="style_agent",
                 default_role_policy=build_role_routing_policy("publisher"),
@@ -299,6 +315,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
             provider_invocation_service=services.provider_invocation_service,
+            role_prompt_registry=services.role_prompt_registry,
+            role_skill_registry=services.role_skill_registry,
             routing_policy=build_agent_routing_policy(
                 agent_name="analyst_agent",
                 default_role_policy=build_role_routing_policy("analyst"),
@@ -317,6 +335,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
             provider_invocation_service=services.provider_invocation_service,
+            role_prompt_registry=services.role_prompt_registry,
+            role_skill_registry=services.role_skill_registry,
             routing_policy=build_agent_routing_policy(
                 agent_name="verifier_agent",
                 default_role_policy=build_role_routing_policy("verifier"),
@@ -335,6 +355,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
             provider_invocation_service=services.provider_invocation_service,
+            role_prompt_registry=services.role_prompt_registry,
+            role_skill_registry=services.role_skill_registry,
             routing_policy=build_agent_routing_policy(
                 agent_name="archivist_agent",
                 default_role_policy=build_role_routing_policy("archivist"),
@@ -423,6 +445,8 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         provider_health_service=provider_health_service,
         provider_invocation_service=provider_invocation_service,
         routing_resolver=routing_resolver,
+        role_prompt_registry=ROLE_PROMPT_REGISTRY,
+        role_skill_registry=ROLE_SKILL_REGISTRY,
         orchestrator=Orchestrator(
             task_service,
             project_service=project_service,

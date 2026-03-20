@@ -21,13 +21,18 @@ from app.roles.models import (
     RoleSpec,
     WorkflowRole,
 )
+from app.roles.prompts import ROLE_PROMPT_REGISTRY, ROLE_PROMPT_SPECS, RolePromptRegistry, RolePromptSpec
 
 __all__ = [
     "AgentRoleBinding",
     "RoleArtifactContract",
     "RoleProviderPreference",
+    "RolePromptRegistry",
+    "RolePromptSpec",
     "RoleRegistry",
     "RoleSpec",
+    "ROLE_PROMPT_REGISTRY",
+    "ROLE_PROMPT_SPECS",
     "ROLE_REGISTRY",
     "ROLE_SPECS",
     "WorkflowRole",

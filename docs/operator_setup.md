@@ -21,7 +21,7 @@ Then open the terminal control plane directly:
 uv run researchos
 ```
 
-If the workspace has no projects yet, the console now opens a guided setup flow so the operator can create the first project, choose a routing profile, create the first task, and optionally dispatch it immediately.
+If the workspace has no projects yet, the console now opens a guided setup flow so the operator can create the first project, choose a routing profile, state the primary research goal, receive a recommended first task kind, create the first task, and optionally dispatch it immediately.
 
 Equivalent explicit launch paths:
 
@@ -48,6 +48,21 @@ If you want Gemini from the terminal model picker, the current presets use expli
 - `gemini-3.1-pro-preview`
 - `gemini-3-flash-preview`
 - `gemini-3.1-flash-lite-preview`
+
+## Role Prompt and Skill Assets
+
+ResearchOS keeps canonical role prompts and canonical role skills inside the repository:
+
+- `prompts/roles/`
+- `skills/`
+
+These are the source of truth for role boundaries and reusable procedures. Provider-specific wrappers are thin exports, not separate logic sources.
+
+To export wrappers for Codex / Claude / Gemini:
+
+```powershell
+uv run python scripts\export_role_assets.py
+```
 
 ## Live Provider Notes
 

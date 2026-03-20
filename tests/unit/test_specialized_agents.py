@@ -78,7 +78,8 @@ def test_reader_agent_registers_cards_and_spawns_mapper_task(tmp_path: Path) -> 
     assert paper_cards.get_card("p-1") is not None
     assert result.next_tasks[0].kind == "gap_mapping"
     assert result.next_tasks[0].assigned_agent == "mapper_agent"
-    assert result.audit_notes == ["reader completed"]
+    assert "reader completed" in result.audit_notes
+    assert any(note.startswith("role assets resolved role=librarian") for note in result.audit_notes)
 
 
 def test_builder_agent_registers_run_claims_and_review_task(tmp_path: Path) -> None:

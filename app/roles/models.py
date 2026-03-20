@@ -47,6 +47,8 @@ class RoleSpec:
     default_capability_class: CapabilityClass = CapabilityClass.PLANNING
     default_provider_preference: RoleProviderPreference = field(default_factory=RoleProviderPreference)
     fallback_provider_preference: RoleProviderPreference = field(default_factory=RoleProviderPreference)
+    canonical_prompt_id: str = ""
+    canonical_skill_names: tuple[str, ...] = ()
 
     @property
     def role_name(self) -> str:
@@ -88,6 +90,8 @@ class RoleSpec:
                     for family, models in self.fallback_provider_preference.model_priority.items()
                 },
             },
+            "canonical_prompt_id": self.canonical_prompt_id,
+            "canonical_skill_names": list(self.canonical_skill_names),
         }
 
 

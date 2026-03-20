@@ -2,7 +2,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.console.app import TerminalControlPlaneApp
-from app.console.catalog import available_dispatch_profile_choices, build_dispatch_profile
+from app.console.catalog import (
+    available_dispatch_profile_choices,
+    build_dispatch_profile,
+    recommend_first_task_kind,
+)
 import app.console.app as console_app_module
 from app.console.control_plane import ConsoleControlPlane, ProjectCreateInput, TaskCreateInput
 from app.db.repositories.in_memory_project_repository import InMemoryProjectRepository
@@ -146,6 +150,13 @@ def test_role_routing_prefers_explicit_gemini_3_models_for_non_claude_defaults()
     ]
 
 
+def test_recommend_first_task_kind_matches_goal_shape() -> None:
+    assert recommend_first_task_kind("survey the literature on retrieval").task_kind == "paper_ingest"
+    assert recommend_first_task_kind("map the novelty gaps in this area").task_kind == "gap_mapping"
+    assert recommend_first_task_kind("design the first experiment and baseline").task_kind == "build_spec"
+    assert recommend_first_task_kind("write the initial paper draft").task_kind == "write_draft"
+
+
 def test_terminal_console_guides_first_project_creation(monkeypatch, tmp_path: Path) -> None:
     control_plane = build_control_plane(tmp_path)
     app = TerminalControlPlaneApp(control_plane)
@@ -156,29 +167,30 @@ def test_terminal_console_guides_first_project_creation(monkeypatch, tmp_path: P
             "First Project",
             "Guided project",
             "active",
+            "survey the literature on research systems",
             "research systems",
             "ResearchOS paper",
             "A compact summary.",
             "terminal workflows",
             "task-1",
-            "Read the first source",
+            "survey the literature on research systems",
             "operator",
         ]
     )
     choices = iter(
         [
             "Inherit system default",
-            "paper_ingest",
             "Inherit system default",
         ]
     )
     dispatched: list[str] = []
+    confirms = iter([True, True, True, True])
 
     monkeypatch.setattr(console_app_module.Prompt, "ask", lambda *args, **kwargs: next(prompts))
     monkeypatch.setattr(
         console_app_module.Confirm,
         "ask",
-        lambda *args, **kwargs: True,
+        lambda *args, **kwargs: next(confirms),
     )
     monkeypatch.setattr(app, "_choose", lambda *args, **kwargs: next(choices))
     monkeypatch.setattr(
@@ -201,5 +213,6 @@ def test_terminal_console_guides_first_project_creation(monkeypatch, tmp_path: P
     assert len(tasks) == 1
     assert tasks[0].task_id == "task-1"
     assert tasks[0].kind == "paper_ingest"
+    assert tasks[0].goal == "survey the literature on research systems"
     assert tasks[0].input_payload["source_summary"]["title"] == "ResearchOS paper"
     assert dispatched == ["task-1"]

@@ -7,12 +7,15 @@ from typing import Any
 from app.agents.base import BaseAgent
 from app.providers.base import BaseProvider
 from app.providers.registry import ProviderRegistry
+from app.roles.prompts import ROLE_PROMPT_REGISTRY, RolePromptRegistry
 from app.roles.models import AgentRoleBinding
 from app.routing.provider_router import ProviderInvocationService
 from app.routing.models import AgentRoutingPolicy
 from app.schemas.context import RunContext
 from app.schemas.result import AgentResult
 from app.schemas.task import Task
+from app.skills.catalog import ROLE_SKILL_REGISTRY
+from app.skills.models import RoleSkillRegistry
 from app.services.registry_store import to_record
 from app.tools.registry import ToolRegistry
 
@@ -31,6 +34,8 @@ class PromptDrivenAgent(BaseAgent):
         routing_policy: AgentRoutingPolicy | None = None,
         provider_invocation_service: ProviderInvocationService | None = None,
         role_binding: AgentRoleBinding | None = None,
+        role_prompt_registry: RolePromptRegistry | None = None,
+        role_skill_registry: RoleSkillRegistry | None = None,
     ) -> None:
         self.provider = provider
         self.model = model
@@ -40,9 +45,11 @@ class PromptDrivenAgent(BaseAgent):
         self.routing_policy = routing_policy
         self.provider_invocation_service = provider_invocation_service
         self.role_binding = role_binding
+        self.role_prompt_registry = role_prompt_registry or ROLE_PROMPT_REGISTRY
+        self.role_skill_registry = role_skill_registry or ROLE_SKILL_REGISTRY
 
     async def run(self, task: Task, ctx: RunContext) -> AgentResult:
-        system_prompt = Path(self.prompt_path).read_text(encoding="utf-8")
+        system_prompt = self._build_system_prompt(task)
         user_payload = self.build_user_payload(task, ctx)
         user_input = json.dumps(user_payload, ensure_ascii=False, default=str)
         if (
@@ -67,7 +74,11 @@ class PromptDrivenAgent(BaseAgent):
                 response_schema=self.get_response_schema(task, ctx),
                 model=self._resolve_model(ctx),
             )
-        return self.build_result(task, ctx, output)
+        result = self.build_result(task, ctx, output)
+        role_asset_note = self._build_role_asset_audit_note(task)
+        if role_asset_note is not None:
+            result.audit_notes.append(role_asset_note)
+        return result
 
     def _resolve_provider(self, ctx: RunContext) -> BaseProvider:
         if ctx.routing is not None and self.provider_registry is not None:
@@ -93,6 +104,7 @@ class PromptDrivenAgent(BaseAgent):
                 "prior_lessons": to_record(ctx.prior_lessons),
             },
             "role_contract": self._build_role_contract(task),
+            "role_assets": self._build_role_assets_metadata(task),
         }
 
     def get_response_schema(
@@ -137,3 +149,57 @@ class PromptDrivenAgent(BaseAgent):
                 spec.to_contract_record() for spec in self.role_binding.secondary_role_specs()
             ],
         }
+
+    def _build_role_assets_metadata(self, task: Task) -> dict[str, Any] | None:
+        if self.role_binding is None:
+            return None
+        role_spec = self.role_binding.resolve_role_spec(task.kind)
+        if role_spec is None:
+            return None
+        prompt_spec = (
+            None
+            if self.role_prompt_registry is None
+            else self.role_prompt_registry.get_for_role(role_spec.role_id)
+        )
+        skills = []
+        if self.role_skill_registry is not None:
+            for skill_name in role_spec.canonical_skill_names:
+                skill = self.role_skill_registry.get(skill_name)
+                if skill is not None:
+                    skills.append(skill.to_metadata_record())
+        return {
+            "prompt": None if prompt_spec is None else prompt_spec.to_metadata_record(),
+            "skills": skills,
+        }
+
+    def _build_system_prompt(self, task: Task) -> str:
+        specialized_prompt = Path(self.prompt_path).read_text(encoding="utf-8").strip()
+        if self.role_binding is None or self.role_prompt_registry is None:
+            return specialized_prompt
+
+        role_spec = self.role_binding.resolve_role_spec(task.kind)
+        if role_spec is None:
+            return specialized_prompt
+
+        role_prompt = self.role_prompt_registry.require_for_role(role_spec.role_id).load_text()
+        return "\n\n".join(
+            [
+                "ResearchOS canonical role contract prompt:",
+                role_prompt,
+                "ResearchOS specialized agent adapter:",
+                specialized_prompt,
+            ]
+        ).strip()
+
+    def _build_role_asset_audit_note(self, task: Task) -> str | None:
+        if self.role_binding is None:
+            return None
+        role_spec = self.role_binding.resolve_role_spec(task.kind)
+        if role_spec is None:
+            return None
+        return (
+            "role assets resolved "
+            f"role={role_spec.role_name} "
+            f"prompt={role_spec.canonical_prompt_id or '<none>'} "
+            f"skills={list(role_spec.canonical_skill_names)}"
+        )

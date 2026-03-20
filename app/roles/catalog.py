@@ -25,6 +25,14 @@ def _artifact_contract(role: WorkflowRole, artifact_type: str, description: str)
     )
 
 
+def _prompt_id(role: WorkflowRole) -> str:
+    return role.value
+
+
+def _skill_name(role: WorkflowRole) -> str:
+    return f"researchos-{role.value.replace('_', '-')}"
+
+
 _REASONING_DEFAULT = RoleProviderPreference(
     family_priority=(
         ProviderFamily.CLAUDE.value,
@@ -132,6 +140,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
         default_capability_class=CapabilityClass.PLANNING,
         default_provider_preference=_REASONING_DEFAULT,
         fallback_provider_preference=_REASONING_FALLBACK,
+        canonical_prompt_id=_prompt_id(WorkflowRole.SCOPER),
+        canonical_skill_names=(_skill_name(WorkflowRole.SCOPER),),
     ),
     RoleSpec(
         role_id=WorkflowRole.LIBRARIAN,
@@ -158,6 +168,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
         default_capability_class=CapabilityClass.RETRIEVAL,
         default_provider_preference=_RETRIEVAL_DEFAULT,
         fallback_provider_preference=_REASONING_FALLBACK,
+        canonical_prompt_id=_prompt_id(WorkflowRole.LIBRARIAN),
+        canonical_skill_names=(_skill_name(WorkflowRole.LIBRARIAN),),
     ),
     RoleSpec(
         role_id=WorkflowRole.SYNTHESIZER,
@@ -184,6 +196,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
         default_capability_class=CapabilityClass.SYNTHESIS,
         default_provider_preference=_SYNTHESIS_DEFAULT,
         fallback_provider_preference=_REASONING_FALLBACK,
+        canonical_prompt_id=_prompt_id(WorkflowRole.SYNTHESIZER),
+        canonical_skill_names=(_skill_name(WorkflowRole.SYNTHESIZER),),
     ),
     RoleSpec(
         role_id=WorkflowRole.HYPOTHESIST,
@@ -210,6 +224,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
         default_capability_class=CapabilityClass.PLANNING,
         default_provider_preference=_REASONING_DEFAULT,
         fallback_provider_preference=_REASONING_FALLBACK,
+        canonical_prompt_id=_prompt_id(WorkflowRole.HYPOTHESIST),
+        canonical_skill_names=(_skill_name(WorkflowRole.HYPOTHESIST),),
     ),
     RoleSpec(
         role_id=WorkflowRole.EXPERIMENT_DESIGNER,
@@ -236,6 +252,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
         default_capability_class=CapabilityClass.PLANNING,
         default_provider_preference=_REASONING_DEFAULT,
         fallback_provider_preference=_REASONING_FALLBACK,
+        canonical_prompt_id=_prompt_id(WorkflowRole.EXPERIMENT_DESIGNER),
+        canonical_skill_names=(_skill_name(WorkflowRole.EXPERIMENT_DESIGNER),),
     ),
     RoleSpec(
         role_id=WorkflowRole.EXECUTOR,
@@ -268,6 +286,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
                 ProviderFamily.LOCAL.value: ("deterministic-reader",),
             },
         ),
+        canonical_prompt_id=_prompt_id(WorkflowRole.EXECUTOR),
+        canonical_skill_names=(_skill_name(WorkflowRole.EXECUTOR),),
     ),
     RoleSpec(
         role_id=WorkflowRole.ANALYST,
@@ -294,6 +314,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
         default_capability_class=CapabilityClass.SYNTHESIS,
         default_provider_preference=_REASONING_DEFAULT,
         fallback_provider_preference=_REASONING_FALLBACK,
+        canonical_prompt_id=_prompt_id(WorkflowRole.ANALYST),
+        canonical_skill_names=(_skill_name(WorkflowRole.ANALYST),),
     ),
     RoleSpec(
         role_id=WorkflowRole.REVIEWER,
@@ -320,6 +342,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
         default_capability_class=CapabilityClass.REVIEW,
         default_provider_preference=_REASONING_DEFAULT,
         fallback_provider_preference=_REASONING_FALLBACK,
+        canonical_prompt_id=_prompt_id(WorkflowRole.REVIEWER),
+        canonical_skill_names=(_skill_name(WorkflowRole.REVIEWER),),
     ),
     RoleSpec(
         role_id=WorkflowRole.VERIFIER,
@@ -346,6 +370,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
         default_capability_class=CapabilityClass.VERIFICATION,
         default_provider_preference=_REASONING_DEFAULT,
         fallback_provider_preference=_REASONING_FALLBACK,
+        canonical_prompt_id=_prompt_id(WorkflowRole.VERIFIER),
+        canonical_skill_names=(_skill_name(WorkflowRole.VERIFIER),),
     ),
     RoleSpec(
         role_id=WorkflowRole.PUBLISHER,
@@ -372,6 +398,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
         default_capability_class=CapabilityClass.PUBLISHING,
         default_provider_preference=_REASONING_DEFAULT,
         fallback_provider_preference=_REASONING_FALLBACK,
+        canonical_prompt_id=_prompt_id(WorkflowRole.PUBLISHER),
+        canonical_skill_names=(_skill_name(WorkflowRole.PUBLISHER),),
     ),
     RoleSpec(
         role_id=WorkflowRole.ARCHIVIST,
@@ -409,6 +437,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
                 ProviderFamily.CODEX.value: ("gpt-5.4",),
             },
         ),
+        canonical_prompt_id=_prompt_id(WorkflowRole.ARCHIVIST),
+        canonical_skill_names=(_skill_name(WorkflowRole.ARCHIVIST),),
     ),
 )
 

@@ -81,6 +81,30 @@ Examples:
 - Publisher -> `paper_draft`
 - Archivist -> `archive_entry`
 
+## Canonical Role Prompts and Skills
+
+ResearchOS now keeps role-native prompt and skill assets as repo-owned canonical source material:
+
+- canonical role prompts: [`prompts/roles/`](prompts/roles)
+- canonical role skills: [`skills/`](skills)
+- design/research note: [`docs/role-prompt-skill-architecture.md`](docs/role-prompt-skill-architecture.md)
+
+The canonical layer is provider-agnostic. It defines responsibility boundaries, artifact obligations, review checklists, and reusable procedures once.
+
+Thin provider-specific wrappers are exportable on demand:
+
+```powershell
+uv run python scripts\export_role_assets.py
+```
+
+This writes wrapper assets under `provider_exports/` for:
+
+- Codex-style skills
+- Claude-style markdown/subagent wrappers
+- Gemini-style command wrappers
+
+The runtime resolves role prompt text and skill metadata lazily. It does not eagerly inject every role skill into every run.
+
 ## Architecture Overview
 
 High-level layers:
@@ -249,6 +273,8 @@ If there are no projects yet, ResearchOS now starts with a guided first-project 
 
 - create the first project
 - choose a default dispatch profile
+- state the primary research goal
+- get an automatic recommended first task kind
 - create the first task
 - optionally dispatch it immediately
 

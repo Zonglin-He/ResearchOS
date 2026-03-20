@@ -19,6 +19,12 @@ class DispatchProfileChoice:
     description: str = ""
 
 
+@dataclass(frozen=True)
+class FirstTaskRecommendation:
+    task_kind: str
+    rationale: str
+
+
 KNOWN_PROVIDER_MODELS: dict[str, list[ProviderModelChoice]] = {
     "claude": [
         ProviderModelChoice("Claude Sonnet", "claude", "sonnet"),
@@ -94,3 +100,29 @@ def available_dispatch_profile_choices(system_default: DispatchProfile) -> list[
                 )
             )
     return choices
+
+
+def recommend_first_task_kind(research_goal: str) -> FirstTaskRecommendation:
+    normalized = research_goal.strip().lower()
+    if any(keyword in normalized for keyword in ("draft", "write", "paper", "manuscript", "section")):
+        return FirstTaskRecommendation(
+            task_kind="write_draft",
+            rationale="The goal sounds publication-oriented, so starting from a draft is the most direct path.",
+        )
+    if any(
+        keyword in normalized
+        for keyword in ("experiment", "baseline", "benchmark", "evaluate", "evaluation", "implement", "hypothesis")
+    ):
+        return FirstTaskRecommendation(
+            task_kind="build_spec",
+            rationale="The goal sounds execution-oriented, so starting from an experiment spec is the safest first step.",
+        )
+    if any(keyword in normalized for keyword in ("gap", "novelty", "cluster", "synth", "unknown", "direction")):
+        return FirstTaskRecommendation(
+            task_kind="gap_mapping",
+            rationale="The goal sounds like research-space exploration, so mapping gaps first is the clearest entry point.",
+        )
+    return FirstTaskRecommendation(
+        task_kind="paper_ingest",
+        rationale="Starting with paper ingestion is the safest default because it creates structured paper cards before deeper synthesis.",
+    )
