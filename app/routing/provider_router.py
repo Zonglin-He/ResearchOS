@@ -104,7 +104,13 @@ class ProviderInvocationService:
             raise RuntimeError(
                 "No provider family was available for invocation based on current routing and health state."
             )
-        raise RuntimeError(f"All provider families failed for routing plan: {last_error}") from last_error
+        detail = str(last_error).strip()
+        if not detail:
+            detail = "; ".join(
+                f"{snapshot.provider_family}: {snapshot.detail or snapshot.state}"
+                for snapshot in attempted_snapshots
+            )
+        raise RuntimeError(f"All provider families failed for routing plan: {detail}") from last_error
 
     @staticmethod
     def _fallback_reason(

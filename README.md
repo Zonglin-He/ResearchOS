@@ -1,146 +1,53 @@
 # ResearchOS
 
-ResearchOS is a code-first multi-agent research workflow runtime. It is a backend and control-plane system for running structured research tasks with:
+Language: [English](#english) | [中文](#zh-cn)
 
-- typed task and run state
-- specialized agents
-- role-driven execution contracts
-- CLI and terminal control plane
-- FastAPI control plane
-- worker-based async dispatch
-- routing policies for provider/model selection
-- registries for claims, paper cards, gap maps, runs, freezes, lessons, and verifications
+<a id="english"></a>
+<details open>
+<summary><strong>English</strong></summary>
 
-It is not a chat UI product. The core interface is still backend services plus CLI/TUI/API.
+## What It Is
 
-## What It Does
+ResearchOS is a research workflow runtime for structured, multi-step work. It keeps projects, tasks, paper cards, gap maps, freezes, runs, claims, lessons, and verification records as first-class objects instead of burying them in chat logs.
 
-ResearchOS manages a research workflow around explicit objects:
+It has three operator surfaces:
 
-- `Task`: unit of work with lifecycle and dispatch profile
-- `Message`: structured cross-agent communication primitive
-- `AgentResult`: structured output from agent execution
-- `RunContext`: runtime state including resolved routing and prior lessons
-- `RunManifest`: recorded execution metadata and metrics
-- `Claim`, `PaperCard`, `GapMap`, `Freeze`: durable research artifacts
-- `ExperimentProposal`, `ExperimentDecision`: explicit experiment loop primitives
-- `LessonRecord`, `VerificationRecord`: reusable memory and verification surfaces
+- CLI for direct control
+- FastAPI for automation and inspection
+- React web UI for the same control-plane workflow in a visual interface
 
-## Role System
+The current web UI supports guided research intake, automated `paper_ingest -> gap_mapping`, human idea selection, and a real LLM-backed discussion sidebar for idea feasibility review.
 
-ResearchOS now uses a typed workflow-role layer on top of the existing specialized agents.
+## Core Capabilities
 
-The role layer is not just a label. Each workflow role now has an inspectable contract in
-[`app/roles/catalog.py`](app/roles/catalog.py) and [`app/roles/models.py`](app/roles/models.py)
-covering:
+- Typed task lifecycle and dispatch state
+- Specialized agents with role contracts
+- Provider routing across `codex`, `claude`, `gemini`, and `local`
+- Durable registries for research objects
+- Verification, audit, provenance, and approval surfaces
+- One-command local web startup
 
-- mission
-- required inputs
-- required outputs
-- allowed / forbidden tools
-- success criteria
-- review checklist
-- default capability class
-- default and fallback provider-family preferences
+## Quick Start
 
-Workflow roles:
-
-- Scoper
-- Librarian
-- Synthesizer
-- Hypothesist
-- ExperimentDesigner
-- Executor
-- Analyst
-- Reviewer
-- Verifier
-- Publisher
-- Archivist
-
-Current specialized-agent overlay:
-
-- Reader = Librarian + part of Scoper
-- Mapper = Synthesizer
-- Builder = Hypothesist + ExperimentDesigner + part of Executor
-- Reviewer = Reviewer
-- Writer = Publisher
-- Style = Publisher post-processing
-- Analyst = result analysis
-- Verifier = evidence and methodology verification
-- Archivist = lessons / provenance / registry curation
-
-Fallback does not change role obligations. Provider family changes are allowed, but the expected artifact contract stays the same for the role.
-
-Examples:
-
-- Librarian -> `paper_card`
-- Synthesizer -> `gap_map`
-- Executor -> `run_manifest`
-- Analyst -> `result_summary`
-- Verifier -> `verification_report`
-- Publisher -> `paper_draft`
-- Archivist -> `archive_entry`
-
-## Canonical Role Prompts and Skills
-
-ResearchOS now keeps role-native prompt and skill assets as repo-owned canonical source material:
-
-- canonical role prompts: [`prompts/roles/`](prompts/roles)
-- canonical role skills: [`skills/`](skills)
-- design/research note: [`docs/role-prompt-skill-architecture.md`](docs/role-prompt-skill-architecture.md)
-
-The canonical layer is provider-agnostic. It defines responsibility boundaries, artifact obligations, review checklists, and reusable procedures once.
-
-Thin provider-specific wrappers are exportable on demand:
-
-```powershell
-uv run python scripts\export_role_assets.py
-```
-
-This writes wrapper assets under `provider_exports/` for:
-
-- Codex-style skills
-- Claude-style markdown/subagent wrappers
-- Gemini-style command wrappers
-
-The runtime resolves role prompt text and skill metadata lazily. It does not eagerly inject every role skill into every run.
-
-## Architecture Overview
-
-High-level layers:
-
-1. Schemas
-   - typed dataclasses and enums in [`app/schemas/`](app/schemas)
-2. Services
-   - task lifecycle, claims, runs, freezes, experiments, lessons, verification, audit in [`app/services/`](app/services)
-3. Providers and Tools
-   - provider abstraction in [`app/providers/`](app/providers)
-   - tool abstraction and registry in [`app/tools/`](app/tools)
-4. Agents and Orchestration
-   - specialized agents and orchestrator in [`app/agents/`](app/agents)
-5. Control Plane
-   - CLI in [`app/cli.py`](app/cli.py)
-   - interactive terminal control plane in [`app/console/`](app/console)
-   - FastAPI app in [`app/api/app.py`](app/api/app.py)
-6. Worker / Async Dispatch
-   - Celery integration in [`app/worker/`](app/worker)
-
-## Local Quickstart
-
-Requirements:
+### Requirements
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/)
-- optional: Docker Desktop for the production stack
-- optional: provider CLIs if you want live Codex / Claude / Gemini execution
+- Node.js 18+ for the frontend
+- Optional provider CLIs if you want live external model execution
 
-Install dependencies:
+### Install
 
 ```powershell
 uv sync --dev
+cd frontend
+npm install
+cd ..
 ```
 
-Recommended deterministic local setup for demos, CI-style checks, and first-time onboarding:
+### Recommended Local Setup
+
+Use the deterministic local provider if you want a safe first run:
 
 ```powershell
 $env:RESEARCHOS_PROVIDER = "local"
@@ -148,86 +55,44 @@ $env:RESEARCHOS_PROVIDER_MODEL = "deterministic-reader"
 $env:RESEARCHOS_WORKSPACE_ROOT = (Resolve-Path ".").Path
 ```
 
-Initialize a local SQLite database:
+Initialize the database:
 
 ```powershell
 uv run researchos --db-path data\researchos.db init-db
 ```
 
-Run the unit test suite:
+### Start the Web UI
 
 ```powershell
-uv run pytest -q
+uv run researchos web
 ```
 
-## Provider Setup
+Default local ports:
 
-ResearchOS keeps env defaults as a fallback, but provider/model can also be set explicitly through dispatch profiles.
+- Frontend: `http://127.0.0.1:5173`
+- API: `http://127.0.0.1:8000`
 
-Minimum env example:
+Override ports if needed:
 
 ```powershell
-$env:RESEARCHOS_PROVIDER = "claude"
-$env:RESEARCHOS_PROVIDER_MODEL = "sonnet"
-$env:RESEARCHOS_MAX_STEPS = "12"
+uv run researchos web --port 8010 --frontend-port 5180
 ```
 
-Supported provider families in the current repo:
+### Start Only the API
 
-- `codex`
-- `claude`
-- `gemini`
-- `local`
+```powershell
+uv run uvicorn app.api.app:create_app --factory --reload
+```
 
-Recommended usage:
+Health check:
 
-- use `local` for deterministic local development, CI, demos, and teaching
-- use `codex` / `claude` / `gemini` only when the corresponding external CLI is already installed and working
-- in the terminal control plane, Gemini presets now use explicit Gemini 3 family model names rather than older 2.5-only presets
+```powershell
+curl http://127.0.0.1:8000/health
+```
 
-## Claude-First Routing Philosophy
+## Common Workflows
 
-ResearchOS is Claude-first for core reasoning roles, but Claude is not forced for every role.
-
-Default intent:
-
-- prefer Claude family for:
-  - Scoper
-  - Hypothesist
-  - Analyst
-  - Reviewer
-  - Verifier
-  - Publisher
-- do not spend Claude by default for:
-  - Librarian
-  - Synthesizer
-  - Archivist
-  - Executor
-
-Default role-family tendency:
-
-- Librarian -> Gemini 3 Flash / Flash-Lite
-- Synthesizer -> Gemini 3.1 Pro
-- Executor -> Codex
-- Archivist -> Gemini 3.1 Flash-Lite or local
-- core reasoning roles -> Claude first
-
-Fallback is capability-aware rather than one global order:
-
-- planning / review / verification:
-  - Claude -> Codex -> Gemini -> local
-- retrieval / synthesis / archival:
-  - Gemini -> Claude -> Codex -> local
-- coding / execution:
-  - Codex -> Claude -> local
-
-If a provider family is unavailable, rate-limited, exhausted, disabled, or unhealthy, ResearchOS will fall back honestly. It does not pretend to know token quotas exactly; it relies on CLI availability, invocation failures, cooldowns, and known failure signatures.
-
-You can override routing through dispatch profiles at the project or task level. If an explicit env provider is set, that still wins over role defaults.
-
-If you use live provider execution, make sure the relevant provider CLI or command path is already working on your machine.
-
-## CLI Quickstart
+### CLI
 
 Create a project:
 
@@ -250,109 +115,103 @@ uv run researchos --db-path data\researchos.db create-task `
   --input-payload "{\"topic\":\"robustness\",\"source_summary\":{\"title\":\"Example Paper\",\"abstract\":\"A compact summary.\",\"setting\":\"classification\"}}"
 ```
 
-Dispatch the task:
+Dispatch and inspect:
 
 ```powershell
 uv run researchos --db-path data\researchos.db dispatch-task --task-id t1
-```
-
-List tasks and artifacts:
-
-```powershell
 uv run researchos --db-path data\researchos.db list-tasks --project-id p1
-uv run researchos --db-path data\researchos.db list-artifacts
-```
-
-Inspect the project, routing, and artifacts:
-
-```powershell
 uv run researchos --db-path data\researchos.db project-dashboard --project-id p1
 uv run researchos --db-path data\researchos.db inspect-routing-system
-uv run researchos --db-path data\researchos.db inspect-routing-task --task-id t1
 uv run researchos --db-path data\researchos.db provider-health
-uv run researchos --db-path data\researchos.db inspect-artifact --artifact-id <artifact-id>
 ```
 
-Open the interactive terminal control plane:
+Open the terminal control plane:
 
 ```powershell
 uv run researchos
-```
-
-If there are no projects yet, ResearchOS now starts with a guided first-project flow that helps you:
-
-- create the first project
-- choose a default dispatch profile
-- state the primary research goal
-- get an automatic recommended first task kind
-- create the first task
-- optionally dispatch it immediately
-
-After a project exists, use the Projects menu `Guide project` entry to ask the built-in onboarding guide agent for the next recommended workflow step. It inspects current task state and recommends the next task kind instead of leaving you to guess the project sequence.
-
-The guide now also explains:
-
-- why that step is recommended
-- what artifact it will usually produce
-- which task kind usually comes next after it
-
-The onboarding guide is now a real provider-backed console agent. It resolves routing through the current ResearchOS provider stack and can use Claude / Codex / Gemini / local deterministic execution depending on your active routing and fallback state.
-
-Explicit console launch still works:
-
-```powershell
 uv run researchos console
 uv run ros
 ```
 
-## API Quickstart
+### Web UI
 
-Start the API:
+The web UI is built around the same workflow as the CLI, but with guided entry points:
 
-```powershell
-uv run uvicorn app.api.app:create_app --factory --reload
-```
+- Start a project from a plain-language research goal
+- Auto-run `paper_ingest` and `gap_mapping`
+- Pause at `human_select`
+- Discuss candidate directions with the LLM sidebar
+- Adopt one direction and continue into spec/build/review/writing
 
-Health check:
+## Provider Setup
 
-```powershell
-curl http://127.0.0.1:8000/health
-```
-
-Create a project:
+Minimum environment example:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/projects" `
-  -ContentType "application/json" `
-  -Body '{"project_id":"p1","name":"ResearchOS Demo","description":"API demo","status":"active"}'
+$env:RESEARCHOS_PROVIDER = "claude"
+$env:RESEARCHOS_PROVIDER_MODEL = "sonnet"
+$env:RESEARCHOS_MAX_STEPS = "12"
 ```
 
-Dispatch a task:
+Supported provider families:
 
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/tasks/t1/dispatch"
-```
+- `codex`
+- `claude`
+- `gemini`
+- `local`
 
-Inspect artifacts:
+Use `local` for demos, CI, and deterministic tests. Use `codex`, `claude`, or `gemini` only if the matching CLI is already installed and authenticated.
 
-```powershell
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/artifacts"
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/artifacts/<artifact-id>"
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/artifacts/<artifact-id>/inspect"
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/verifications/summary"
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/audit/summary"
-```
+## Project Layout
 
-Inspect dashboard and routing:
+Main directories:
 
-```powershell
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/projects/p1/dashboard"
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/routing/system"
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/routing/tasks/t1"
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/providers/health"
-```
+- [`app/`](app/) — runtime, agents, services, API, CLI
+- [`frontend/`](frontend/) — React web UI
+- [`prompts/`](prompts/) — repo-owned prompts
+- [`skills/`](skills/) — repo-owned skills
+- [`examples/`](examples/) — copy-pastable demos
+- [`docs/`](docs/) — setup and release notes
 
-## Docker / Production Quickstart
+## Durable State
+
+ResearchOS stores durable workflow state in two places:
+
+- Database: projects and tasks
+- Registry files under `registry/`: paper cards, gap maps, runs, claims, lessons, verifications, freezes, artifacts
+
+Important paths:
+
+- `registry/paper_cards.jsonl`
+- `registry/gap_maps.jsonl`
+- `registry/claims.jsonl`
+- `registry/runs.jsonl`
+- `registry/lessons.jsonl`
+- `registry/verifications.jsonl`
+- `registry/artifacts.jsonl`
+- `registry/freezes/`
+- `artifacts/`
+- `state/provider_health.yaml`
+
+## API Surfaces
+
+Useful operator endpoints:
+
+- `GET /projects/{project_id}/dashboard`
+- `GET /routing/system`
+- `GET /routing/tasks/{task_id}`
+- `GET /providers/health`
+- `GET /artifacts`
+- `GET /artifacts/{artifact_id}`
+- `GET /artifacts/{artifact_id}/inspect`
+- `GET /verifications/summary`
+- `GET /audit/summary`
+- `POST /guide/start`
+- `POST /guide/discuss-direction`
+- `POST /guide/adopt-direction`
+- `POST /projects/{project_id}/autopilot`
+
+## Production Stack
 
 The production-oriented stack uses:
 
@@ -361,114 +220,278 @@ The production-oriented stack uses:
 - Redis
 - Celery worker
 
-Start the stack:
+Start it with:
 
 ```powershell
 docker compose up -d --build
 ```
 
-Run the production smoke path:
-
-```powershell
-uv run python scripts\smoke_production_stack.py
-```
-
-## Registries and Artifacts
-
-ResearchOS persists several durable research surfaces outside the task table.
-
-By default they are created under the current workspace root. If `RESEARCHOS_WORKSPACE_ROOT` is unset, the current working directory is used.
-
-Relative to the workspace root, the main registry files are:
-
-- `registry/claims.jsonl`
-- `registry/runs.jsonl`
-- `registry/paper_cards.jsonl`
-- `registry/gap_maps.jsonl`
-- `registry/freezes/`
-- `registry/lessons.jsonl`
-- `registry/verifications.jsonl`
-- `state/provider_health.yaml`
-
-These are not transient logs. They are explicit workflow state that agents and operators can inspect and reuse.
-
-Artifacts produced by runs are registered via [`app/services/artifact_service.py`](app/services/artifact_service.py), and run manifests can be checked through the verification layer.
-
-The artifact registry file is:
-
-- `registry/artifacts.jsonl`
-
-Generated draft/style artifacts are written under:
-
-- `artifacts/`
-
-Operator-facing inspection surfaces now include:
-
-- `GET /artifacts`
-- `GET /artifacts/{artifact_id}`
-- `GET /artifacts/{artifact_id}/inspect`
-- `GET /artifacts/{artifact_id}/annotations`
-- `POST /artifacts/{artifact_id}/annotations`
-- `GET /projects/{project_id}/dashboard`
-- `GET /routing/system`
-- `GET /routing/tasks/{task_id}`
-- `GET /providers/health`
-- `POST /providers/{provider_name}/disable`
-- `POST /providers/{provider_name}/enable`
-- `GET /verifications`
-- `GET /verifications/summary`
-- `GET /audit/claims`
-- `GET /audit/runs/{run_id}`
-- `GET /audit/summary`
-
-Artifact detail now includes a typed provenance view with:
-
-- verification links
-- audit subject references
-- claim support references
-- run evidence
-- constrained operator annotations
-
-Storage boundaries are now explicit:
-
-- projects and tasks live in the configured DB
-- registry-backed workflow state lives under `registry/`
-- generated files live under `artifacts/`
-- provider health, cooldowns, and manual disable state live under `state/provider_health.yaml`
-
-This keeps operator state persistent without pretending that registry files and DB tables are the same storage surface.
-
-## Example Flows
-
-Copy-pastable examples live in:
+## Examples and Notes
 
 - [`examples/README.md`](examples/README.md)
-- [`examples/minimal-paper-ingest.ps1`](examples/minimal-paper-ingest.ps1)
-- [`examples/minimal-gap-mapping.ps1`](examples/minimal-gap-mapping.ps1)
-- [`examples/minimal-dispatch-profile.ps1`](examples/minimal-dispatch-profile.ps1)
-
-## Operator and Developer Notes
-
-- local developer notes: [`docs/operator_setup.md`](docs/operator_setup.md)
-- release checklist: [`docs/release_checklist.md`](docs/release_checklist.md)
-- changelog: [`CHANGELOG.md`](CHANGELOG.md)
+- [`docs/operator_setup.md`](docs/operator_setup.md)
+- [`docs/release_checklist.md`](docs/release_checklist.md)
+- [`CHANGELOG.md`](CHANGELOG.md)
 
 ## CI
 
-GitHub Actions runs:
+GitHub Actions currently runs:
 
 - dependency install with `uv`
-- Python bytecode compilation for import sanity
+- Python import sanity
 - unit tests
-- API dispatch smoke using the deterministic local provider
+- API dispatch smoke with the local provider
 - a small CLI smoke path
 
 Workflow file:
 
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
-There is also a unified local smoke path that exercises CLI + API + console together:
+</details>
+
+<a id="zh-cn"></a>
+<details>
+<summary><strong>中文</strong></summary>
+
+## 这是什么
+
+ResearchOS 是一个面向研究流程的运行时系统。它把项目、任务、论文卡片、gap map、freeze、run、claim、lesson、verification 这些对象都当成正式状态来管理，而不是散落在聊天记录里。
+
+它现在有三个主要入口：
+
+- CLI，适合直接控制
+- FastAPI，适合自动化和检查
+- React Web UI，适合同样的控制流程但更直观
+
+当前 Web UI 已经支持从研究方向出发，自动推进 `paper_ingest -> gap_mapping`，在 `human_select` 停下，并用真实 LLM 讨论侧栏辅助选题。
+
+## 核心能力
+
+- 强类型任务生命周期和调度状态
+- 带角色约束的专用 agent
+- `codex`、`claude`、`gemini`、`local` 多 provider 路由
+- 持久化研究登记表
+- verification、audit、provenance、approval 一整套检查面
+- 一条命令同时拉起前后端
+
+## 快速开始
+
+### 环境要求
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/)
+- Node.js 18+（前端需要）
+- 如果要调用外部模型，需要对应 provider 的 CLI
+
+### 安装依赖
 
 ```powershell
-uv run python scripts\smoke_unified_control_plane.py
+uv sync --dev
+cd frontend
+npm install
+cd ..
 ```
+
+### 推荐的本地起步方式
+
+第一次跑建议先用确定性的本地 provider：
+
+```powershell
+$env:RESEARCHOS_PROVIDER = "local"
+$env:RESEARCHOS_PROVIDER_MODEL = "deterministic-reader"
+$env:RESEARCHOS_WORKSPACE_ROOT = (Resolve-Path ".").Path
+```
+
+初始化数据库：
+
+```powershell
+uv run researchos --db-path data\researchos.db init-db
+```
+
+### 启动 Web UI
+
+```powershell
+uv run researchos web
+```
+
+默认本地地址：
+
+- 前端：`http://127.0.0.1:5173`
+- API：`http://127.0.0.1:8000`
+
+如果端口冲突，可以改：
+
+```powershell
+uv run researchos web --port 8010 --frontend-port 5180
+```
+
+### 只启动 API
+
+```powershell
+uv run uvicorn app.api.app:create_app --factory --reload
+```
+
+健康检查：
+
+```powershell
+curl http://127.0.0.1:8000/health
+```
+
+## 常见工作流
+
+### CLI
+
+创建项目：
+
+```powershell
+uv run researchos --db-path data\researchos.db create-project `
+  --project-id p1 `
+  --name "ResearchOS Demo" `
+  --description "Minimal local demo"
+```
+
+创建任务：
+
+```powershell
+uv run researchos --db-path data\researchos.db create-task `
+  --task-id t1 `
+  --project-id p1 `
+  --kind paper_ingest `
+  --goal "Read one paper summary" `
+  --owner demo `
+  --input-payload "{\"topic\":\"robustness\",\"source_summary\":{\"title\":\"Example Paper\",\"abstract\":\"A compact summary.\",\"setting\":\"classification\"}}"
+```
+
+调度和检查：
+
+```powershell
+uv run researchos --db-path data\researchos.db dispatch-task --task-id t1
+uv run researchos --db-path data\researchos.db list-tasks --project-id p1
+uv run researchos --db-path data\researchos.db project-dashboard --project-id p1
+uv run researchos --db-path data\researchos.db inspect-routing-system
+uv run researchos --db-path data\researchos.db provider-health
+```
+
+打开终端控制台：
+
+```powershell
+uv run researchos
+uv run researchos console
+uv run ros
+```
+
+### Web UI
+
+Web UI 和 CLI 是同一套控制流程，只是入口更引导化：
+
+- 用自然语言输入研究方向
+- 自动跑 `paper_ingest` 和 `gap_mapping`
+- 在 `human_select` 停下
+- 用右侧 LLM 对话栏讨论候选方向
+- 选定方向后继续推进 spec、build、review、draft
+
+## Provider 配置
+
+最小环境变量示例：
+
+```powershell
+$env:RESEARCHOS_PROVIDER = "claude"
+$env:RESEARCHOS_PROVIDER_MODEL = "sonnet"
+$env:RESEARCHOS_MAX_STEPS = "12"
+```
+
+当前支持的 provider family：
+
+- `codex`
+- `claude`
+- `gemini`
+- `local`
+
+`local` 适合演示、CI 和确定性测试。只有在对应 CLI 已安装并且登录可用时，才建议切到 `codex`、`claude` 或 `gemini`。
+
+## 目录结构
+
+主要目录：
+
+- [`app/`](app/)：运行时、agent、service、API、CLI
+- [`frontend/`](frontend/)：React 前端
+- [`prompts/`](prompts/)：仓库内维护的 prompt
+- [`skills/`](skills/)：仓库内维护的 skill
+- [`examples/`](examples/)：可直接复制的示例
+- [`docs/`](docs/)：配置和发布说明
+
+## 持久化状态放在哪
+
+ResearchOS 把持久化状态分成两层：
+
+- 数据库：项目和任务
+- `registry/` 下的文件：paper card、gap map、run、claim、lesson、verification、freeze、artifact
+
+关键路径：
+
+- `registry/paper_cards.jsonl`
+- `registry/gap_maps.jsonl`
+- `registry/claims.jsonl`
+- `registry/runs.jsonl`
+- `registry/lessons.jsonl`
+- `registry/verifications.jsonl`
+- `registry/artifacts.jsonl`
+- `registry/freezes/`
+- `artifacts/`
+- `state/provider_health.yaml`
+
+## 常用 API
+
+常用操作面接口：
+
+- `GET /projects/{project_id}/dashboard`
+- `GET /routing/system`
+- `GET /routing/tasks/{task_id}`
+- `GET /providers/health`
+- `GET /artifacts`
+- `GET /artifacts/{artifact_id}`
+- `GET /artifacts/{artifact_id}/inspect`
+- `GET /verifications/summary`
+- `GET /audit/summary`
+- `POST /guide/start`
+- `POST /guide/discuss-direction`
+- `POST /guide/adopt-direction`
+- `POST /projects/{project_id}/autopilot`
+
+## 生产栈
+
+生产部署目前围绕这些组件：
+
+- FastAPI
+- Postgres
+- Redis
+- Celery worker
+
+启动：
+
+```powershell
+docker compose up -d --build
+```
+
+## 示例与文档
+
+- [`examples/README.md`](examples/README.md)
+- [`docs/operator_setup.md`](docs/operator_setup.md)
+- [`docs/release_checklist.md`](docs/release_checklist.md)
+- [`CHANGELOG.md`](CHANGELOG.md)
+
+## CI
+
+GitHub Actions 当前会跑：
+
+- `uv` 安装依赖
+- Python 导入检查
+- 单元测试
+- local provider 的 API smoke
+- 一条小型 CLI smoke path
+
+工作流文件：
+
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+
+</details>

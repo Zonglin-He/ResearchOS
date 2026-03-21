@@ -7,6 +7,7 @@ from app.agents.response_schemas import READER_RESPONSE_SCHEMA
 from app.agents.utils import build_child_task
 from app.roles import reader_role_binding
 from app.schemas.artifact import ArtifactRecord
+from app.schemas.context import RunContext
 from app.schemas.paper_card import EvidenceRef, PaperCard
 from app.schemas.result import AgentResult
 from app.schemas.task import Task
@@ -49,6 +50,16 @@ class ReaderAgent(PromptDrivenAgent):
         self.paper_card_service = paper_card_service
         self.artifact_service = artifact_service
 
+    async def run(self, task: Task, ctx: RunContext) -> AgentResult:
+        search_output = await self._search_output(task)
+        if search_output is not None:
+            result = self.build_result(task, ctx, search_output)
+            role_asset_note = self._build_role_asset_audit_note(task)
+            if role_asset_note is not None:
+                result.audit_notes.append(role_asset_note)
+            return result
+        return await super().run(task, ctx)
+
     def build_user_payload(self, task, ctx) -> dict[str, Any]:
         payload = super().build_user_payload(task, ctx)
         payload["reader_focus"] = {
@@ -79,6 +90,20 @@ class ReaderAgent(PromptDrivenAgent):
                     "audit_notes",
                     [],
                 ).append("reader fallback synthesized a paper card from source_summary")
+
+        blocking_reasons = self._blocking_reasons(task, raw_cards, output)
+        if blocking_reasons:
+            audit_notes = output.get("audit_notes", [])
+            audit_notes.extend(f"reader blocked promotion to gap_mapping: {reason}" for reason in blocking_reasons)
+            return AgentResult(
+                status="handoff",
+                output={
+                    "paper_cards": raw_cards,
+                    "uncertainties": output.get("uncertainties", []),
+                    "blocking_reasons": blocking_reasons,
+                },
+                audit_notes=audit_notes,
+            )
 
         paper_cards = [self._to_paper_card(item) for item in raw_cards]
         for card in paper_cards:
@@ -124,6 +149,136 @@ class ReaderAgent(PromptDrivenAgent):
             next_tasks=next_tasks,
             audit_notes=output.get("audit_notes", []),
         )
+
+    def _blocking_reasons(
+        self,
+        task: Task,
+        raw_cards: list[dict[str, Any]],
+        output: dict[str, Any],
+    ) -> list[str]:
+        reasons: list[str] = []
+        topic = str(task.input_payload.get("topic", "")).strip()
+        expected_min = task.input_payload.get("expected_min_papers", 1)
+        try:
+            min_papers = max(1, int(expected_min))
+        except (TypeError, ValueError):
+            min_papers = 1
+
+        audit_notes = " ".join(str(note) for note in output.get("audit_notes", [])).lower()
+        uncertainties = " ".join(str(note) for note in output.get("uncertainties", [])).lower()
+
+        if len(raw_cards) < min_papers:
+            reasons.append(f"expected at least {min_papers} paper cards, received {len(raw_cards)}")
+        if "local provider generated deterministic reader output" in audit_notes:
+            reasons.append("reader output came from the deterministic local provider placeholder path")
+        if "reader fallback synthesized a paper card from source_summary" in audit_notes:
+            reasons.append("reader fell back to synthesizing a card from source_summary instead of paper retrieval")
+        if "source_summary fallback" in uncertainties:
+            reasons.append("reader reported source_summary fallback rather than retrieved paper evidence")
+        if raw_cards and all(self._looks_placeholder_card(task, card, topic) for card in raw_cards):
+            reasons.append("all returned paper cards look like placeholders rather than retrieved papers")
+        return reasons
+
+    @staticmethod
+    def _looks_placeholder_card(task: Task, raw_card: dict[str, Any], topic: str) -> bool:
+        evidence_refs = raw_card.get("evidence_refs", [])
+        source_summary_only = bool(evidence_refs) and all(
+            isinstance(ref, dict) and ref.get("section") == "source_summary"
+            for ref in evidence_refs
+        )
+        sparse_content = not any(
+            raw_card.get(field)
+            for field in (
+                "datasets",
+                "metrics",
+                "claimed_contributions",
+                "strongest_result",
+                "key_modules",
+            )
+        )
+        title = str(raw_card.get("title", "")).strip().lower()
+        goal = str(task.goal).strip().lower()
+        normalized_topic = topic.lower()
+        generic_title = title == goal or (normalized_topic and normalized_topic in title)
+        return source_summary_only and sparse_content and generic_title
+
+    async def _search_output(self, task: Task) -> dict[str, Any] | None:
+        if task.kind != "paper_ingest":
+            return None
+        if task.input_payload.get("source_summary"):
+            return None
+        if self.tool_registry is None:
+            return None
+
+        try:
+            search_tool = self.tool_registry.get("paper_search")
+        except KeyError:
+            return None
+
+        query = self._paper_query(task)
+        if not query:
+            return None
+
+        expected_min = task.input_payload.get("expected_min_papers", 5)
+        max_papers = task.input_payload.get("max_papers", expected_min)
+        try:
+            limit = max(1, int(max_papers))
+        except (TypeError, ValueError):
+            limit = 5
+
+        search_result = await search_tool.execute(query=query, limit=limit)
+        items = search_result.get("items", [])
+        raw_cards = [self._card_from_search_hit(task, item) for item in items if item.get("title")]
+        return {
+            "paper_cards": raw_cards,
+            "artifact_notes": [f"paper_search query={query} hits={len(raw_cards)}"],
+            "uncertainties": [
+                "some search hits may not include abstracts or dataset details"
+            ],
+            "audit_notes": [
+                f"reader paper_search retrieved {len(raw_cards)} candidate papers from Crossref"
+            ],
+        }
+
+    @staticmethod
+    def _paper_query(task: Task) -> str:
+        keywords = task.input_payload.get("keywords", [])
+        if isinstance(keywords, list):
+            cleaned = [str(item).strip() for item in keywords if str(item).strip()]
+            if cleaned:
+                return " ".join(cleaned[:6])
+        topic = str(task.input_payload.get("topic", "")).strip()
+        if topic:
+            return topic
+        return str(task.goal).strip()
+
+    @staticmethod
+    def _card_from_search_hit(task: Task, item: dict[str, Any]) -> dict[str, Any]:
+        topic = str(task.input_payload.get("topic", "")).strip() or "paper search"
+        title = str(item.get("title", "")).strip()
+        doi = str(item.get("doi", "")).strip()
+        published = str(item.get("published", "")).strip()
+        paper_id = doi or title.lower().replace(" ", "_")[:64]
+        summary_bits = [bit for bit in [f"Crossref hit for {topic}.", doi and f"DOI: {doi}.", published and f"Published: {published}."] if bit]
+        return {
+            "paper_id": paper_id,
+            "title": title,
+            "problem": f"Retrieved as a relevant paper for {topic}.",
+            "setting": topic,
+            "task_type": topic,
+            "core_assumption": [],
+            "method_summary": " ".join(summary_bits),
+            "key_modules": [],
+            "datasets": [],
+            "metrics": [],
+            "strongest_result": "",
+            "claimed_contributions": [f"Crossref DOI {doi}"] if doi else [],
+            "hidden_dependencies": [],
+            "likely_failure_modes": [],
+            "repro_risks": [],
+            "idea_seeds": [topic],
+            "evidence_refs": [{"section": "crossref", "page": 1}],
+        }
 
     @staticmethod
     def _to_paper_card(payload: dict[str, Any]) -> PaperCard:

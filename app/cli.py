@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 from app.bootstrap import build_runtime_services
@@ -41,6 +44,13 @@ def build_parser() -> argparse.ArgumentParser:
     console = subparsers.add_parser("console")
     console.add_argument("--refresh-interval", type=float, default=2.0)
     console.set_defaults(handler=_handle_console)
+
+    web = subparsers.add_parser("web")
+    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--port", type=int, default=8000)
+    web.add_argument("--frontend-host", default="127.0.0.1")
+    web.add_argument("--frontend-port", type=int, default=5173)
+    web.set_defaults(handler=_handle_web)
 
     create_project = subparsers.add_parser("create-project")
     create_project.add_argument("--project-id", required=True)
@@ -290,6 +300,77 @@ def _handle_console(
     return app.run()
 
 
+def _handle_web(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+    package_json = frontend_dir / "package.json"
+    if not package_json.exists():
+        print(f"Frontend workspace not found at {frontend_dir}", file=sys.stderr)
+        return 1
+
+    npm_executable = shutil.which("npm")
+    if npm_executable is None:
+        print("npm is required to run the frontend dev server.", file=sys.stderr)
+        return 1
+
+    backend_cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "app.api.app:create_app",
+        "--factory",
+        "--host",
+        args.host,
+        "--port",
+        str(args.port),
+        "--reload",
+    ]
+    frontend_cmd = [
+        npm_executable,
+        "run",
+        "dev",
+        "--",
+        "--host",
+        args.frontend_host,
+        "--port",
+        str(args.frontend_port),
+    ]
+
+    print(f"Starting backend on http://{args.host}:{args.port}")
+    print(f"Starting frontend on http://{args.frontend_host}:{args.frontend_port}")
+
+    backend = subprocess.Popen(backend_cmd)
+    frontend = subprocess.Popen(frontend_cmd, cwd=frontend_dir)
+
+    try:
+        while True:
+            backend_code = backend.poll()
+            frontend_code = frontend.poll()
+
+            if backend_code is not None:
+                _terminate_process(frontend)
+                return backend_code
+            if frontend_code is not None:
+                _terminate_process(backend)
+                return frontend_code
+
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        print("\nStopping web dev stack...")
+        _terminate_process(frontend)
+        _terminate_process(backend)
+        return 130
+
+
 def _handle_init_db(
     args: argparse.Namespace,
     project_service: ProjectService,
@@ -303,6 +384,16 @@ def _handle_init_db(
 ) -> int:
     print(f"Initialized database at {args.db_path}")
     return 0
+
+
+def _terminate_process(process: subprocess.Popen[bytes] | subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
 
 
 def _handle_create_project(

@@ -14,6 +14,12 @@ class GapMapService:
         append_jsonl(self.registry_path, to_record(gap_map))
         return gap_map
 
+    def get_gap_map(self, topic: str) -> GapMap | None:
+        matches = [gap_map for gap_map in self.list_gap_maps() if gap_map.topic == topic]
+        if not matches:
+            return None
+        return matches[-1]
+
     def list_gap_maps(self) -> list[GapMap]:
         rows = read_jsonl(self.registry_path)
         return [

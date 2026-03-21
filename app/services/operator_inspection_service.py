@@ -186,6 +186,9 @@ class OperatorInspectionService:
         self.provider_health_service.clear_cooldown(provider_name)
         return self.provider_health_service.snapshot(provider_name, self.provider_registry)
 
+    async def probe_provider_family(self, provider_name: str):
+        return await self.provider_health_service.probe_provider(provider_name, self.provider_registry)
+
     @staticmethod
     def _recommend_next_task(tasks, fallback_goal: str) -> tuple[str | None, str, str, str | None]:
         completed_kinds = {

@@ -14,6 +14,7 @@ class LocalProvider(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         response_schema: dict[str, Any] | None = None,
         model: str | None = None,
+        provider_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         payload = self._parse_user_input(user_input)
         guide_request = payload.get("guide_request")

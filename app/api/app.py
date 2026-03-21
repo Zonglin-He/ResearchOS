@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.deps import get_project_service, get_task_service
 from app.api.schemas import (
+    AdoptDirectionRequest,
+    AdoptDirectionResponse,
     ArtifactAnnotationCreate,
     ArtifactAnnotationRead,
     ArtifactDetailRead,
     ArtifactInspectionRead,
     ArtifactRead,
+    AutopilotRead,
+    AutopilotResponse,
     ArtifactProvenanceRead,
     AuditSubjectRefRead,
     AuditEntryRead,
@@ -19,6 +24,8 @@ from app.api.schemas import (
     ClaimCreate,
     ClaimSupportRefRead,
     ClaimRead,
+    DiscussDirectionRequest,
+    DiscussDirectionResponse,
     EvidenceRefModel,
     GapCreate,
     GapClusterCreate,
@@ -35,6 +42,8 @@ from app.api.schemas import (
     ProjectCreate,
     ProjectDashboardRead,
     ProjectRead,
+    ResearchStartRequest,
+    ResearchStartResponse,
     ResultsFreezeRead,
     ResultsFreezeSave,
     ResultsFreezeSaveResponse,
@@ -102,6 +111,13 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
         config.workspace_root = workspace_root
     services = build_runtime_services(config)
     app = FastAPI(title="ResearchOS", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.state.project_service = services.project_service
     app.state.task_service = services.task_service
     app.state.claim_service = services.claim_service
@@ -120,10 +136,113 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
     app.state.provider_health_service = services.provider_health_service
     app.state.provider_registry = services.provider_registry
     app.state.orchestrator = services.orchestrator
+    app.state.research_guide_service = services.research_guide_service
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/guide/start", response_model=ResearchStartResponse)
+    async def guide_start_research(payload: ResearchStartRequest) -> ResearchStartResponse:
+        try:
+            result = await app.state.research_guide_service.start_research(
+                research_goal=payload.research_goal,
+                project_name=payload.project_name,
+                project_id=payload.project_id,
+                owner=payload.owner,
+                keywords=payload.keywords,
+                max_papers=payload.max_papers,
+                expected_min_papers=payload.expected_min_papers,
+                auto_dispatch=payload.auto_dispatch,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return ResearchStartResponse(
+            project_id=result.project.project_id,
+            project_name=result.project.name,
+            intake_task_id=result.intake_task.task_id,
+            autopilot=AutopilotRead(
+                dispatched_task_ids=list(result.autopilot.dispatched_task_ids),
+                stop_reason=result.autopilot.stop_reason,
+                human_select_task_id=result.autopilot.human_select_task_id,
+            ),
+            next_step=_guide_next_step(result.autopilot.stop_reason),
+        )
+
+    @app.post("/guide/adopt-direction", response_model=AdoptDirectionResponse)
+    async def guide_adopt_direction(payload: AdoptDirectionRequest) -> AdoptDirectionResponse:
+        try:
+            result = await app.state.research_guide_service.adopt_direction(
+                project_id=payload.project_id,
+                human_select_task_id=payload.human_select_task_id,
+                gap_id=payload.gap_id,
+                research_question=payload.research_question,
+                operator_note=payload.operator_note,
+                novelty_type=payload.novelty_type,
+                owner=payload.owner,
+                auto_dispatch=payload.auto_dispatch,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return AdoptDirectionResponse(
+            topic_id=result.topic_freeze.topic_id,
+            build_task_id=result.build_task.task_id,
+            autopilot=AutopilotRead(
+                dispatched_task_ids=list(result.autopilot.dispatched_task_ids),
+                stop_reason=result.autopilot.stop_reason,
+                human_select_task_id=result.autopilot.human_select_task_id,
+            ),
+            next_step=_guide_next_step(result.autopilot.stop_reason),
+        )
+
+    @app.post("/guide/discuss-direction", response_model=DiscussDirectionResponse)
+    async def guide_discuss_direction(payload: DiscussDirectionRequest) -> DiscussDirectionResponse:
+        try:
+            result = await app.state.research_guide_service.discuss_direction(
+                project_id=payload.project_id,
+                human_select_task_id=payload.human_select_task_id,
+                gap_id=payload.gap_id,
+                user_message=payload.user_message,
+                history=[message.model_dump() for message in payload.history],
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=502, detail=str(error)) from error
+        return DiscussDirectionResponse(
+            assistant_message=result.assistant_message,
+            gap_id=result.gap_id,
+            topic=result.topic,
+            strengths=list(result.strengths),
+            risks=list(result.risks),
+            next_checks=list(result.next_checks),
+            cited_papers=list(result.cited_papers),
+            research_question_suggestion=result.research_question_suggestion,
+            assistant_role=result.assistant_role,
+            provider_name=result.provider_name,
+            model_name=result.model_name,
+            reasoning_effort=result.reasoning_effort,
+            skill_name=result.skill_name,
+        )
+
+    @app.post("/projects/{project_id}/autopilot", response_model=AutopilotResponse)
+    async def autopilot_project(project_id: str) -> AutopilotResponse:
+        try:
+            result = await app.state.research_guide_service.autopilot_project(project_id)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return AutopilotResponse(
+            project_id=project_id,
+            autopilot=AutopilotRead(
+                dispatched_task_ids=list(result.dispatched_task_ids),
+                stop_reason=result.stop_reason,
+                human_select_task_id=result.human_select_task_id,
+            ),
+        )
 
     @app.post("/projects", response_model=ProjectRead)
     def create_project(
@@ -232,6 +351,19 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             raise HTTPException(status_code=400, detail=str(error)) from error
         return _to_task_read(task)
 
+    @app.post("/tasks/{task_id}/cancel", response_model=TaskRead)
+    def cancel_task(
+        task_id: str,
+        task_service: TaskService = Depends(get_task_service),
+    ) -> TaskRead:
+        try:
+            task = task_service.cancel_task(task_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return _to_task_read(task)
+
     @app.post("/tasks/{task_id}/dispatch", response_model=TaskRead)
     async def dispatch_task(task_id: str) -> TaskRead:
         try:
@@ -240,6 +372,13 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             raise HTTPException(status_code=404, detail=str(error)) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+        except RuntimeError as error:
+            try:
+                app.state.task_service.update_status(task_id, TaskStatus.FAILED)
+            except Exception:
+                pass
+            detail = str(error).strip() or "Provider invocation failed during task dispatch."
+            raise HTTPException(status_code=502, detail=detail) from error
         return _to_task_read(dispatch.task)
 
     @app.post("/tasks/{task_id}/enqueue")
@@ -274,6 +413,16 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
     @app.post("/providers/{provider_name}/enable", response_model=ProviderHealthSnapshotModel)
     def enable_provider(provider_name: str) -> ProviderHealthSnapshotModel:
         snapshot = app.state.operator_inspection_service.enable_provider_family(provider_name)
+        return ProviderHealthSnapshotModel.model_validate(to_record(snapshot))
+
+    @app.post("/providers/{provider_name}/clear-cooldown", response_model=ProviderHealthSnapshotModel)
+    def clear_provider_cooldown(provider_name: str) -> ProviderHealthSnapshotModel:
+        snapshot = app.state.operator_inspection_service.clear_provider_cooldown(provider_name)
+        return ProviderHealthSnapshotModel.model_validate(to_record(snapshot))
+
+    @app.post("/providers/{provider_name}/probe", response_model=ProviderHealthSnapshotModel)
+    async def probe_provider(provider_name: str) -> ProviderHealthSnapshotModel:
+        snapshot = await app.state.operator_inspection_service.probe_provider_family(provider_name)
         return ProviderHealthSnapshotModel.model_validate(to_record(snapshot))
 
     @app.post("/claims", response_model=ClaimRead)
@@ -569,6 +718,13 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             for card in app.state.paper_card_service.list_cards()
         ]
 
+    @app.get("/paper-cards/{paper_id:path}", response_model=PaperCardRead)
+    def get_paper_card(paper_id: str) -> PaperCardRead:
+        card = app.state.paper_card_service.get_card(paper_id)
+        if card is None:
+            raise HTTPException(status_code=404, detail="Paper card not found")
+        return PaperCardRead.model_validate(card, from_attributes=True)
+
     @app.post("/gap-maps", response_model=GapMapCreateResponse)
     def create_gap_map(payload: GapMapCreate) -> GapMapCreateResponse:
         gap_map = app.state.gap_map_service.register_gap_map(
@@ -601,6 +757,13 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             GapMapSummaryRead(topic=gap_map.topic, clusters=len(gap_map.clusters))
             for gap_map in app.state.gap_map_service.list_gap_maps()
         ]
+
+    @app.get("/gap-maps/{topic:path}", response_model=GapMapRead)
+    def get_gap_map(topic: str) -> GapMapRead:
+        gap_map = app.state.gap_map_service.get_gap_map(topic)
+        if gap_map is None:
+            raise HTTPException(status_code=404, detail="Gap map not found")
+        return GapMapRead.model_validate(gap_map, from_attributes=True)
 
     @app.post("/freezes/topic", response_model=TopicFreezeSaveResponse)
     def save_topic_freeze(payload: TopicFreezeSave) -> TopicFreezeSaveResponse:
@@ -1092,3 +1255,21 @@ def _collect_provenance_evidence_refs(provenance: ArtifactProvenance) -> list[st
             for ref in entry.evidence_refs
         }
     )
+
+
+def _guide_next_step(stop_reason: str) -> str:
+    if stop_reason == "human_select_ready":
+        return "请查看候选 idea，选择一个方向继续自动推进。"
+    if stop_reason == "blocked":
+        return "自动流程被阻塞，请检查当前任务的错误或缺少的输入。"
+    if stop_reason == "waiting_approval":
+        return "当前流程进入待审批状态，需要人工确认。"
+    if stop_reason == "failed":
+        return "自动流程失败，请检查任务控制台中的失败任务。"
+    if stop_reason == "running":
+        return "自动流程仍在运行中，稍后刷新查看最新结果。"
+    if stop_reason == "idle":
+        return "当前没有可自动推进的任务。"
+    if stop_reason == "dispatch_limit_reached":
+        return "本轮已完成一批自动推进，可再次点击继续。"
+    return "自动流程已启动。"

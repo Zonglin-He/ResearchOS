@@ -1,0 +1,578 @@
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from app.agents.orchestrator import Orchestrator
+from app.providers.registry import ProviderRegistry
+from app.schemas.freeze import TopicFreeze
+from app.schemas.gap_map import Gap, GapMap
+from app.schemas.paper_card import PaperCard
+from app.schemas.project import Project
+from app.schemas.task import Task, TaskStatus
+from app.services.freeze_service import FreezeService
+from app.services.gap_map_service import GapMapService
+from app.services.paper_card_service import PaperCardService
+from app.services.project_service import ProjectService
+from app.services.task_service import TaskService
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_DISCUSSION_PROMPT_PATH = _REPO_ROOT / "prompts" / "guide" / "discussion_advisor.md"
+_DISCUSSION_SKILL_PATH = _REPO_ROOT / "skills" / "direction-advisor" / "SKILL.md"
+_DISCUSSION_RUNTIME_REF_PATH = _REPO_ROOT / "skills" / "direction-advisor" / "references" / "research_checks.md"
+
+_DISCUSSION_PROVIDER = "codex"
+_DISCUSSION_MODEL = "gpt-5.4"
+_DISCUSSION_REASONING_EFFORT = "high"
+_DISCUSSION_VERBOSITY = "medium"
+_DISCUSSION_ROLE = "选题顾问"
+_DISCUSSION_SKILL = "research-direction-advisor"
+
+
+@dataclass(frozen=True)
+class AutopilotResult:
+    dispatched_task_ids: tuple[str, ...]
+    stop_reason: str
+    human_select_task_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ResearchStartResult:
+    project: Project
+    intake_task: Task
+    autopilot: AutopilotResult
+
+
+@dataclass(frozen=True)
+class IdeaAdoptionResult:
+    topic_freeze: TopicFreeze
+    build_task: Task
+    autopilot: AutopilotResult
+
+
+@dataclass(frozen=True)
+class DirectionDiscussionResult:
+    assistant_message: str
+    gap_id: str
+    topic: str
+    strengths: tuple[str, ...]
+    risks: tuple[str, ...]
+    next_checks: tuple[str, ...]
+    cited_papers: tuple[str, ...]
+    research_question_suggestion: str
+    assistant_role: str
+    provider_name: str
+    model_name: str
+    reasoning_effort: str
+    skill_name: str
+
+
+class ResearchGuideService:
+    def __init__(
+        self,
+        *,
+        project_service: ProjectService,
+        task_service: TaskService,
+        freeze_service: FreezeService,
+        gap_map_service: GapMapService,
+        paper_card_service: PaperCardService,
+        provider_registry: ProviderRegistry,
+        orchestrator: Orchestrator,
+    ) -> None:
+        self.project_service = project_service
+        self.task_service = task_service
+        self.freeze_service = freeze_service
+        self.gap_map_service = gap_map_service
+        self.paper_card_service = paper_card_service
+        self.provider_registry = provider_registry
+        self.orchestrator = orchestrator
+        self._discussion_prompt = _DISCUSSION_PROMPT_PATH.read_text(encoding="utf-8").strip()
+        self._discussion_skill = _DISCUSSION_SKILL_PATH.read_text(encoding="utf-8").strip()
+        self._discussion_runtime_reference = _DISCUSSION_RUNTIME_REF_PATH.read_text(encoding="utf-8").strip()
+
+    async def start_research(
+        self,
+        *,
+        research_goal: str,
+        project_name: str = "",
+        project_id: str = "",
+        owner: str = "operator",
+        keywords: list[str] | None = None,
+        max_papers: int = 8,
+        expected_min_papers: int = 5,
+        auto_dispatch: bool = True,
+    ) -> ResearchStartResult:
+        goal = research_goal.strip()
+        if not goal:
+            raise ValueError("research_goal is required")
+
+        resolved_project_name = project_name.strip() or self._suggest_project_name(goal)
+        resolved_project_id = self._ensure_unique_project_id(
+            project_id.strip() or self._slugify(resolved_project_name or goal, fallback="research-project")
+        )
+        project = self.project_service.create_project(
+            Project(
+                project_id=resolved_project_id,
+                name=resolved_project_name,
+                description=goal,
+                status="active",
+            )
+        )
+
+        derived_keywords = keywords or self._derive_keywords(goal)
+        intake_task = self.task_service.create_task(
+            Task(
+                task_id=self._ensure_unique_task_id(f"{resolved_project_id}-paper-ingest"),
+                project_id=resolved_project_id,
+                kind="paper_ingest",
+                goal=f"Research the literature around {goal} and distill durable paper cards.",
+                input_payload={
+                    "topic": goal,
+                    "keywords": derived_keywords,
+                    "max_papers": max(1, max_papers),
+                    "expected_min_papers": max(1, expected_min_papers),
+                },
+                owner=owner,
+            )
+        )
+
+        autopilot = AutopilotResult(dispatched_task_ids=tuple(), stop_reason="created")
+        if auto_dispatch:
+            autopilot = await self.autopilot_project(resolved_project_id)
+        return ResearchStartResult(project=project, intake_task=intake_task, autopilot=autopilot)
+
+    async def adopt_direction(
+        self,
+        *,
+        project_id: str,
+        human_select_task_id: str,
+        gap_id: str,
+        research_question: str = "",
+        operator_note: str = "",
+        novelty_type: list[str] | None = None,
+        owner: str = "operator",
+        auto_dispatch: bool = True,
+    ) -> IdeaAdoptionResult:
+        human_select_task = self._require_human_select_task(project_id, human_select_task_id)
+        candidate = self._require_candidate(human_select_task, gap_id)
+
+        topic = str(human_select_task.input_payload.get("topic", "")).strip() or project_id
+        novelty = [item for item in (novelty_type or []) if item] or ["extension"]
+        resolved_question = research_question.strip() or self._build_research_question(topic, gap_id, candidate)
+        topic_id = self._slugify(f"{project_id}-{gap_id}-topic", fallback="topic-freeze")
+        topic_freeze = self.freeze_service.save_topic_freeze(
+            TopicFreeze(
+                topic_id=topic_id,
+                selected_gap_ids=[gap_id],
+                research_question=resolved_question,
+                novelty_type=novelty,
+                owner=owner,
+                status="approved",
+            )
+        )
+
+        if human_select_task.status in {
+            TaskStatus.QUEUED,
+            TaskStatus.BLOCKED,
+            TaskStatus.RUNNING,
+            TaskStatus.WAITING_APPROVAL,
+            TaskStatus.FAILED,
+        }:
+            self.task_service.update_status(human_select_task.task_id, TaskStatus.CANCELLED)
+
+        spec_id = self._slugify(f"{topic_id}-spec", fallback="spec-freeze")
+        build_task = self.task_service.create_task(
+            Task(
+                task_id=self._ensure_unique_task_id(f"{project_id}-build-spec-{gap_id}"),
+                project_id=project_id,
+                kind="build_spec",
+                goal=f"Design, execute, and review the selected direction {gap_id} for {topic}.",
+                input_payload={
+                    "topic": topic,
+                    "topic_id": topic_id,
+                    "spec_id": spec_id,
+                    "selected_gap_id": gap_id,
+                    "selected_candidate": candidate,
+                    "research_question": resolved_question,
+                    "operator_note": operator_note.strip(),
+                    "novelty_type": novelty,
+                },
+                owner=owner,
+            )
+        )
+
+        autopilot = AutopilotResult(dispatched_task_ids=tuple(), stop_reason="created")
+        if auto_dispatch:
+            autopilot = await self.autopilot_project(project_id)
+        return IdeaAdoptionResult(topic_freeze=topic_freeze, build_task=build_task, autopilot=autopilot)
+
+    async def discuss_direction(
+        self,
+        *,
+        project_id: str,
+        human_select_task_id: str,
+        gap_id: str,
+        user_message: str = "",
+        history: list[dict[str, str]] | None = None,
+    ) -> DirectionDiscussionResult:
+        human_select_task = self._require_human_select_task(project_id, human_select_task_id)
+        topic = str(human_select_task.input_payload.get("topic", "")).strip() or project_id
+        gap_map = self.gap_map_service.get_gap_map(topic)
+        gap = self._find_gap(gap_map, gap_id)
+        if gap is None:
+            raise ValueError(f"gap_id not found in current gap map: {gap_id}")
+
+        candidate = self._require_candidate(human_select_task, gap_id)
+        paper_cards = self._supporting_cards(gap)
+        known_citations = self._paper_citation_labels(paper_cards)
+
+        response_schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "assistant_message": {"type": "string"},
+                "strengths": {"type": "array", "items": {"type": "string"}},
+                "risks": {"type": "array", "items": {"type": "string"}},
+                "next_checks": {"type": "array", "items": {"type": "string"}},
+                "cited_papers": {"type": "array", "items": {"type": "string"}},
+                "research_question_suggestion": {"type": "string"},
+            },
+            "required": [
+                "assistant_message",
+                "strengths",
+                "risks",
+                "next_checks",
+                "cited_papers",
+                "research_question_suggestion",
+            ],
+        }
+
+        provider = self.provider_registry.get(_DISCUSSION_PROVIDER)
+        payload = {
+            "mode": "direction_discussion",
+            "operator_goal": "Help the operator decide whether this candidate idea should be adopted and frozen.",
+            "topic": topic,
+            "gap": {
+                "gap_id": gap.gap_id,
+                "description": gap.description,
+                "attack_surface": gap.attack_surface,
+                "difficulty": gap.difficulty,
+                "novelty_type": gap.novelty_type,
+                "supporting_papers": gap.supporting_papers,
+            },
+            "candidate": candidate,
+            "paper_cards": [self._paper_card_payload(card) for card in paper_cards],
+            "known_citations": known_citations,
+            "conversation_history": self._normalize_history(history),
+            "latest_user_message": user_message.strip(),
+            "output_language": "zh-Hans",
+        }
+        system_prompt = self._build_discussion_system_prompt()
+
+        raw = await provider.generate(
+            system_prompt=system_prompt,
+            user_input=json.dumps(payload, ensure_ascii=False, indent=2),
+            response_schema=response_schema,
+            model=_DISCUSSION_MODEL,
+            provider_config={
+                "model_reasoning_effort": _DISCUSSION_REASONING_EFFORT,
+                "model_verbosity": _DISCUSSION_VERBOSITY,
+            },
+        )
+
+        assistant_message = self._clean_text(raw.get("assistant_message")) or self._fallback_assistant_message(
+            topic=topic,
+            gap=gap,
+            cited_papers=known_citations,
+        )
+        strengths = self._normalize_bullet_list(raw.get("strengths"))
+        risks = self._normalize_bullet_list(raw.get("risks"))
+        next_checks = self._normalize_bullet_list(raw.get("next_checks"))
+        cited_papers = self._normalize_citations(raw.get("cited_papers"), known_citations)
+        suggested_question = self._clean_text(raw.get("research_question_suggestion")) or self._build_research_question(
+            topic,
+            gap_id,
+            candidate,
+        )
+
+        return DirectionDiscussionResult(
+            assistant_message=assistant_message,
+            gap_id=gap_id,
+            topic=topic,
+            strengths=tuple(strengths),
+            risks=tuple(risks),
+            next_checks=tuple(next_checks),
+            cited_papers=tuple(cited_papers),
+            research_question_suggestion=suggested_question,
+            assistant_role=_DISCUSSION_ROLE,
+            provider_name=_DISCUSSION_PROVIDER,
+            model_name=_DISCUSSION_MODEL,
+            reasoning_effort=_DISCUSSION_REASONING_EFFORT,
+            skill_name=_DISCUSSION_SKILL,
+        )
+
+    async def autopilot_project(self, project_id: str, *, max_dispatches: int = 8) -> AutopilotResult:
+        dispatched: list[str] = []
+
+        for _ in range(max_dispatches):
+            tasks = self._project_tasks(project_id)
+            human_select_task = self._first_active_human_select(tasks)
+            if human_select_task is not None:
+                return AutopilotResult(
+                    dispatched_task_ids=tuple(dispatched),
+                    stop_reason="human_select_ready",
+                    human_select_task_id=human_select_task.task_id,
+                )
+
+            next_task = self._next_autopilot_task(tasks)
+            if next_task is None:
+                return AutopilotResult(
+                    dispatched_task_ids=tuple(dispatched),
+                    stop_reason=self._idle_reason(tasks),
+                )
+
+            dispatch = await self.orchestrator.dispatch(next_task.task_id)
+            dispatched.append(next_task.task_id)
+            if dispatch.task.status in {
+                TaskStatus.BLOCKED,
+                TaskStatus.FAILED,
+                TaskStatus.WAITING_APPROVAL,
+            }:
+                return AutopilotResult(
+                    dispatched_task_ids=tuple(dispatched),
+                    stop_reason=dispatch.task.status.value,
+                )
+
+        return AutopilotResult(
+            dispatched_task_ids=tuple(dispatched),
+            stop_reason="dispatch_limit_reached",
+        )
+
+    def _build_discussion_system_prompt(self) -> str:
+        return "\n\n".join(
+            [
+                self._discussion_prompt,
+                "<installed_skill>\n" + self._discussion_skill + "\n</installed_skill>",
+                "<runtime_reference>\n" + self._discussion_runtime_reference + "\n</runtime_reference>",
+                "<agent_identity>\n"
+                f"provider={_DISCUSSION_PROVIDER}\n"
+                f"model={_DISCUSSION_MODEL}\n"
+                f"reasoning_effort={_DISCUSSION_REASONING_EFFORT}\n"
+                f"assistant_role={_DISCUSSION_ROLE}\n"
+                f"skill_name={_DISCUSSION_SKILL}\n"
+                "</agent_identity>",
+            ]
+        )
+
+    def _require_human_select_task(self, project_id: str, human_select_task_id: str) -> Task:
+        human_select_task = self.task_service.get_task(human_select_task_id)
+        if human_select_task is None:
+            raise KeyError(f"Task not found: {human_select_task_id}")
+        if human_select_task.project_id != project_id:
+            raise ValueError("human_select task does not belong to the selected project")
+        if human_select_task.kind != "human_select":
+            raise ValueError("Only human_select tasks can be discussed or adopted through the guide flow")
+        return human_select_task
+
+    @staticmethod
+    def _require_candidate(task: Task, gap_id: str) -> dict[str, Any]:
+        ranked_candidates = task.input_payload.get("ranked_candidates", [])
+        if not isinstance(ranked_candidates, list):
+            ranked_candidates = []
+        candidate = next(
+            (
+                item
+                for item in ranked_candidates
+                if isinstance(item, dict) and str(item.get("gap_id", "")).strip() == gap_id
+            ),
+            None,
+        )
+        if candidate is None:
+            raise ValueError(f"gap_id not found in ranked_candidates: {gap_id}")
+        return candidate
+
+    def _supporting_cards(self, gap: Gap) -> list[PaperCard]:
+        cards: list[PaperCard] = []
+        for paper_id in gap.supporting_papers:
+            card = self.paper_card_service.get_card(paper_id)
+            if card is not None:
+                cards.append(card)
+        return cards
+
+    @staticmethod
+    def _paper_card_payload(card: PaperCard) -> dict[str, Any]:
+        return {
+            "paper_id": card.paper_id,
+            "title": card.title,
+            "problem": card.problem,
+            "setting": card.setting,
+            "task_type": card.task_type,
+            "method_summary": card.method_summary,
+            "datasets": card.datasets,
+            "metrics": card.metrics,
+            "strongest_result": card.strongest_result,
+            "claimed_contributions": card.claimed_contributions,
+            "repro_risks": card.repro_risks,
+            "likely_failure_modes": card.likely_failure_modes,
+            "idea_seeds": card.idea_seeds,
+        }
+
+    @staticmethod
+    def _paper_citation_labels(cards: list[PaperCard]) -> list[str]:
+        labels: list[str] = []
+        for card in cards:
+            labels.append(card.title)
+            labels.append(card.paper_id)
+        # Stable order, no duplicates.
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for label in labels:
+            if not label or label in seen:
+                continue
+            seen.add(label)
+            ordered.append(label)
+        return ordered
+
+    @staticmethod
+    def _normalize_history(history: list[dict[str, str]] | None) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
+        for entry in history or []:
+            if not isinstance(entry, dict):
+                continue
+            role = str(entry.get("role", "")).strip().lower()
+            content = str(entry.get("content", "")).strip()
+            if role not in {"user", "assistant"} or not content:
+                continue
+            normalized.append({"role": role, "content": content})
+        return normalized[-8:]
+
+    @staticmethod
+    def _clean_text(value: Any) -> str:
+        return str(value).strip() if isinstance(value, str) else ""
+
+    @classmethod
+    def _normalize_bullet_list(cls, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        normalized: list[str] = []
+        for item in value:
+            text = cls._clean_text(item)
+            if text and text not in normalized:
+                normalized.append(text)
+        return normalized[:4]
+
+    @staticmethod
+    def _normalize_citations(value: Any, known_citations: list[str]) -> list[str]:
+        if not isinstance(value, list):
+            return known_citations[:4]
+        allowed = set(known_citations)
+        normalized: list[str] = []
+        for item in value:
+            label = str(item).strip()
+            if label in allowed and label not in normalized:
+                normalized.append(label)
+        return normalized[:4] or known_citations[:4]
+
+    @staticmethod
+    def _fallback_assistant_message(*, topic: str, gap: Gap, cited_papers: list[str]) -> str:
+        citations = "、".join(cited_papers[:2]) if cited_papers else "当前证据集"
+        return (
+            f"这个方向想回答的是：{gap.description}。它目前主要建立在 {citations} 上。"
+            f"如果你准备继续，我建议先把研究问题收紧成一个能在单轮实验里验证的命题，再进入 topic freeze。"
+        )
+
+    def _project_tasks(self, project_id: str) -> list[Task]:
+        return [task for task in self.task_service.list_tasks() if task.project_id == project_id]
+
+    @staticmethod
+    def _find_gap(gap_map: GapMap | None, gap_id: str) -> Gap | None:
+        if gap_map is None:
+            return None
+        for cluster in gap_map.clusters:
+            for gap in cluster.gaps:
+                if gap.gap_id == gap_id:
+                    return gap
+        return None
+
+    @staticmethod
+    def _first_active_human_select(tasks: list[Task]) -> Task | None:
+        for task in sorted(tasks, key=lambda item: item.created_at):
+            if task.kind != "human_select":
+                continue
+            if task.status in {TaskStatus.CANCELLED, TaskStatus.SUCCEEDED}:
+                continue
+            return task
+        return None
+
+    @staticmethod
+    def _next_autopilot_task(tasks: list[Task]) -> Task | None:
+        for task in sorted(tasks, key=lambda item: item.created_at):
+            if task.kind == "human_select":
+                continue
+            if task.status == TaskStatus.QUEUED:
+                return task
+        return None
+
+    @staticmethod
+    def _idle_reason(tasks: list[Task]) -> str:
+        if any(task.status == TaskStatus.RUNNING for task in tasks):
+            return "running"
+        if any(task.status == TaskStatus.WAITING_APPROVAL for task in tasks):
+            return "waiting_approval"
+        if any(task.status == TaskStatus.BLOCKED for task in tasks):
+            return "blocked"
+        if any(task.status == TaskStatus.FAILED for task in tasks):
+            return "failed"
+        return "idle"
+
+    def _ensure_unique_project_id(self, base_id: str) -> str:
+        project_id = base_id
+        counter = 2
+        while self.project_service.get_project(project_id) is not None:
+            project_id = f"{base_id}-{counter}"
+            counter += 1
+        return project_id
+
+    def _ensure_unique_task_id(self, base_id: str) -> str:
+        task_id = self._slugify(base_id, fallback="task")
+        counter = 2
+        while self.task_service.get_task(task_id) is not None:
+            task_id = f"{self._slugify(base_id, fallback='task')}-{counter}"
+            counter += 1
+        return task_id
+
+    @staticmethod
+    def _build_research_question(topic: str, gap_id: str, candidate: dict[str, Any]) -> str:
+        rationale = str(candidate.get("rationale", "")).strip()
+        if rationale:
+            return f"Can {gap_id} become a concrete, testable direction for {topic}? Focus on: {rationale}"
+        return f"Can {gap_id} become a concrete, testable direction for {topic}?"
+
+    @staticmethod
+    def _suggest_project_name(goal: str) -> str:
+        cleaned = goal.strip()
+        if not cleaned:
+            return "ResearchOS Project"
+        return cleaned[:80]
+
+    @staticmethod
+    def _derive_keywords(goal: str) -> list[str]:
+        pieces = re.split(r"[\s,;:/]+", goal)
+        cleaned: list[str] = []
+        for piece in pieces:
+            token = piece.strip()
+            if len(token) < 3:
+                continue
+            if token.lower() in {"the", "and", "for", "with", "into", "from"}:
+                continue
+            if token not in cleaned:
+                cleaned.append(token)
+        return cleaned[:6] or [goal]
+
+    @staticmethod
+    def _slugify(value: str, *, fallback: str) -> str:
+        slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
+        return slug[:80] or fallback

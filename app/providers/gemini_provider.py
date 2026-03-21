@@ -14,8 +14,12 @@ class GeminiProvider(CommandProvider):
         *,
         response_schema: dict | None,
         model: str | None,
+        provider_config: dict | None,
     ) -> tuple[list[str], Path | None]:
-        command = ["gemini", "-p", prompt, "--output-format", "json"]
+        command = ["gemini", "-p", ".", "--output-format", "json"]
         if model:
             command.extend(["--model", model])
         return command, None
+
+    def _build_stdin_payload(self, prompt: str) -> str | None:
+        return prompt

@@ -15,6 +15,7 @@ class ClaudeProvider(CommandProvider):
         *,
         response_schema: dict | None,
         model: str | None,
+        provider_config: dict | None,
     ) -> tuple[list[str], Path | None]:
         command = ["claude", "-p", prompt, "--output-format", "json"]
         if model:

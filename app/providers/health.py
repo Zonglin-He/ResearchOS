@@ -215,6 +215,32 @@ class ProviderHealthService:
     def list_snapshots(self, registry: ProviderRegistry) -> list[ProviderHealthSnapshot]:
         return [self.snapshot(provider_name, registry) for provider_name in registry.list_names()]
 
+    async def probe_provider(
+        self,
+        provider_name: str,
+        registry: ProviderRegistry,
+    ) -> ProviderHealthSnapshot:
+        family = provider_name.lower()
+        provider = registry.get(family)
+
+        if family in self.disabled_families:
+            return self.snapshot(family, registry)
+
+        if not self._is_cli_installed(family, registry):
+            return self.snapshot(family, registry)
+
+        try:
+            await provider.generate(
+                system_prompt="ResearchOS provider health probe.",
+                user_input='{"probe":"health"}',
+                tools=None,
+                response_schema={"type": "object"},
+                model=None,
+            )
+        except Exception as error:
+            return self.record_failure(family, error, registry)
+        return self.record_success(family)
+
     def _is_cli_installed(self, provider_name: str, registry: ProviderRegistry) -> bool:
         provider = registry.get(provider_name)
         if isinstance(provider, LocalProvider):

@@ -82,6 +82,22 @@ class ReviewerAgent(PromptDrivenAgent):
             status = "needs_approval"
         elif decision == "reject":
             status = "fail"
+        else:
+            run_id = task.input_payload.get("run_id")
+            if isinstance(run_id, str) and run_id:
+                next_tasks.append(
+                    build_child_task(
+                        task,
+                        kind="write_draft",
+                        goal=f"Write the research draft for {run_id}",
+                        input_payload={
+                            "run_id": run_id,
+                            "claim_ids": task.input_payload.get("claim_ids", []),
+                            "artifact_ids": task.input_payload.get("artifact_ids", []),
+                        },
+                        assigned_agent="writer_agent",
+                    )
+                )
 
         return AgentResult(
             status=status,

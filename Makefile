@@ -4,5 +4,8 @@ test:
 api:
 	uv run uvicorn app.api.app:create_app --factory --host 127.0.0.1 --port 8000
 
+web:
+	uv run researchos web
+
 init-db:
 	uv run researchos init-db

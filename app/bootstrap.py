@@ -51,6 +51,7 @@ from app.services.lessons_service import LessonsService
 from app.services.operator_inspection_service import OperatorInspectionService
 from app.services.paper_card_service import PaperCardService
 from app.services.project_service import ProjectService
+from app.services.research_guide_service import ResearchGuideService
 from app.services.provenance_service import ProvenanceService
 from app.services.run_service import RunService
 from app.services.task_service import TaskService
@@ -92,6 +93,7 @@ class RuntimeServices:
     role_prompt_registry: RolePromptRegistry
     role_skill_registry: RoleSkillRegistry
     orchestrator: Orchestrator
+    research_guide_service: ResearchGuideService
 
 
 def build_tool_registry() -> ToolRegistry:
@@ -483,8 +485,26 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         role_prompt_registry=ROLE_PROMPT_REGISTRY,
         role_skill_registry=ROLE_SKILL_REGISTRY,
         orchestrator=placeholder_orchestrator,
+        research_guide_service=ResearchGuideService(
+            project_service=project_service,
+            task_service=task_service,
+            freeze_service=freeze_service,
+            gap_map_service=gap_map_service,
+            paper_card_service=paper_card_service,
+            provider_registry=provider_registry,
+            orchestrator=placeholder_orchestrator,
+        ),
     )
     services.orchestrator = build_orchestrator(config, services)
+    services.research_guide_service = ResearchGuideService(
+        project_service=project_service,
+        task_service=task_service,
+        freeze_service=freeze_service,
+        gap_map_service=gap_map_service,
+        paper_card_service=paper_card_service,
+        provider_registry=provider_registry,
+        orchestrator=services.orchestrator,
+    )
     services.operator_inspection_service = OperatorInspectionService(
         project_service=project_service,
         task_service=task_service,

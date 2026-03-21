@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import locale
 import re
 import shutil
+import subprocess
 import tempfile
 from abc import abstractmethod
 from collections.abc import Iterator
@@ -23,9 +25,15 @@ class CommandProvider(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         response_schema: dict[str, Any] | None = None,
         model: str | None = None,
+        provider_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         prompt = self._build_prompt(system_prompt, user_input, tools)
-        raw_output = await self._invoke(prompt, response_schema=response_schema, model=model)
+        raw_output = await self._invoke(
+            prompt,
+            response_schema=response_schema,
+            model=model,
+            provider_config=provider_config,
+        )
         return self._parse_response(raw_output)
 
     def _build_prompt(
@@ -58,25 +66,85 @@ class CommandProvider(BaseProvider):
         *,
         response_schema: dict[str, Any] | None,
         model: str | None,
+        provider_config: dict[str, Any] | None,
     ) -> str:
-        command, output_path = self._build_command(prompt, response_schema=response_schema, model=model)
-        resolved_command = self._resolve_command(command)
-        process = await asyncio.create_subprocess_exec(
-            *resolved_command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        command, output_path = self._build_command(
+            prompt,
+            response_schema=response_schema,
+            model=model,
+            provider_config=provider_config,
         )
-        stdout, stderr = await process.communicate()
-        if process.returncode != 0:
-            raise RuntimeError(
-                f"{self.command_name} provider failed: {stderr.decode('utf-8').strip()}"
+        resolved_command = self._resolve_command(command)
+        stdin_payload = self._build_stdin_payload(prompt)
+        stdin_bytes = None if stdin_payload is None else stdin_payload.encode("utf-8")
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *resolved_command,
+                stdin=asyncio.subprocess.PIPE if stdin_bytes is not None else None,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-        stdout_text = stdout.decode("utf-8").strip()
+            stdout, stderr = await process.communicate(stdin_bytes)
+        except NotImplementedError:
+            stdout, stderr, returncode = await asyncio.to_thread(
+                self._invoke_blocking,
+                resolved_command,
+                stdin_bytes,
+            )
+            if returncode != 0:
+                raise RuntimeError(
+                    f"{self.command_name} provider failed: {stderr.strip() or 'subprocess returned a non-zero exit code'}"
+                )
+            stdout_text = stdout.strip()
+        else:
+            if process.returncode != 0:
+                raise RuntimeError(
+                    f"{self.command_name} provider failed: {self._decode_output(stderr).strip()}"
+                )
+            stdout_text = self._decode_output(stdout).strip()
         if output_path is not None and output_path.exists():
             file_output = output_path.read_text(encoding="utf-8").strip()
             if file_output:
                 return file_output
         return stdout_text
+
+    def _invoke_blocking(
+        self,
+        resolved_command: list[str],
+        stdin_bytes: bytes | None,
+    ) -> tuple[str, str, int]:
+        try:
+            completed = subprocess.run(
+                resolved_command,
+                input=stdin_bytes,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as error:
+            raise RuntimeError(f"{self.command_name} provider failed: {error}") from error
+        return (
+            self._decode_output(completed.stdout),
+            self._decode_output(completed.stderr),
+            completed.returncode,
+        )
+
+    def _decode_output(self, output: bytes | str | None) -> str:
+        if output is None:
+            return ""
+        if isinstance(output, str):
+            return output
+        candidates = [
+            "utf-8",
+            locale.getpreferredencoding(False) or "utf-8",
+            "cp936",
+            "gbk",
+        ]
+        for encoding in candidates:
+            try:
+                return output.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        return output.decode("utf-8", errors="replace")
 
     def _resolve_command(self, command: list[str]) -> list[str]:
         executable = command[0]
@@ -93,6 +161,9 @@ class CommandProvider(BaseProvider):
                 *command[1:],
             ]
         return [resolved, *command[1:]]
+
+    def _build_stdin_payload(self, prompt: str) -> str | None:
+        return None
 
     def _parse_response(self, raw_output: str) -> dict[str, Any]:
         normalized = self._normalize_raw_output(raw_output)
@@ -157,6 +228,7 @@ class CommandProvider(BaseProvider):
         *,
         response_schema: dict[str, Any] | None,
         model: str | None,
+        provider_config: dict[str, Any] | None,
     ) -> tuple[list[str], Path | None]:
         ...
 
