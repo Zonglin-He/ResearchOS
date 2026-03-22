@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import platform
 import re
 from typing import Any
 
@@ -24,6 +26,7 @@ class BuilderAgent(PromptDrivenAgent):
     name = "builder_agent"
     description = "Builds code and experiments from a frozen spec."
     prompt_path = "prompts/builder.md"
+    enable_reflection = True
     role_binding = builder_role_binding()
 
     def __init__(
@@ -67,10 +70,11 @@ class BuilderAgent(PromptDrivenAgent):
                 "surface every executable artifact explicitly",
             ],
         }
+        payload["context"]["hardware"] = self._hardware_context()
         return payload
 
     def build_result(self, task: Task, ctx, output: dict[str, Any]) -> AgentResult:
-        experiment_script = str(output.get("experiment_script", "")).strip()
+        experiment_script = self._inject_checkpoint_hooks(str(output.get("experiment_script", "")).strip())
         execution_command = str(output.get("execution_command", "")).strip() or "python experiment.py"
         script_artifact = None
         execution_result = None
@@ -88,7 +92,12 @@ class BuilderAgent(PromptDrivenAgent):
             if self.artifact_service is not None:
                 self.artifact_service.register_artifact(script_artifact)
             timeout_seconds = self._execution_timeout(task)
-            execution_result = run_experiment(script_artifact.path, timeout=timeout_seconds)
+            execution_result = run_experiment(
+                script_artifact.path,
+                timeout=timeout_seconds,
+                checkpoint_dir=ctx.checkpoint_dir or ctx.artifacts_dir or "artifacts",
+                max_rounds=int(task.input_payload.get("repair_rounds", 5)),
+            )
             execution_metrics = self._extract_metrics(execution_result["stdout"])
 
         run_payload = output["run_manifest"]
@@ -215,3 +224,39 @@ class BuilderAgent(PromptDrivenAgent):
         for key, value in re.findall(r"([A-Za-z_][A-Za-z0-9_\-]*)\s*[:=]\s*(-?\d+(?:\.\d+)?)", stdout):
             metrics[key] = float(value)
         return metrics
+
+    @staticmethod
+    def _hardware_context() -> dict[str, Any]:
+        context = {
+            "platform": platform.system(),
+            "cpu_cores": os.cpu_count() or 1,
+            "gpu_available": False,
+            "gpu_name": None,
+            "gpu_memory_gb": 0.0,
+        }
+        try:
+            import torch  # type: ignore
+
+            if torch.cuda.is_available():
+                props = torch.cuda.get_device_properties(0)
+                context["gpu_available"] = True
+                context["gpu_name"] = torch.cuda.get_device_name(0)
+                context["gpu_memory_gb"] = round(props.total_memory / 1e9, 2)
+        except Exception:
+            pass
+        return context
+
+    @staticmethod
+    def _inject_checkpoint_hooks(script: str) -> str:
+        if not script or "_save_checkpoint" in script:
+            return script
+        prelude = """
+import json
+import os
+_ckpt_dir = os.environ.get("RESEARCHOS_CHECKPOINT_DIR", ".")
+os.makedirs(_ckpt_dir, exist_ok=True)
+def _save_checkpoint(epoch, metrics):
+    with open(os.path.join(_ckpt_dir, f"epoch_{epoch}.json"), "w", encoding="utf-8") as _f:
+        json.dump(metrics, _f, ensure_ascii=False, indent=2)
+"""
+        return prelude.strip() + "\n\n" + script

@@ -34,4 +34,8 @@ class LessonRecord:
     source_task_id: str | None = None
     source_run_id: str | None = None
     source_claim_id: str | None = None
+    expires_at: datetime | None = None
+    hit_count: int = 0
+    last_hit_at: datetime | None = None
+    is_valid: bool = True
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

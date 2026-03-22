@@ -31,6 +31,8 @@ class SpecFreezeSave(BaseModel):
     ablations: list[str] = Field(default_factory=list)
     success_criteria: list[str] = Field(default_factory=list)
     failure_criteria: list[str] = Field(default_factory=list)
+    target_venue: str = ""
+    human_constraints: list[str] = Field(default_factory=list)
     approved_by: str = ""
     status: str = "approved"
 

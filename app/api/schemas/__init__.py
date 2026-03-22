@@ -28,6 +28,7 @@ from app.api.schemas.guide import (
     ResearchStartRequest,
     ResearchStartResponse,
 )
+from app.api.schemas.kb import KnowledgeBucketSummaryRead, KnowledgeRecordRead, KnowledgeSummaryRead
 from app.api.schemas.gap_maps import (
     GapCreate,
     GapClusterCreate,
@@ -98,6 +99,9 @@ __all__ = [
     "IdeaCandidateRead",
     "LessonCreate",
     "LessonRead",
+    "KnowledgeBucketSummaryRead",
+    "KnowledgeRecordRead",
+    "KnowledgeSummaryRead",
     "ModelProfileModel",
     "ProviderHealthSnapshotModel",
     "PaperCardCreate",

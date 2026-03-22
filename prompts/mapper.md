@@ -32,3 +32,10 @@ Rules:
   - `novelty_score`
   - `evidence_summary`
 - Prefer candidates that can turn into a concrete experiment spec with explicit baselines, datasets, and metrics.
+- For ML topics, explicitly analyze:
+  1. method combinations not yet tested
+  2. missing datasets or deployment shifts
+  3. benchmark or metric blind spots
+  4. low-compute reproduction routes
+  5. which evidence from supporting papers justifies each gap
+- Treat `evidence_summary` as mandatory, not decorative.

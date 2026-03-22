@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.db.sqlite import SQLiteDatabase
 from app.schemas.lesson import LessonKind, LessonRecord
-from app.services.registry_store import append_jsonl, read_jsonl, to_record
+from app.services.registry_store import read_jsonl, to_record, upsert_jsonl
 
 
 class LessonsService:
@@ -20,7 +20,7 @@ class LessonsService:
         self.database = database
 
     def record_lesson(self, lesson: LessonRecord) -> LessonRecord:
-        append_jsonl(self.registry_path, to_record(lesson))
+        upsert_jsonl(self.registry_path, "lesson_id", to_record(lesson))
         if self.database is not None:
             with self.database.connect() as connection:
                 connection.execute(
@@ -64,7 +64,7 @@ class LessonsService:
         dataset_ref: str | None = None,
         lesson_kind: LessonKind | None = None,
     ) -> list[LessonRecord]:
-        lessons = self._read_lessons()
+        lessons = self._filter_active_lessons(self._read_lessons())
         filtered: list[LessonRecord] = []
         for lesson in lessons:
             if task_kind is not None and lesson.task_kind != task_kind:
@@ -97,9 +97,35 @@ class LessonsService:
         model_name: str | None = None,
         repository_ref: str | None = None,
         dataset_ref: str | None = None,
+        topic: str | None = None,
         limit: int = 5,
     ) -> list[LessonRecord]:
-        lessons = self.list_lessons(
+        lessons = self.resolve_prior_lessons(
+            task_kind=task_kind,
+            agent_name=agent_name,
+            provider_name=provider_name,
+            model_name=model_name,
+            repository_ref=repository_ref,
+            dataset_ref=dataset_ref,
+            topic=topic,
+            limit=limit,
+        )
+        self._touch_lessons(lessons)
+        return lessons
+
+    def resolve_prior_lessons(
+        self,
+        *,
+        task_kind: str,
+        agent_name: str | None = None,
+        provider_name: str | None = None,
+        model_name: str | None = None,
+        repository_ref: str | None = None,
+        dataset_ref: str | None = None,
+        topic: str | None = None,
+        limit: int = 5,
+    ) -> list[LessonRecord]:
+        exact = self.list_lessons(
             task_kind=task_kind,
             agent_name=agent_name,
             provider_name=provider_name,
@@ -107,8 +133,26 @@ class LessonsService:
             repository_ref=repository_ref,
             dataset_ref=dataset_ref,
         )
-        lessons.sort(key=lambda lesson: lesson.created_at, reverse=True)
-        return lessons[:limit]
+        cross_agent = self.list_lessons(task_kind=task_kind)
+        topic_related = [
+            lesson
+            for lesson in self.list_lessons(task_kind=task_kind)
+            if topic and topic in lesson.context_tags
+        ]
+        deduped: list[LessonRecord] = []
+        seen: set[str] = set()
+        for lesson in sorted(
+            [*exact, *cross_agent, *topic_related],
+            key=lambda item: (item.hit_count, item.created_at),
+            reverse=True,
+        ):
+            if lesson.lesson_id in seen:
+                continue
+            seen.add(lesson.lesson_id)
+            deduped.append(lesson)
+            if len(deduped) >= limit:
+                break
+        return deduped
 
     def capture_agent_outcome(
         self,
@@ -159,6 +203,7 @@ class LessonsService:
             evidence_refs=[f"task:{task.task_id}"],
             artifact_ids=list(result.artifacts),
             source_task_id=task.task_id,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=30),
         )
         return self.record_lesson(lesson)
 
@@ -172,6 +217,24 @@ class LessonsService:
             return [self._row_to_lesson(json.loads(row["record_json"])) for row in rows]
         rows = read_jsonl(self.registry_path)
         return [self._row_to_lesson(row) for row in rows]
+
+    @staticmethod
+    def _filter_active_lessons(lessons: list[LessonRecord]) -> list[LessonRecord]:
+        now = datetime.now(timezone.utc)
+        return [
+            lesson
+            for lesson in lessons
+            if lesson.is_valid and (lesson.expires_at is None or lesson.expires_at > now)
+        ]
+
+    def _touch_lessons(self, lessons: list[LessonRecord]) -> None:
+        if not lessons:
+            return
+        now = datetime.now(timezone.utc)
+        for lesson in lessons:
+            lesson.hit_count += 1
+            lesson.last_hit_at = now
+            self.record_lesson(lesson)
 
     def _hydrate_database_if_needed(self) -> None:
         if self.database is None:
@@ -237,6 +300,14 @@ class LessonsService:
                 source_task_id=row.get("source_task_id"),
                 source_run_id=row.get("source_run_id"),
                 source_claim_id=row.get("source_claim_id"),
+                expires_at=None
+                if row.get("expires_at") in {None, ""}
+                else datetime.fromisoformat(row["expires_at"]),
+                hit_count=int(row.get("hit_count", 0) or 0),
+                last_hit_at=None
+                if row.get("last_hit_at") in {None, ""}
+                else datetime.fromisoformat(row["last_hit_at"]),
+                is_valid=bool(row.get("is_valid", True)),
                 created_at=datetime.fromisoformat(row["created_at"]),
             )
         ][0]

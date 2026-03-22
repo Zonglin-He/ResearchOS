@@ -219,16 +219,38 @@ class Orchestrator:
             repository_ref=task.input_payload.get("repository"),
             dataset_ref=task.input_payload.get("dataset_snapshot")
             or task.input_payload.get("dataset"),
+            topic=task.input_payload.get("topic"),
         )
 
     def _create_next_tasks(self, task: Task, next_tasks: list[Task]) -> Task:
+        project_narrative = self._build_project_narrative(task.project_id)
         for next_task in next_tasks:
             if task.task_id not in next_task.depends_on:
                 next_task.depends_on = [*next_task.depends_on, task.task_id]
             if next_task.parent_task_id is None:
                 next_task.parent_task_id = task.task_id
+            next_task.input_payload.setdefault("project_narrative", project_narrative)
+            next_task.input_payload.setdefault("upstream_task_kind", task.kind)
+            next_task.input_payload.setdefault("upstream_summary", task.goal.strip() or task.kind)
             self.task_service.create_task(next_task)
         return task
+
+    def _build_project_narrative(self, project_id: str) -> str:
+        tasks = [
+            task
+            for task in self.task_service.list_tasks()
+            if task.project_id == project_id and task.status == TaskStatus.SUCCEEDED
+        ]
+        key_kinds = {"paper_ingest", "gap_mapping", "human_select", "build_spec", "implement_experiment", "analyze_run"}
+        lines: list[str] = []
+        for task in sorted(tasks, key=lambda item: item.created_at):
+            if task.kind not in key_kinds:
+                continue
+            summary = task.goal.strip()
+            if not summary:
+                summary = task.kind
+            lines.append(f"{task.kind}: {summary}")
+        return " | ".join(lines[-6:])
 
     def _save_checkpoint(self, task: Task, *, stage: str, payload: dict[str, object]) -> str | None:
         if self.checkpoint_service is None:

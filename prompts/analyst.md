@@ -11,6 +11,10 @@ Output contract:
 - execution_success
 - anomalies
 - recommended_actions
+- decision
+- decision_confidence
+- refine_patch when decision=REFINE
+- pivot_reason when decision=PIVOT
 - audit_notes
 
 Hard constraints:
@@ -19,3 +23,7 @@ Hard constraints:
 - preserve explicit linkage to runs and artifacts
 - When stdout or stderr contains measurable values, extract them into `metrics`.
 - If the run failed, explain whether the issue looks like code, environment, or experiment design.
+- Choose one decision:
+  - `PROCEED` when the run is solid enough to draft from
+  - `REFINE` when the direction is still viable but needs a concrete patch
+  - `PIVOT` when the current branch is no longer worth iterating

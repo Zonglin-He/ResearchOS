@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 
 from app.core.constants import (
@@ -24,6 +24,15 @@ class AppConfig:
     provider_model_explicit: bool = False
     disabled_provider_families: tuple[str, ...] = ()
     provider_cooldown_seconds: int = 300
+    human_checkpoints: dict[str, str] = field(
+        default_factory=lambda: {
+            "MAP_GAPS": "optional",
+            "HUMAN_SELECT": "required",
+            "FREEZE_SPEC": "optional",
+            "AUDIT_RESULTS": "optional",
+            "WRITE_DRAFT": "optional",
+        }
+    )
 
 
 def load_config() -> AppConfig:

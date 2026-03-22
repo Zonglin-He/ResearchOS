@@ -28,6 +28,10 @@ class LessonCreate(BaseModel):
     source_task_id: str | None = None
     source_run_id: str | None = None
     source_claim_id: str | None = None
+    expires_at: datetime | None = None
+    hit_count: int = 0
+    last_hit_at: datetime | None = None
+    is_valid: bool = True
 
 
 class LessonRead(LessonCreate):

@@ -12,6 +12,7 @@ from app.schemas.paper_card import EvidenceRef, PaperCard
 from app.schemas.result import AgentResult
 from app.schemas.task import Task
 from app.services.artifact_service import ArtifactService
+from app.services.kb_service import KnowledgeBaseService, KnowledgeRecord
 from app.services.paper_card_service import PaperCardService
 
 
@@ -25,6 +26,7 @@ class ReaderAgent(PromptDrivenAgent):
         self,
         provider,
         *,
+        kb_service: KnowledgeBaseService | None = None,
         paper_card_service: PaperCardService | None = None,
         artifact_service: ArtifactService | None = None,
         model: str | None = None,
@@ -47,6 +49,7 @@ class ReaderAgent(PromptDrivenAgent):
             role_prompt_registry=role_prompt_registry,
             role_skill_registry=role_skill_registry,
         )
+        self.kb_service = kb_service
         self.paper_card_service = paper_card_service
         self.artifact_service = artifact_service
 
@@ -121,6 +124,22 @@ class ReaderAgent(PromptDrivenAgent):
         for card in paper_cards:
             if self.paper_card_service is not None:
                 self.paper_card_service.register_card(card)
+            if self.kb_service is not None:
+                self.kb_service.record_literature(
+                    KnowledgeRecord(
+                        record_id=f"literature:{card.paper_id}",
+                        project_id=task.project_id,
+                        title=card.title,
+                        summary=card.strongest_result or card.method_summary or card.problem,
+                        context_tags=[card.task_type, *card.datasets[:2], *card.metrics[:2]],
+                        payload={
+                            "paper_id": card.paper_id,
+                            "datasets": card.datasets,
+                            "metrics": card.metrics,
+                            "idea_seeds": card.idea_seeds,
+                        },
+                    )
+                )
 
         artifacts = []
         for index, note in enumerate(output.get("artifact_notes", []), start=1):

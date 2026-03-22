@@ -249,6 +249,10 @@ export type Approval = {
   approved_by: string;
   decision: string;
   comment: string;
+  condition_text: string;
+  context_summary: string;
+  recommended_action: string;
+  due_at: string | null;
   created_at: string;
 };
 
@@ -273,6 +277,10 @@ export type Lesson = {
   source_task_id: string | null;
   source_run_id: string | null;
   source_claim_id: string | null;
+  expires_at: string | null;
+  hit_count: number;
+  last_hit_at: string | null;
+  is_valid: boolean;
   created_at: string;
 };
 
@@ -348,8 +356,30 @@ export type SpecFreeze = {
   ablations: string[];
   success_criteria: string[];
   failure_criteria: string[];
+  target_venue: string;
+  human_constraints: string[];
   approved_by: string;
   status: string;
+};
+
+export type KnowledgeBucketSummary = {
+  bucket: string;
+  count: number;
+  latest_title: string;
+};
+
+export type KnowledgeSummary = {
+  buckets: KnowledgeBucketSummary[];
+};
+
+export type KnowledgeRecord = {
+  record_id: string;
+  project_id: string;
+  title: string;
+  summary: string;
+  context_tags: string[];
+  payload: Record<string, unknown>;
+  created_at: string;
 };
 
 export type ResultsFreeze = {

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.db.sqlite import SQLiteDatabase
 from app.schemas.approval import Approval
-from app.services.registry_store import append_jsonl, read_jsonl, to_record
+from app.services.registry_store import read_jsonl, to_record, upsert_jsonl
 
 
 class ApprovalService:
@@ -20,7 +20,7 @@ class ApprovalService:
         self.database = database
 
     def record_approval(self, approval: Approval) -> Approval:
-        append_jsonl(self.registry_path, to_record(approval))
+        upsert_jsonl(self.registry_path, "approval_id", to_record(approval))
         if self.database is not None:
             with self.database.connect() as connection:
                 connection.execute(
@@ -50,6 +50,7 @@ class ApprovalService:
         return approval
 
     def list_approvals(self) -> list[Approval]:
+        self.expire_pending()
         if self.database is not None:
             self._hydrate_database_if_needed()
             with self.database.connect() as connection:
@@ -109,9 +110,37 @@ class ApprovalService:
                 approved_by=row["approved_by"],
                 decision=row["decision"],
                 comment=row.get("comment", ""),
+                condition_text=row.get("condition_text", ""),
+                context_summary=row.get("context_summary", ""),
+                recommended_action=row.get("recommended_action", ""),
+                due_at=None
+                if row.get("due_at") in {None, ""}
+                else datetime.fromisoformat(row["due_at"]),
                 created_at=datetime.fromisoformat(row["created_at"]),
             )
         ][0]
 
     def list_pending(self) -> list[Approval]:
         return [approval for approval in self.list_approvals() if approval.decision == "pending"]
+
+    def expire_pending(self, *, now: datetime | None = None) -> None:
+        current = now or datetime.now(timezone.utc)
+        approvals = self._load_without_expiry()
+        for approval in approvals:
+            if approval.decision != "pending":
+                continue
+            if approval.due_at is None or approval.due_at > current:
+                continue
+            approval.decision = "expired"
+            self.record_approval(approval)
+
+    def _load_without_expiry(self) -> list[Approval]:
+        if self.database is not None:
+            self._hydrate_database_if_needed()
+            with self.database.connect() as connection:
+                rows = connection.execute(
+                    "SELECT record_json FROM approvals ORDER BY created_at, approval_id"
+                ).fetchall()
+            return [self._row_to_approval(json.loads(row["record_json"])) for row in rows]
+        rows = read_jsonl(self.registry_path)
+        return [self._row_to_approval(row) for row in rows]

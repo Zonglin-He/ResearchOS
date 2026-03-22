@@ -13,6 +13,10 @@ class ApprovalCreate(BaseModel):
     approved_by: str
     decision: str
     comment: str = ""
+    condition_text: str = ""
+    context_summary: str = ""
+    recommended_action: str = ""
+    due_at: datetime | None = None
 
 
 class ApprovalRead(ApprovalCreate):

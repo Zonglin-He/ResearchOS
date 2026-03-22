@@ -23,6 +23,7 @@ from app.tools.registry import ToolRegistry
 
 class PromptDrivenAgent(BaseAgent):
     prompt_path: str
+    enable_reflection: bool = False
 
     def __init__(
         self,
@@ -88,6 +89,8 @@ class PromptDrivenAgent(BaseAgent):
                 response_schema=self.get_response_schema(task, ctx),
                 model=self._resolve_model(ctx),
             )
+        if self.enable_reflection:
+            output = await self._reflect_output(task, ctx, output)
         ctx.record_checkpoint(
             "llm_response_received",
             {
@@ -110,6 +113,51 @@ class PromptDrivenAgent(BaseAgent):
         if role_asset_note is not None:
             result.audit_notes.append(role_asset_note)
         return result
+
+    async def _reflect_output(
+        self,
+        task: Task,
+        ctx: RunContext,
+        output: dict[str, Any],
+    ) -> dict[str, Any]:
+        critique_schema = self.get_response_schema(task, ctx)
+        critique_prompt = (
+            "You are auditing a structured agent output before it is committed. "
+            "Check for unsupported conclusions, missing evidence, logical jumps, "
+            "or incomplete required fields. Return a corrected version in the same schema. "
+            "If the draft is already acceptable, preserve it and add audit_notes that reflection passed."
+        )
+        critique_input = json.dumps(
+            {
+                "task_kind": task.kind,
+                "draft_output": output,
+                "required_schema": critique_schema,
+            },
+            ensure_ascii=False,
+            default=str,
+        )
+        if (
+            self.provider_invocation_service is not None
+            and self.provider_registry is not None
+            and ctx.routing is not None
+        ):
+            reflected, final_routing = await self.provider_invocation_service.generate(
+                routing=ctx.routing,
+                system_prompt=critique_prompt,
+                user_input=critique_input,
+                tools=None,
+                response_schema=critique_schema,
+            )
+            ctx.routing = final_routing
+            return reflected
+        provider = self._resolve_provider(ctx)
+        return await provider.generate(
+            system_prompt=critique_prompt,
+            user_input=critique_input,
+            tools=None,
+            response_schema=critique_schema,
+            model=self._resolve_model(ctx),
+        )
 
     @staticmethod
     def _resume_output_from_checkpoint(ctx: RunContext) -> dict[str, Any] | None:

@@ -17,6 +17,7 @@ import {
   type GuideDiscussionMessage,
   type GuideDiscussDirectionResponse,
   type GuideStartResponse,
+  type KnowledgeSummary,
   type Lesson,
   type PaperCard,
   type PaperCardDetail,
@@ -54,6 +55,7 @@ type DashboardData = {
   runs: RunManifest[];
   artifacts: Artifact[];
   lessons: Lesson[];
+  knowledgeSummary: KnowledgeSummary;
   verifications: Verification[];
   verificationSummary: VerificationSummary;
   approvals: Approval[];
@@ -158,6 +160,7 @@ export default function App() {
         runs,
         artifacts,
         lessons,
+        knowledgeSummary,
         verifications,
         verificationSummary,
         approvals,
@@ -177,6 +180,7 @@ export default function App() {
         getJson<RunManifest[]>("/runs"),
         getJson<Artifact[]>("/artifacts"),
         getJson<Lesson[]>("/lessons"),
+        getJson<KnowledgeSummary>("/kb/summary"),
         getJson<Verification[]>("/verifications"),
         getJson<VerificationSummary>("/verifications/summary"),
         getJson<Approval[]>("/approvals/pending"),
@@ -201,6 +205,7 @@ export default function App() {
         runs,
         artifacts,
         lessons,
+        knowledgeSummary,
         verifications,
         verificationSummary,
         approvals,
@@ -507,6 +512,7 @@ export default function App() {
                   paperCards={data.paperCards}
                   gapMaps={data.gapMaps}
                   lessons={data.lessons}
+                  knowledgeSummary={data.knowledgeSummary}
                   topicFreeze={data.topicFreeze}
                   specFreeze={data.specFreeze}
                   resultsFreeze={data.resultsFreeze}

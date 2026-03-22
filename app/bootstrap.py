@@ -50,6 +50,7 @@ from app.services.experiment_registry import ExperimentRegistry
 from app.services.freeze_service import FreezeService
 from app.services.gap_map_service import GapMapService
 from app.services.lessons_service import LessonsService
+from app.services.kb_service import KnowledgeBaseService
 from app.services.operator_inspection_service import OperatorInspectionService
 from app.services.paper_card_service import PaperCardService
 from app.services.project_service import ProjectService
@@ -64,6 +65,9 @@ from app.tools.filesystem import FilesystemTool
 from app.tools.git_tool import GitTool
 from app.tools.mcp_adapter import MCPAdapterTool
 from app.tools.paper_search import PaperSearchTool
+from app.tools.query_decomposer import QueryDecomposerTool
+from app.tools.semantic_scholar import SemanticScholarSearchTool
+from app.tools.citation_verifier import CitationVerifierTool
 from app.tools.pdf_parse import PDFParseTool
 from app.tools.python_exec import PythonExecTool
 from app.tools.registry import ToolRegistry
@@ -88,6 +92,7 @@ class RuntimeServices:
     experiment_manager: ExperimentManager
     lessons_service: LessonsService
     verification_service: VerificationService
+    kb_service: KnowledgeBaseService
     provenance_service: ProvenanceService
     operator_inspection_service: OperatorInspectionService
     tool_registry: ToolRegistry
@@ -110,6 +115,8 @@ def build_tool_registry() -> ToolRegistry:
     registry.register(ExperimentRunnerTool())
     registry.register(ArxivFetcherTool())
     registry.register(PaperSearchTool())
+    registry.register(SemanticScholarSearchTool())
+    registry.register(CitationVerifierTool())
     registry.register(PDFParseTool())
     registry.register(MCPAdapterTool())
     return registry
@@ -199,6 +206,7 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
     orchestrator.register_agent(
         ReaderAgent(
             default_provider,
+            kb_service=services.kb_service,
             paper_card_service=services.paper_card_service,
             artifact_service=services.artifact_service,
             model=config.provider_model or None,
@@ -266,6 +274,7 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
     orchestrator.register_agent(
         ReviewerAgent(
             default_provider,
+            kb_service=services.kb_service,
             model=config.provider_model or None,
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,
@@ -279,7 +288,7 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
                 fallback_model_profile=build_fallback_model_profile(config, "reviewer_agent"),
             ),
         ),
-        handles={"review_build", "audit_run"},
+        handles={"review_build", "audit_run", "gap_debate"},
     )
     orchestrator.register_agent(
         WriterAgent(
@@ -322,6 +331,7 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
     orchestrator.register_agent(
         AnalystAgent(
             default_provider,
+            kb_service=services.kb_service,
             artifact_service=services.artifact_service,
             model=config.provider_model or None,
             tool_registry=tool_registry,
@@ -437,6 +447,9 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
     project_service = ProjectService(project_repository)
     task_service = TaskService(task_repository, activity_service=activity_service)
     provider_registry = build_provider_registry()
+    default_provider = provider_registry.get(config.provider_name.lower())
+    tool_registry = build_tool_registry()
+    tool_registry.register(QueryDecomposerTool(default_provider, model=config.provider_model or None))
     provider_health_service = ProviderHealthService(
         cooldown_seconds=config.provider_cooldown_seconds,
         disabled_families=set(config.disabled_provider_families),
@@ -492,6 +505,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         ),
         lessons_service=lessons_service,
         verification_service=verification_service,
+        kb_service=KnowledgeBaseService(workspace_paths.registry_dir / "kb"),
         provenance_service=provenance_service,
         operator_inspection_service=OperatorInspectionService(
             project_service=project_service,
@@ -508,7 +522,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
             provider_health_service=provider_health_service,
             storage_boundary=storage_boundary,
         ),
-        tool_registry=build_tool_registry(),
+        tool_registry=tool_registry,
         provider_registry=provider_registry,
         provider_health_service=provider_health_service,
         provider_invocation_service=provider_invocation_service,
@@ -523,6 +537,8 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
             gap_map_service=gap_map_service,
             paper_card_service=paper_card_service,
             provider_registry=provider_registry,
+            kb_service=KnowledgeBaseService(workspace_paths.registry_dir / "kb"),
+            tool_registry=tool_registry,
             orchestrator=placeholder_orchestrator,
             activity_service=activity_service,
         ),
@@ -535,6 +551,8 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         gap_map_service=gap_map_service,
         paper_card_service=paper_card_service,
         provider_registry=provider_registry,
+        kb_service=services.kb_service,
+        tool_registry=tool_registry,
         orchestrator=services.orchestrator,
         activity_service=activity_service,
     )

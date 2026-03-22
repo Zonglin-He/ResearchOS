@@ -18,6 +18,7 @@ class MapperAgent(PromptDrivenAgent):
     name = "mapper_agent"
     description = "Maps paper cards into structured gaps and ranked candidates."
     prompt_path = "prompts/mapper.md"
+    enable_reflection = True
     role_binding = mapper_role_binding()
 
     def __init__(
@@ -82,6 +83,21 @@ class MapperAgent(PromptDrivenAgent):
                         "ranked_candidates": ranked_candidates,
                         "gap_map": gap_map_payload,
                     },
+                )
+            )
+            next_tasks.append(
+                build_child_task(
+                    task,
+                    kind="gap_debate",
+                    goal="Challenge each candidate gap on novelty and feasibility before human selection",
+                    input_payload={
+                        "topic": gap_map.topic,
+                        "gap_map": gap_map_payload,
+                        "ranked_candidates": ranked_candidates,
+                        "debate_role": "challenger",
+                        "focus": "Question novelty, feasibility, and benchmark fairness for each candidate gap.",
+                    },
+                    assigned_agent="reviewer_agent",
                 )
             )
 

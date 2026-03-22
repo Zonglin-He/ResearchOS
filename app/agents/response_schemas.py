@@ -205,6 +205,8 @@ REVIEWER_RESPONSE_SCHEMA = {
                 "required": ["claim_id"],
             },
         },
+        "debate_weaknesses": {"type": "array", "items": {"type": "string"}},
+        "recommended_constraints": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["decision", "summary"],
 }
@@ -213,6 +215,8 @@ WRITER_RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
         "title": {"type": "string"},
+        "output_format": {"type": "string", "enum": ["markdown", "latex"]},
+        "abstract": {"type": "string"},
         "sections": {
             "type": "array",
             "items": {
@@ -228,6 +232,7 @@ WRITER_RESPONSE_SCHEMA = {
                 "required": ["heading", "markdown"],
             },
         },
+        "citations": {"type": "array", "items": {"type": "string"}},
         "audit_notes": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["title", "sections"],
@@ -250,6 +255,20 @@ ANALYST_RESPONSE_SCHEMA = {
         "execution_success": {"type": "boolean"},
         "anomalies": {"type": "array", "items": {"type": "string"}},
         "recommended_actions": {"type": "array", "items": {"type": "string"}},
+        "decision": {"type": "string", "enum": ["PROCEED", "REFINE", "PIVOT"]},
+        "decision_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "refine_patch": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "enum": ["hyperparams", "data_pipeline", "model_arch", "loss_fn"],
+                },
+                "change_description": {"type": "string"},
+                "expected_improvement": {"type": "string"},
+            },
+        },
+        "pivot_reason": {"type": "string"},
         "audit_notes": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["summary"],

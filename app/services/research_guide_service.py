@@ -20,9 +20,12 @@ from app.services.activity_service import ActivityService
 from app.services.freeze_service import FreezeService
 from app.services.gap_map_service import GapMapService
 from app.services.paper_card_service import PaperCardService
+from app.services.kb_service import KnowledgeBaseService, KnowledgeRecord
 from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
 from app.tools.arxiv_fetcher import search_arxiv
+from app.tools.semantic_scholar import search_semantic_scholar
+from app.tools.query_decomposer import fallback_decompose_research_goal
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DISCUSSION_PROMPT_PATH = _REPO_ROOT / "prompts" / "guide" / "discussion_advisor.md"
@@ -87,6 +90,8 @@ class ResearchGuideService:
         gap_map_service: GapMapService,
         paper_card_service: PaperCardService,
         provider_registry: ProviderRegistry,
+        kb_service: KnowledgeBaseService,
+        tool_registry,
         orchestrator: Orchestrator,
         activity_service: ActivityService,
     ) -> None:
@@ -96,6 +101,8 @@ class ResearchGuideService:
         self.gap_map_service = gap_map_service
         self.paper_card_service = paper_card_service
         self.provider_registry = provider_registry
+        self.kb_service = kb_service
+        self.tool_registry = tool_registry
         self.orchestrator = orchestrator
         self.activity_service = activity_service
         self._discussion_prompt = _DISCUSSION_PROMPT_PATH.read_text(encoding="utf-8").strip()
@@ -133,11 +140,13 @@ class ResearchGuideService:
         )
 
         derived_keywords = keywords or self._derive_keywords(goal)
-        arxiv_query = " ".join(derived_keywords[:6]) if derived_keywords else goal
-        try:
-            seed_papers = search_arxiv(arxiv_query, max_results=max(3, max_papers))
-        except Exception:
-            seed_papers = []
+        queries = await self._decompose_queries(goal)
+        seed_papers = self._collect_seed_papers(queries, max_papers=max_papers)
+        arxiv_query = queries[0] if queries else (" ".join(derived_keywords[:6]) if derived_keywords else goal)
+        bootstrap_context = {
+            "prior_findings": self.kb_service.search_findings(goal, limit=5),
+            "prior_decisions": self.kb_service.search_decisions(goal, limit=3),
+        }
         ingest_tasks: list[Task] = []
         gap_task: Task | None = None
         if seed_papers:
@@ -156,6 +165,7 @@ class ResearchGuideService:
                             input_payload={
                                 "topic": goal,
                                 "keywords": derived_keywords,
+                                "bootstrap_context": bootstrap_context,
                                 "search_query": arxiv_query,
                                 "search_source": "arxiv",
                                 "source_summary": source_summary,
@@ -195,6 +205,7 @@ class ResearchGuideService:
                     input_payload={
                         "topic": goal,
                         "keywords": derived_keywords,
+                        "bootstrap_context": bootstrap_context,
                         "search_query": arxiv_query,
                         "search_source": "arxiv",
                         "seed_papers": seed_papers,
@@ -219,6 +230,7 @@ class ResearchGuideService:
                     "research_goal": goal,
                     "project_name": project.name,
                     "search_source": "arxiv",
+                    "query_count": len(queries),
                     "seed_paper_count": len(seed_papers),
                     "ingest_task_count": len(ingest_tasks),
                     "gap_task_id": gap_task.task_id if gap_task is not None else None,
@@ -260,6 +272,16 @@ class ResearchGuideService:
             )
         )
         self.project_service.update_stage(project_id, Stage.FREEZE_TOPIC)
+        self.kb_service.record_decision(
+            KnowledgeRecord(
+                record_id=f"decision:{project_id}:{gap_id}",
+                project_id=project_id,
+                title=f"Adopted direction {gap_id}",
+                summary=resolved_question,
+                context_tags=[topic, gap_id, *novelty],
+                payload={"candidate": candidate, "operator_note": operator_note.strip()},
+            )
+        )
 
         if human_select_task.status != TaskStatus.SUCCEEDED:
             human_select_task.status = TaskStatus.SUCCEEDED
@@ -542,6 +564,46 @@ class ResearchGuideService:
                 "</agent_identity>",
             ]
         )
+
+    async def _decompose_queries(self, goal: str) -> list[str]:
+        try:
+            decomposer = self.tool_registry.get("query_decomposer")
+        except KeyError:
+            return fallback_decompose_research_goal(goal)
+        try:
+            result = await decomposer.execute(goal=goal)
+            queries = [str(item).strip() for item in result.get("queries", []) if str(item).strip()]
+        except Exception:
+            queries = fallback_decompose_research_goal(goal)
+        return queries[:6] or fallback_decompose_research_goal(goal)
+
+    @staticmethod
+    def _paper_seed_key(item: dict[str, Any]) -> str:
+        return str(item.get("doi") or item.get("arxiv_id") or item.get("title") or "").strip().lower()
+
+    def _collect_seed_papers(self, queries: list[str], *, max_papers: int) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        per_query = max(2, min(5, max_papers))
+        for query in queries[:6]:
+            candidates: list[dict[str, Any]] = []
+            try:
+                candidates.extend(search_semantic_scholar(query, limit=per_query))
+            except Exception:
+                pass
+            try:
+                candidates.extend(search_arxiv(query, max_results=per_query))
+            except Exception:
+                pass
+            for item in candidates:
+                key = self._paper_seed_key(item)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                merged.append(item)
+                if len(merged) >= max_papers:
+                    return merged
+        return merged[:max_papers]
 
     def _require_human_select_task(self, project_id: str, human_select_task_id: str) -> Task:
         human_select_task = self.task_service.get_task(human_select_task_id)

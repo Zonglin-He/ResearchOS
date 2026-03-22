@@ -38,6 +38,9 @@ from app.api.schemas import (
     GapMapCreateResponse,
     GapMapRead,
     GapMapSummaryRead,
+    KnowledgeBucketSummaryRead,
+    KnowledgeRecordRead,
+    KnowledgeSummaryRead,
     LessonCreate,
     LessonRead,
     PaperCardCreate,
@@ -139,6 +142,7 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
     app.state.audit_service = services.audit_service
     app.state.provenance_service = services.provenance_service
     app.state.operator_inspection_service = services.operator_inspection_service
+    app.state.kb_service = services.kb_service
     app.state.provider_health_service = services.provider_health_service
     app.state.provider_registry = services.provider_registry
     app.state.orchestrator = services.orchestrator
@@ -326,6 +330,39 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
         except KeyError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
         return _to_project_dashboard_read(dashboard)
+
+    @app.get("/kb/summary", response_model=KnowledgeSummaryRead)
+    def kb_summary() -> KnowledgeSummaryRead:
+        buckets = []
+        for bucket in ("decisions", "findings", "literature", "open_questions"):
+            records = app.state.kb_service.list_bucket(bucket)
+            buckets.append(
+                KnowledgeBucketSummaryRead(
+                    bucket=bucket,
+                    count=len(records),
+                    latest_title=records[-1].title if records else "",
+                )
+            )
+        return KnowledgeSummaryRead(buckets=buckets)
+
+    @app.get("/kb/{bucket}", response_model=list[KnowledgeRecordRead])
+    def kb_bucket(bucket: str, limit: int = Query(default=20, ge=1, le=100)) -> list[KnowledgeRecordRead]:
+        try:
+            records = app.state.kb_service.list_bucket(bucket)[-limit:]
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return [
+            KnowledgeRecordRead(
+                record_id=record.record_id,
+                project_id=record.project_id,
+                title=record.title,
+                summary=record.summary,
+                context_tags=record.context_tags,
+                payload=record.payload,
+                created_at=record.created_at,
+            )
+            for record in reversed(records)
+        ]
 
     @app.post("/tasks", response_model=TaskRead)
     def create_task(
@@ -762,6 +799,10 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
                 approved_by=payload.approved_by,
                 decision=payload.decision,
                 comment=payload.comment,
+                condition_text=payload.condition_text,
+                context_summary=payload.context_summary,
+                recommended_action=payload.recommended_action,
+                due_at=payload.due_at,
             )
         )
         return ApprovalRead.model_validate(approval, from_attributes=True)
@@ -901,6 +942,8 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
                 ablations=payload.ablations,
                 success_criteria=payload.success_criteria,
                 failure_criteria=payload.failure_criteria,
+                target_venue=payload.target_venue,
+                human_constraints=payload.human_constraints,
                 approved_by=payload.approved_by,
                 status=payload.status,
             )
@@ -923,6 +966,8 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             ablations=freeze.ablations,
             success_criteria=freeze.success_criteria,
             failure_criteria=freeze.failure_criteria,
+            target_venue=freeze.target_venue,
+            human_constraints=freeze.human_constraints,
             approved_by=freeze.approved_by,
             status=freeze.status,
         )
@@ -1098,6 +1143,10 @@ def _to_lesson_read(lesson: LessonRecord) -> LessonRead:
         source_task_id=lesson.source_task_id,
         source_run_id=lesson.source_run_id,
         source_claim_id=lesson.source_claim_id,
+        expires_at=lesson.expires_at,
+        hit_count=lesson.hit_count,
+        last_hit_at=lesson.last_hit_at,
+        is_valid=lesson.is_valid,
         created_at=lesson.created_at,
     )
 

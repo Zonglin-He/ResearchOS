@@ -5,6 +5,7 @@ import type {
   AuditSummary,
   GapMap,
   GapMapDetail,
+  KnowledgeSummary,
   Lesson,
   PaperCard,
   PaperCardDetail,
@@ -28,6 +29,7 @@ type Props = {
   paperCards: PaperCard[];
   gapMaps: GapMap[];
   lessons: Lesson[];
+  knowledgeSummary: KnowledgeSummary;
   topicFreeze: FreezeLike;
   specFreeze: FreezeLike;
   resultsFreeze: ResultsFreeze | null;
@@ -183,6 +185,19 @@ export function RegistryTab(props: Props) {
         </div>
       </Panel>
 
+      <Panel title="项目记忆" subtitle="系统会逐步积累方向决策、实验发现、文献索引和未解决问题。">
+        <div className="pulse-grid">
+          {props.knowledgeSummary.buckets.map((bucket) => (
+            <StatCard
+              key={bucket.bucket}
+              label={bucketLabel(bucket.bucket)}
+              value={bucket.count}
+              meta={bucket.latest_title || "暂无条目"}
+            />
+          ))}
+        </div>
+      </Panel>
+
       <Panel title="结果详情" subtitle="点击任务产出、登记列表或 Artifact 表格后，这里会显示完整内容。">
         <div ref={detailRef} />
         {props.paperCardDetail ? (
@@ -322,6 +337,16 @@ function FreezeCard(props: { title: string; freeze: FreezeLike }) {
       <pre>{props.freeze ? JSON.stringify(props.freeze, null, 2) : "暂无"}</pre>
     </div>
   );
+}
+
+function bucketLabel(bucket: string) {
+  const labels: Record<string, string> = {
+    decisions: "决策",
+    findings: "发现",
+    literature: "文献",
+    open_questions: "未决问题",
+  };
+  return labels[bucket] ?? bucket;
 }
 
 function buildTaskOutputs(props: Props): TaskOutput[] {
