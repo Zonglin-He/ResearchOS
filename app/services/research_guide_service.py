@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agents.orchestrator import Orchestrator
+from app.core.enums import Stage
 from app.providers.registry import ProviderRegistry
 from app.schemas.activity import ConversationMessage, RunEvent
 from app.schemas.freeze import TopicFreeze
@@ -46,6 +48,7 @@ class AutopilotResult:
 class ResearchStartResult:
     project: Project
     intake_task: Task
+    gap_task: Task | None
     autopilot: AutopilotResult
 
 
@@ -125,6 +128,7 @@ class ResearchGuideService:
                 name=resolved_project_name,
                 description=goal,
                 status="active",
+                stage=Stage.NEW_TOPIC,
             )
         )
 
@@ -134,24 +138,75 @@ class ResearchGuideService:
             seed_papers = search_arxiv(arxiv_query, max_results=max(3, max_papers))
         except Exception:
             seed_papers = []
-        intake_task = self.task_service.create_task(
-            Task(
-                task_id=self._ensure_unique_task_id(f"{resolved_project_id}-paper-ingest"),
-                project_id=resolved_project_id,
-                kind="paper_ingest",
-                goal=f"Research the literature around {goal} and distill durable paper cards.",
-                input_payload={
-                    "topic": goal,
-                    "keywords": derived_keywords,
-                    "search_query": arxiv_query,
-                    "search_source": "arxiv",
-                    "seed_papers": seed_papers,
-                    "max_papers": max(1, max_papers),
-                    "expected_min_papers": max(1, expected_min_papers),
-                },
-                owner=owner,
+        ingest_tasks: list[Task] = []
+        gap_task: Task | None = None
+        if seed_papers:
+            fanout_group = self._slugify(f"{resolved_project_id}-paper-ingest-fanout", fallback="paper-ingest-fanout")
+            planned_paper_ids: list[str] = []
+            for index, paper in enumerate(seed_papers[: max(1, max_papers)], start=1):
+                source_summary = self._source_summary_from_seed(goal, paper, index=index)
+                planned_paper_ids.append(str(source_summary["paper_id"]))
+                ingest_tasks.append(
+                    self.task_service.create_task(
+                        Task(
+                            task_id=self._ensure_unique_task_id(f"{resolved_project_id}-paper-ingest-{index:02d}"),
+                            project_id=resolved_project_id,
+                            kind="paper_ingest",
+                            goal=f"Read {source_summary['title']} and distill a durable paper card.",
+                            input_payload={
+                                "topic": goal,
+                                "keywords": derived_keywords,
+                                "search_query": arxiv_query,
+                                "search_source": "arxiv",
+                                "source_summary": source_summary,
+                                "expected_min_papers": 1,
+                                "suppress_next_gap_mapping": True,
+                            },
+                            owner=owner,
+                            fanout_group=fanout_group,
+                            join_key="paper_ingest",
+                        )
+                    )
+                )
+            gap_task = self.task_service.create_task(
+                Task(
+                    task_id=self._ensure_unique_task_id(f"{resolved_project_id}-gap-mapping"),
+                    project_id=resolved_project_id,
+                    kind="gap_mapping",
+                    goal=f"Map research gaps for {goal} using the ingested paper cards.",
+                    input_payload={
+                        "topic": goal,
+                        "paper_ids": planned_paper_ids,
+                    },
+                    owner=owner,
+                    depends_on=[task.task_id for task in ingest_tasks],
+                    fanout_group=fanout_group,
+                    join_key="gap_mapping",
+                )
             )
-        )
+            intake_task = ingest_tasks[0]
+        else:
+            intake_task = self.task_service.create_task(
+                Task(
+                    task_id=self._ensure_unique_task_id(f"{resolved_project_id}-paper-ingest"),
+                    project_id=resolved_project_id,
+                    kind="paper_ingest",
+                    goal=f"Research the literature around {goal} and distill durable paper cards.",
+                    input_payload={
+                        "topic": goal,
+                        "keywords": derived_keywords,
+                        "search_query": arxiv_query,
+                        "search_source": "arxiv",
+                        "seed_papers": seed_papers,
+                        "max_papers": max(1, max_papers),
+                        "expected_min_papers": max(1, expected_min_papers),
+                    },
+                    owner=owner,
+                )
+            )
+            ingest_tasks.append(intake_task)
+
+        self.project_service.update_stage(project.project_id, Stage.INGEST_PAPERS)
 
         autopilot = AutopilotResult(dispatched_task_ids=tuple(), stop_reason="created")
         self.activity_service.record_event(
@@ -165,12 +220,15 @@ class ResearchGuideService:
                     "project_name": project.name,
                     "search_source": "arxiv",
                     "seed_paper_count": len(seed_papers),
+                    "ingest_task_count": len(ingest_tasks),
+                    "gap_task_id": gap_task.task_id if gap_task is not None else None,
                 },
             )
         )
         if auto_dispatch:
             autopilot = await self.autopilot_project(resolved_project_id)
-        return ResearchStartResult(project=project, intake_task=intake_task, autopilot=autopilot)
+        project = self.project_service.get_project(project.project_id) or project
+        return ResearchStartResult(project=project, intake_task=intake_task, gap_task=gap_task, autopilot=autopilot)
 
     async def adopt_direction(
         self,
@@ -201,6 +259,7 @@ class ResearchGuideService:
                 status="approved",
             )
         )
+        self.project_service.update_stage(project_id, Stage.FREEZE_TOPIC)
 
         if human_select_task.status != TaskStatus.SUCCEEDED:
             human_select_task.status = TaskStatus.SUCCEEDED
@@ -227,6 +286,7 @@ class ResearchGuideService:
                 depends_on=[human_select_task.task_id],
             )
         )
+        self.project_service.update_stage(project_id, Stage.IMPLEMENT_IDEA)
 
         autopilot = AutopilotResult(dispatched_task_ids=tuple(), stop_reason="created")
         self.activity_service.record_event(
@@ -422,34 +482,45 @@ class ResearchGuideService:
     async def autopilot_project(self, project_id: str, *, max_dispatches: int = 8) -> AutopilotResult:
         dispatched: list[str] = []
 
-        for _ in range(max_dispatches):
+        while len(dispatched) < max_dispatches:
             tasks = self._project_tasks(project_id)
             human_select_task = self._first_active_human_select(tasks)
             if human_select_task is not None:
+                self.project_service.update_stage(project_id, Stage.HUMAN_SELECT)
                 return AutopilotResult(
                     dispatched_task_ids=tuple(dispatched),
                     stop_reason="human_select_ready",
                     human_select_task_id=human_select_task.task_id,
                 )
 
-            next_task = self._next_autopilot_task(project_id, tasks)
-            if next_task is None:
+            next_batch = self._next_autopilot_batch(
+                project_id,
+                tasks,
+                limit=max_dispatches - len(dispatched),
+            )
+            if not next_batch:
                 return AutopilotResult(
                     dispatched_task_ids=tuple(dispatched),
                     stop_reason=self._idle_reason(tasks),
                 )
 
-            dispatch = await self.orchestrator.dispatch(next_task.task_id)
-            dispatched.append(next_task.task_id)
-            if dispatch.task.status in {
-                TaskStatus.BLOCKED,
-                TaskStatus.FAILED,
-                TaskStatus.WAITING_APPROVAL,
-            }:
-                return AutopilotResult(
-                    dispatched_task_ids=tuple(dispatched),
-                    stop_reason=dispatch.task.status.value,
-                )
+            self._sync_stage_for_batch(project_id, next_batch)
+            results = await asyncio.gather(
+                *(self.orchestrator.dispatch(task.task_id) for task in next_batch)
+            )
+            dispatched.extend(task.task_id for task in next_batch)
+            for dispatch in results:
+                if dispatch.task.status in {
+                    TaskStatus.BLOCKED,
+                    TaskStatus.FAILED,
+                    TaskStatus.WAITING_APPROVAL,
+                }:
+                    self._sync_stage_after_dispatch(dispatch.task)
+                    return AutopilotResult(
+                        dispatched_task_ids=tuple(dispatched),
+                        stop_reason=dispatch.task.status.value,
+                    )
+                self._sync_stage_after_dispatch(dispatch.task)
 
         return AutopilotResult(
             dispatched_task_ids=tuple(dispatched),
@@ -625,15 +696,49 @@ class ResearchGuideService:
             return task
         return None
 
-    def _next_autopilot_task(self, project_id: str, tasks: list[Task]) -> Task | None:
+    def _next_autopilot_batch(
+        self,
+        project_id: str,
+        tasks: list[Task],
+        *,
+        limit: int,
+    ) -> list[Task]:
         runnable = self.task_service.list_runnable_tasks(project_id=project_id)
         ordered = {task.task_id: task for task in sorted(tasks, key=lambda item: item.created_at)}
-        for task in runnable:
+        ordered_runnable = [
+            ordered[task.task_id]
+            for task in runnable
+            if task.task_id in ordered and task.kind != "human_select"
+        ]
+        if not ordered_runnable:
+            return []
+
+        first = ordered_runnable[0]
+        if first.kind == "paper_ingest" and first.fanout_group:
+            batch = [
+                task
+                for task in ordered_runnable
+                if task.kind == "paper_ingest" and task.fanout_group == first.fanout_group
+            ]
+            return batch[:limit]
+
+        for task in ordered_runnable:
             if task.kind == "human_select":
                 continue
-            if task.task_id in ordered:
-                return ordered[task.task_id]
-        return None
+            return [task]
+        return []
+
+    def _sync_stage_for_batch(self, project_id: str, tasks: list[Task]) -> None:
+        if not tasks:
+            return
+        stage = self._stage_for_task_kind(tasks[0].kind)
+        if stage is not None:
+            self.project_service.update_stage(project_id, stage)
+
+    def _sync_stage_after_dispatch(self, task: Task) -> None:
+        stage = self._stage_for_task_kind(task.kind, terminal_status=task.status)
+        if stage is not None:
+            self.project_service.update_stage(task.project_id, stage)
 
     @staticmethod
     def _idle_reason(tasks: list[Task]) -> str:
@@ -695,3 +800,51 @@ class ResearchGuideService:
     def _slugify(value: str, *, fallback: str) -> str:
         slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
         return slug[:80] or fallback
+
+    @staticmethod
+    def _stage_for_task_kind(
+        task_kind: str,
+        *,
+        terminal_status: TaskStatus | None = None,
+    ) -> Stage | None:
+        if task_kind == "paper_ingest":
+            return Stage.INGEST_PAPERS
+        if task_kind == "gap_mapping":
+            return Stage.HUMAN_SELECT if terminal_status == TaskStatus.SUCCEEDED else Stage.MAP_GAPS
+        if task_kind == "human_select":
+            return Stage.FREEZE_TOPIC
+        if task_kind in {"build_spec", "implement_experiment", "reproduce_baseline"}:
+            return Stage.IMPLEMENT_IDEA if terminal_status != TaskStatus.SUCCEEDED else Stage.RUN_EXPERIMENTS
+        if task_kind == "analyze_run":
+            return Stage.AUDIT_RESULTS
+        if task_kind in {"review_build", "audit_run"}:
+            return Stage.REVIEW_DRAFT
+        if task_kind == "draft_write":
+            return Stage.WRITE_DRAFT
+        if task_kind == "style_pass":
+            return Stage.SUBMISSION_READY if terminal_status == TaskStatus.SUCCEEDED else Stage.STYLE_PASS
+        return None
+
+    @staticmethod
+    def _source_summary_from_seed(topic: str, paper: dict[str, Any], *, index: int) -> dict[str, Any]:
+        title = str(paper.get("title", "")).strip() or f"{topic} paper {index}"
+        arxiv_id = str(paper.get("arxiv_id", "")).strip()
+        paper_id = f"arxiv:{arxiv_id}" if arxiv_id else f"seed-paper-{index}"
+        authors = [str(author).strip() for author in paper.get("authors", []) if str(author).strip()]
+        pdf_url = str(paper.get("pdf_url", "")).strip()
+        published = str(paper.get("published", "")).strip()
+        abstract = str(paper.get("abstract", "")).strip()
+        strongest_result = ""
+        if published:
+            strongest_result = f"Published on {published}."
+        return {
+            "paper_id": paper_id,
+            "title": title,
+            "abstract": abstract,
+            "setting": topic,
+            "task_type": topic,
+            "datasets": [],
+            "metrics": [],
+            "strongest_result": strongest_result,
+            "claimed_contributions": authors[:4] + ([pdf_url] if pdf_url else []),
+        }

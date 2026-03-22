@@ -295,6 +295,7 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
                 name=payload.name,
                 description=payload.description,
                 status=payload.status,
+                stage=payload.stage,
                 dispatch_profile=dispatch_profile_from_dict(
                     payload.dispatch_profile.model_dump() if payload.dispatch_profile is not None else None
                 ),
@@ -991,6 +992,7 @@ def _to_project_read(project: Project) -> ProjectRead:
         name=project.name,
         description=project.description,
         status=project.status,
+        stage=project.stage,
         dispatch_profile=to_record(project.dispatch_profile),
         created_at=project.created_at,
     )

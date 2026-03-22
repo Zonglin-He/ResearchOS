@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.agents.base import BaseAgent
+from app.core.enums import Stage
 from app.routing.models import ResolvedDispatch
 from app.routing.resolver import RoutingResolver
 from app.schemas.activity import RunEvent
@@ -163,6 +164,7 @@ class Orchestrator:
         task = self._create_next_tasks(task, result.next_tasks)
         if final_status is not None:
             task = self.task_service.update_status(task.task_id, final_status)
+        self._sync_project_stage(task, result)
         task.checkpoint_path = self._save_checkpoint(
             task,
             stage=f"dispatch_{result.status}",
@@ -246,6 +248,14 @@ class Orchestrator:
             return None
         return self.checkpoint_service.load(task_id)
 
+    def _sync_project_stage(self, task: Task, result: AgentResult) -> None:
+        if self.project_service is None:
+            return
+        stage = self._stage_for_task(task, result)
+        if stage is None:
+            return
+        self.project_service.update_stage(task.project_id, stage)
+
     def _record_event(
         self,
         project_id: str,
@@ -304,4 +314,26 @@ class Orchestrator:
             return TaskStatus.WAITING_APPROVAL
         if result_status == "handoff":
             return TaskStatus.BLOCKED
+        return None
+
+    @staticmethod
+    def _stage_for_task(task: Task, result: AgentResult) -> Stage | None:
+        if task.kind == "paper_ingest":
+            return Stage.INGEST_PAPERS
+        if task.kind == "gap_mapping":
+            if any(next_task.kind == "human_select" for next_task in result.next_tasks):
+                return Stage.HUMAN_SELECT
+            return Stage.MAP_GAPS
+        if task.kind == "human_select":
+            return Stage.FREEZE_TOPIC
+        if task.kind in {"build_spec", "implement_experiment", "reproduce_baseline"}:
+            return Stage.RUN_EXPERIMENTS if task.status == TaskStatus.SUCCEEDED else Stage.IMPLEMENT_IDEA
+        if task.kind == "analyze_run":
+            return Stage.AUDIT_RESULTS
+        if task.kind in {"review_build", "audit_run"}:
+            return Stage.REVIEW_DRAFT
+        if task.kind == "draft_write":
+            return Stage.WRITE_DRAFT
+        if task.kind == "style_pass":
+            return Stage.SUBMISSION_READY if task.status == TaskStatus.SUCCEEDED else Stage.STYLE_PASS
         return None

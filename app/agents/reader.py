@@ -62,6 +62,8 @@ class ReaderAgent(PromptDrivenAgent):
 
     def build_user_payload(self, task, ctx) -> dict[str, Any]:
         payload = super().build_user_payload(task, ctx)
+        arxiv_seeds = task.input_payload.get("arxiv_seeds", [])
+        search_seeds = task.input_payload.get("search_seeds", [])
         payload["reader_focus"] = {
             "required_outputs": [
                 "paper_cards",
@@ -77,7 +79,17 @@ class ReaderAgent(PromptDrivenAgent):
                 "If task.input_payload contains source_summary, produce at least one "
                 "PaperCard from that summary instead of leaving paper_cards empty."
             ),
+            "retrieval_expectation": (
+                "If arxiv_seeds or search_seeds are present, treat them as retrieval context "
+                "for deeper extraction rather than final paper cards. Use the seeded titles, "
+                "abstracts, authors, and identifiers to infer richer datasets, metrics, "
+                "modules, and contributions only when grounded in that evidence."
+            ),
         }
+        if isinstance(arxiv_seeds, list) and arxiv_seeds:
+            payload["arxiv_context"] = arxiv_seeds
+        if isinstance(search_seeds, list) and search_seeds:
+            payload["search_context"] = search_seeds
         return payload
 
     def build_result(self, task: Task, ctx, output: dict[str, Any]) -> AgentResult:
@@ -125,7 +137,8 @@ class ReaderAgent(PromptDrivenAgent):
             artifacts.append(artifact.artifact_id)
 
         next_tasks = []
-        if paper_cards:
+        suppress_gap_mapping = bool(task.input_payload.get("suppress_next_gap_mapping"))
+        if paper_cards and not suppress_gap_mapping:
             next_tasks.append(
                 build_child_task(
                     task,
@@ -205,22 +218,26 @@ class ReaderAgent(PromptDrivenAgent):
     async def _search_output(self, task: Task) -> dict[str, Any] | None:
         if task.kind != "paper_ingest":
             return None
-        if task.input_payload.get("source_summary"):
-            return None
+        source_summary = task.input_payload.get("source_summary")
+        if isinstance(source_summary, dict):
+            fallback_card = self._fallback_paper_card(task)
+            if fallback_card is None:
+                return None
+            return {
+                "paper_cards": [fallback_card],
+                "artifact_notes": ["paper_ingest used pre-fetched source_summary payload"],
+                "uncertainties": [
+                    "source_summary came from upstream metadata; detailed dataset or metric fields may still be sparse"
+                ],
+                "audit_notes": [
+                    "reader created a paper card directly from source_summary",
+                ],
+            }
 
         seed_papers = task.input_payload.get("seed_papers", [])
         if isinstance(seed_papers, list) and seed_papers:
-            raw_cards = [self._card_from_arxiv_hit(task, item) for item in seed_papers if isinstance(item, dict)]
-            return {
-                "paper_cards": raw_cards,
-                "artifact_notes": [f"arxiv seed papers preloaded hits={len(raw_cards)}"],
-                "uncertainties": [
-                    "arXiv abstracts may omit benchmark details, so dataset and metric fields can still be sparse"
-                ],
-                "audit_notes": [
-                    f"reader used pre-fetched arXiv candidates ({len(raw_cards)}) from guide/start"
-                ],
-            }
+            task.input_payload["arxiv_seeds"] = [item for item in seed_papers if isinstance(item, dict)]
+            return None
 
         if self.tool_registry is None:
             return None
@@ -244,18 +261,10 @@ class ReaderAgent(PromptDrivenAgent):
         if arxiv_tool is not None:
             search_result = await arxiv_tool.execute(query=query, max_results=limit)
             items = search_result.get("items", [])
-            raw_cards = [self._card_from_arxiv_hit(task, item) for item in items if item.get("title")]
-            if raw_cards:
-                return {
-                    "paper_cards": raw_cards,
-                    "artifact_notes": [f"arxiv query={query} hits={len(raw_cards)}"],
-                    "uncertainties": [
-                        "arXiv metadata may miss final venue information or exact benchmark splits"
-                    ],
-                    "audit_notes": [
-                        f"reader arXiv retrieval returned {len(raw_cards)} candidate papers"
-                    ],
-                }
+            seeded_items = [item for item in items if item.get("title")]
+            if seeded_items:
+                task.input_payload["arxiv_seeds"] = seeded_items
+                return None
 
         try:
             search_tool = self.tool_registry.get("paper_search")
@@ -264,17 +273,10 @@ class ReaderAgent(PromptDrivenAgent):
 
         search_result = await search_tool.execute(query=query, limit=limit)
         items = search_result.get("items", [])
-        raw_cards = [self._card_from_search_hit(task, item) for item in items if item.get("title")]
-        return {
-            "paper_cards": raw_cards,
-            "artifact_notes": [f"paper_search query={query} hits={len(raw_cards)}"],
-            "uncertainties": [
-                "some search hits may not include abstracts or dataset details"
-            ],
-            "audit_notes": [
-                f"reader paper_search retrieved {len(raw_cards)} candidate papers from Crossref"
-            ],
-        }
+        seeded_items = [item for item in items if item.get("title")]
+        if seeded_items:
+            task.input_payload["search_seeds"] = seeded_items
+        return None
 
     @staticmethod
     def _card_from_arxiv_hit(task: Task, item: dict[str, Any]) -> dict[str, Any]:

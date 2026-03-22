@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.core.enums import Stage
 from app.db.models import ProjectModel
 from app.routing import dispatch_profile_from_dict
 from app.schemas.project import Project
@@ -16,6 +17,7 @@ class SAProjectRepository:
             name=project.name,
             description=project.description,
             status=project.status,
+            stage=project.stage.value,
             dispatch_profile=to_record(project.dispatch_profile),
             created_at=project.created_at,
         )
@@ -34,6 +36,7 @@ class SAProjectRepository:
                 name=model.name,
                 description=model.description,
                 status=model.status,
+                stage=Stage(model.stage),
                 dispatch_profile=dispatch_profile_from_dict(model.dispatch_profile),
                 created_at=model.created_at,
             )
@@ -47,6 +50,7 @@ class SAProjectRepository:
                 name=model.name,
                 description=model.description,
                 status=model.status,
+                stage=Stage(model.stage),
                 dispatch_profile=dispatch_profile_from_dict(model.dispatch_profile),
                 created_at=model.created_at,
             )

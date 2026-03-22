@@ -1,31 +1,22 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FlaskConical, FolderPlus, Map, ShieldCheck, Sparkles } from "lucide-react";
 import { parseEvidenceRefs, parseLines, parseOptionalJson, parseRequiredJson } from "../utils";
 import { Panel } from "./ui";
 
+export type TopicFreezePrefill = {
+  projectId: string;
+  sourceTaskId: string;
+  topicId: string;
+  researchQuestion: string;
+  selectedGapIds: string[];
+  noveltyType: string[];
+};
+
 type Props = {
-  projectForm: any;
-  setProjectForm: (value: any) => void;
-  taskForm: any;
-  setTaskForm: (value: any) => void;
-  claimForm: any;
-  setClaimForm: (value: any) => void;
-  runForm: any;
-  setRunForm: (value: any) => void;
-  paperCardForm: any;
-  setPaperCardForm: (value: any) => void;
-  gapMapForm: any;
-  setGapMapForm: (value: any) => void;
-  lessonForm: any;
-  setLessonForm: (value: any) => void;
-  approvalForm: any;
-  setApprovalForm: (value: any) => void;
-  topicFreezeForm: any;
-  setTopicFreezeForm: (value: any) => void;
-  specFreezeForm: any;
-  setSpecFreezeForm: (value: any) => void;
-  resultsFreezeForm: any;
-  setResultsFreezeForm: (value: any) => void;
+  selectedProjectId: string;
+  selectedProjectName: string;
+  focusSection?: "project" | "topic_freeze" | null;
+  topicFreezePrefill?: TopicFreezePrefill | null;
   runAction: (key: string, callback: () => Promise<unknown>, refresh?: boolean) => Promise<void>;
   createProject: (payload: unknown) => Promise<unknown>;
   createTask: (payload: unknown) => Promise<unknown>;
@@ -39,53 +30,203 @@ type Props = {
   saveSpecFreeze: (payload: unknown) => Promise<unknown>;
   saveResultsFreeze: (payload: unknown) => Promise<unknown>;
   setNotice: (value: string) => void;
-  focusSection?: "topic_freeze" | null;
 };
 
 export function CreateTab(props: Props) {
-  const topicFreezeRef = useRef<HTMLFormElement | null>(null);
+  const projectRef = useRef<HTMLDivElement | null>(null);
+  const topicFreezeRef = useRef<HTMLDivElement | null>(null);
+
+  const [projectForm, setProjectForm] = useState({
+    project_id: props.selectedProjectId || "",
+    name: props.selectedProjectName || "",
+    description: "",
+    status: "active",
+    dispatch_profile_json: "",
+  });
+  const [taskForm, setTaskForm] = useState({
+    task_id: "",
+    project_id: props.selectedProjectId || "",
+    kind: "paper_ingest",
+    goal: "",
+    owner: "operator",
+    assigned_agent: "",
+    parent_task_id: "",
+    input_payload_json: '{\n  "topic": ""\n}',
+    dispatch_profile_json: "",
+  });
+  const [claimForm, setClaimForm] = useState({
+    claim_id: "",
+    text: "",
+    claim_type: "result",
+    risk_level: "medium",
+    approved_by_human: false,
+  });
+  const [runForm, setRunForm] = useState({
+    run_id: "",
+    spec_id: "",
+    git_commit: "HEAD",
+    config_hash: "",
+    dataset_snapshot: "",
+    seed: "42",
+    gpu: "cpu",
+  });
+  const [paperCardForm, setPaperCardForm] = useState({
+    paper_id: "",
+    title: "",
+    problem: "",
+    setting: "",
+    task_type: "",
+    strongest_result: "",
+    method_summary: "",
+    evidence_refs: "manual:1",
+  });
+  const [gapMapForm, setGapMapForm] = useState({
+    topic: "",
+    cluster_name: "",
+    gap_id: "",
+    description: "",
+    supporting_papers: "",
+    attack_surface: "",
+    difficulty: "",
+    novelty_type: "",
+  });
+  const [lessonForm, setLessonForm] = useState({
+    lesson_id: "",
+    lesson_kind: "lesson",
+    title: "",
+    summary: "",
+    rationale: "",
+    recommended_action: "",
+    task_kind: "",
+    agent_name: "",
+    provider_name: "",
+    model_name: "",
+    context_tags: "",
+    evidence_refs: "",
+    artifact_ids: "",
+    source_task_id: "",
+    source_run_id: "",
+    source_claim_id: "",
+  });
+  const [approvalForm, setApprovalForm] = useState({
+    approval_id: "",
+    project_id: props.selectedProjectId || "",
+    target_type: "results_freeze",
+    target_id: "",
+    approved_by: "operator",
+    decision: "approved",
+    comment: "",
+  });
+  const [topicFreezeForm, setTopicFreezeForm] = useState({
+    topic_id: "",
+    research_question: "",
+    selected_gap_ids: "",
+    novelty_type: "",
+    owner: "operator",
+    status: "approved",
+  });
+  const [specFreezeForm, setSpecFreezeForm] = useState({
+    spec_id: "",
+    topic_id: "",
+    hypothesis: "",
+    must_beat_baselines: "",
+    datasets: "",
+    metrics: "",
+    fairness_constraints: "",
+    ablations: "",
+    success_criteria: "",
+    failure_criteria: "",
+    approved_by: "operator",
+    status: "approved",
+  });
+  const [resultsFreezeForm, setResultsFreezeForm] = useState({
+    results_id: "",
+    spec_id: "",
+    main_claims: "",
+    tables: "",
+    figures: "",
+    approved_by: "operator",
+    status: "approved",
+  });
 
   useEffect(() => {
+    setProjectForm((current) => ({
+      ...current,
+      project_id: current.project_id || props.selectedProjectId,
+      name: current.name || props.selectedProjectName,
+    }));
+    setTaskForm((current) => ({
+      ...current,
+      project_id: current.project_id || props.selectedProjectId,
+    }));
+    setApprovalForm((current) => ({
+      ...current,
+      project_id: current.project_id || props.selectedProjectId,
+    }));
+  }, [props.selectedProjectId, props.selectedProjectName]);
+
+  useEffect(() => {
+    if (!props.topicFreezePrefill) {
+      return;
+    }
+    setTopicFreezeForm({
+      topic_id: props.topicFreezePrefill.topicId,
+      research_question: props.topicFreezePrefill.researchQuestion,
+      selected_gap_ids: props.topicFreezePrefill.selectedGapIds.join("\n"),
+      novelty_type: props.topicFreezePrefill.noveltyType.join("\n"),
+      owner: "operator",
+      status: "approved",
+    });
+  }, [props.topicFreezePrefill]);
+
+  useEffect(() => {
+    if (props.focusSection === "project") {
+      projectRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     if (props.focusSection === "topic_freeze") {
       topicFreezeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [props.focusSection]);
 
   return (
-    <div className="content-grid create-grid">
-      <Panel title="研究工作流" subtitle="把原本分散的对象创建，整理成更接近实际使用顺序的四段流程。">
+    <div className="content-grid create-grid create-grid-compact">
+      <Panel
+        title="高级操作"
+        subtitle="普通流程请优先走研究台。这里保留手动修正、补录、调试和紧急干预能力。"
+      >
         <div className="workflow-strip">
-          <WorkflowStep icon={FolderPlus} title="1. 立项" body="先建项目，再创建首批 task，让工作室有可调度内容。" />
-          <WorkflowStep icon={Map} title="2. 证据" body="paper card 与 gap map 决定研究问题是否清楚。" />
-          <WorkflowStep icon={FlaskConical} title="3. 实验" body="冻结 topic/spec 后再开 run，返工最少。" />
-          <WorkflowStep icon={ShieldCheck} title="4. 评审" body="claim、lesson、approval 与 results freeze 收口。" />
+          <WorkflowStep icon={FolderPlus} title="立项" body="手动创建项目或补一个空项目壳。" />
+          <WorkflowStep icon={Map} title="证据" body="补录论文卡片和 Gap Map，修正证据层。" />
+          <WorkflowStep icon={FlaskConical} title="实验" body="手动补 run、topic freeze、spec freeze。" />
+          <WorkflowStep icon={ShieldCheck} title="收口" body="补 claim、lesson、approval 和 results freeze。" />
         </div>
       </Panel>
 
-      <Panel title="1. 立项与任务" subtitle="对应 create-project 与 create-task。">
-        <div className="double-form">
+      <div ref={projectRef}>
+        <Panel title="项目与任务" subtitle="只有在自动流程不适用时，才建议手动创建。">
+          <div className="double-form">
           <form
             className="form-grid"
             onSubmit={(event) => {
               event.preventDefault();
               void props.runAction("create-project", async () => {
                 await props.createProject({
-                  project_id: props.projectForm.project_id,
-                  name: props.projectForm.name,
-                  description: props.projectForm.description,
-                  status: props.projectForm.status,
-                  dispatch_profile: parseOptionalJson(props.projectForm.dispatch_profile_json),
+                  project_id: projectForm.project_id,
+                  name: projectForm.name,
+                  description: projectForm.description,
+                  status: projectForm.status,
+                  dispatch_profile: parseOptionalJson(projectForm.dispatch_profile_json),
                 });
-                props.setNotice(`已创建项目 ${props.projectForm.project_id}`);
+                props.setNotice(`已创建项目 ${projectForm.project_id}`);
               });
             }}
           >
-            <FormHint title="创建项目" body="建议先填 project_id、名称和简短描述。dispatch profile 留空即可，除非你确实要覆盖默认路由。" />
-            <InputPair label="Project id" value={props.projectForm.project_id} onChange={(value) => props.setProjectForm({ ...props.projectForm, project_id: value })} required />
-            <InputPair label="项目名称" value={props.projectForm.name} onChange={(value) => props.setProjectForm({ ...props.projectForm, name: value })} required />
-            <TextPair label="项目描述" value={props.projectForm.description} onChange={(value) => props.setProjectForm({ ...props.projectForm, description: value })} required span />
-            <InputPair label="状态" value={props.projectForm.status} onChange={(value) => props.setProjectForm({ ...props.projectForm, status: value })} />
-            <TextPair label="Dispatch profile JSON" value={props.projectForm.dispatch_profile_json} onChange={(value) => props.setProjectForm({ ...props.projectForm, dispatch_profile_json: value })} span />
+            <FormHint title="新建项目" body="只填项目 ID、名称和说明即可。其余字段主要用于覆盖系统默认行为。" />
+            <InputPair label="Project id" value={projectForm.project_id} onChange={(value) => setProjectForm({ ...projectForm, project_id: value })} required />
+            <InputPair label="项目名称" value={projectForm.name} onChange={(value) => setProjectForm({ ...projectForm, name: value })} required />
+            <TextPair label="项目描述" value={projectForm.description} onChange={(value) => setProjectForm({ ...projectForm, description: value })} required span />
+            <InputPair label="状态" value={projectForm.status} onChange={(value) => setProjectForm({ ...projectForm, status: value })} />
+            <TextPair label="Dispatch profile JSON" value={projectForm.dispatch_profile_json} onChange={(value) => setProjectForm({ ...projectForm, dispatch_profile_json: value })} span />
             <button className="button" type="submit">
               创建项目
             </button>
@@ -97,38 +238,39 @@ export function CreateTab(props: Props) {
               event.preventDefault();
               void props.runAction("create-task", async () => {
                 await props.createTask({
-                  task_id: props.taskForm.task_id,
-                  project_id: props.taskForm.project_id,
-                  kind: props.taskForm.kind,
-                  goal: props.taskForm.goal,
-                  owner: props.taskForm.owner,
-                  assigned_agent: props.taskForm.assigned_agent || null,
-                  parent_task_id: props.taskForm.parent_task_id || null,
-                  input_payload: parseRequiredJson(props.taskForm.input_payload_json),
-                  dispatch_profile: parseOptionalJson(props.taskForm.dispatch_profile_json),
+                  task_id: taskForm.task_id,
+                  project_id: taskForm.project_id,
+                  kind: taskForm.kind,
+                  goal: taskForm.goal,
+                  owner: taskForm.owner,
+                  assigned_agent: taskForm.assigned_agent || null,
+                  parent_task_id: taskForm.parent_task_id || null,
+                  input_payload: parseRequiredJson(taskForm.input_payload_json),
+                  dispatch_profile: parseOptionalJson(taskForm.dispatch_profile_json),
                 });
-                props.setNotice(`已创建任务 ${props.taskForm.task_id}`);
+                props.setNotice(`已创建任务 ${taskForm.task_id}`);
               });
             }}
           >
-            <FormHint title="创建任务" body="推荐先建 paper_ingest、gap_map_build 或 experiment_spec 这三类起步任务。" />
-            <InputPair label="Task id" value={props.taskForm.task_id} onChange={(value) => props.setTaskForm({ ...props.taskForm, task_id: value })} required />
-            <InputPair label="Project id" value={props.taskForm.project_id} onChange={(value) => props.setTaskForm({ ...props.taskForm, project_id: value })} required />
-            <InputPair label="任务类型" value={props.taskForm.kind} onChange={(value) => props.setTaskForm({ ...props.taskForm, kind: value })} required />
-            <InputPair label="负责人" value={props.taskForm.owner} onChange={(value) => props.setTaskForm({ ...props.taskForm, owner: value })} required />
-            <TextPair label="目标" value={props.taskForm.goal} onChange={(value) => props.setTaskForm({ ...props.taskForm, goal: value })} required span />
-            <InputPair label="指定 agent" value={props.taskForm.assigned_agent} onChange={(value) => props.setTaskForm({ ...props.taskForm, assigned_agent: value })} />
-            <InputPair label="父任务 id" value={props.taskForm.parent_task_id} onChange={(value) => props.setTaskForm({ ...props.taskForm, parent_task_id: value })} />
-            <TextPair label="输入负载 JSON" value={props.taskForm.input_payload_json} onChange={(value) => props.setTaskForm({ ...props.taskForm, input_payload_json: value })} required span />
-            <TextPair label="Dispatch profile JSON" value={props.taskForm.dispatch_profile_json} onChange={(value) => props.setTaskForm({ ...props.taskForm, dispatch_profile_json: value })} span />
+            <FormHint title="手动建任务" body="如果自动流程断了，在这里补任务。优先填目标和输入，ID 用你自己可读的命名。" />
+            <InputPair label="Task id" value={taskForm.task_id} onChange={(value) => setTaskForm({ ...taskForm, task_id: value })} required />
+            <InputPair label="Project id" value={taskForm.project_id} onChange={(value) => setTaskForm({ ...taskForm, project_id: value })} required />
+            <InputPair label="任务类型" value={taskForm.kind} onChange={(value) => setTaskForm({ ...taskForm, kind: value })} required />
+            <InputPair label="负责人" value={taskForm.owner} onChange={(value) => setTaskForm({ ...taskForm, owner: value })} required />
+            <TextPair label="目标" value={taskForm.goal} onChange={(value) => setTaskForm({ ...taskForm, goal: value })} required span />
+            <InputPair label="指定 agent" value={taskForm.assigned_agent} onChange={(value) => setTaskForm({ ...taskForm, assigned_agent: value })} />
+            <InputPair label="父任务 id" value={taskForm.parent_task_id} onChange={(value) => setTaskForm({ ...taskForm, parent_task_id: value })} />
+            <TextPair label="输入负载 JSON" value={taskForm.input_payload_json} onChange={(value) => setTaskForm({ ...taskForm, input_payload_json: value })} required span />
+            <TextPair label="Dispatch profile JSON" value={taskForm.dispatch_profile_json} onChange={(value) => setTaskForm({ ...taskForm, dispatch_profile_json: value })} span />
             <button className="button" type="submit">
               创建任务
             </button>
           </form>
-        </div>
-      </Panel>
+          </div>
+        </Panel>
+      </div>
 
-      <Panel title="2. 证据整理" subtitle="先把资料层建起来，综合台和实验台才会顺。">
+      <Panel title="研究登记" subtitle="补录 paper card、gap map、lesson 等结构化对象。">
         <div className="double-form">
           <form
             className="form-grid"
@@ -136,30 +278,30 @@ export function CreateTab(props: Props) {
               event.preventDefault();
               void props.runAction("create-paper-card", async () => {
                 await props.createPaperCard({
-                  paper_id: props.paperCardForm.paper_id,
-                  title: props.paperCardForm.title,
-                  problem: props.paperCardForm.problem,
-                  setting: props.paperCardForm.setting,
-                  task_type: props.paperCardForm.task_type,
-                  strongest_result: props.paperCardForm.strongest_result,
-                  method_summary: props.paperCardForm.method_summary,
-                  evidence_refs: parseEvidenceRefs(props.paperCardForm.evidence_refs),
+                  paper_id: paperCardForm.paper_id,
+                  title: paperCardForm.title,
+                  problem: paperCardForm.problem,
+                  setting: paperCardForm.setting,
+                  task_type: paperCardForm.task_type,
+                  strongest_result: paperCardForm.strongest_result,
+                  method_summary: paperCardForm.method_summary,
+                  evidence_refs: parseEvidenceRefs(paperCardForm.evidence_refs),
                 });
-                props.setNotice(`已创建 paper card ${props.paperCardForm.paper_id}`);
+                props.setNotice(`已创建 paper card ${paperCardForm.paper_id}`);
               });
             }}
           >
-            <FormHint title="Paper card" body="适合快速固化论文问题、方法和 strongest result。写不全也没关系，先让证据可查。" />
-            <InputPair label="Paper id" value={props.paperCardForm.paper_id} onChange={(value) => props.setPaperCardForm({ ...props.paperCardForm, paper_id: value })} required />
-            <InputPair label="标题" value={props.paperCardForm.title} onChange={(value) => props.setPaperCardForm({ ...props.paperCardForm, title: value })} required />
-            <InputPair label="任务类型" value={props.paperCardForm.task_type} onChange={(value) => props.setPaperCardForm({ ...props.paperCardForm, task_type: value })} required />
-            <InputPair label="场景" value={props.paperCardForm.setting} onChange={(value) => props.setPaperCardForm({ ...props.paperCardForm, setting: value })} required />
-            <TextPair label="问题定义" value={props.paperCardForm.problem} onChange={(value) => props.setPaperCardForm({ ...props.paperCardForm, problem: value })} required span />
-            <TextPair label="方法摘要" value={props.paperCardForm.method_summary} onChange={(value) => props.setPaperCardForm({ ...props.paperCardForm, method_summary: value })} span />
-            <TextPair label="最强结果" value={props.paperCardForm.strongest_result} onChange={(value) => props.setPaperCardForm({ ...props.paperCardForm, strongest_result: value })} span />
-            <InputPair label="证据引用" value={props.paperCardForm.evidence_refs} onChange={(value) => props.setPaperCardForm({ ...props.paperCardForm, evidence_refs: value })} span />
+            <FormHint title="Paper card" body="用于补录论文问题、方法和 strongest result，优先保证可检索和可追溯。" />
+            <InputPair label="Paper id" value={paperCardForm.paper_id} onChange={(value) => setPaperCardForm({ ...paperCardForm, paper_id: value })} required />
+            <InputPair label="标题" value={paperCardForm.title} onChange={(value) => setPaperCardForm({ ...paperCardForm, title: value })} required />
+            <InputPair label="任务类型" value={paperCardForm.task_type} onChange={(value) => setPaperCardForm({ ...paperCardForm, task_type: value })} required />
+            <InputPair label="研究场景" value={paperCardForm.setting} onChange={(value) => setPaperCardForm({ ...paperCardForm, setting: value })} required />
+            <TextPair label="问题定义" value={paperCardForm.problem} onChange={(value) => setPaperCardForm({ ...paperCardForm, problem: value })} required span />
+            <TextPair label="方法摘要" value={paperCardForm.method_summary} onChange={(value) => setPaperCardForm({ ...paperCardForm, method_summary: value })} span />
+            <TextPair label="最强结果" value={paperCardForm.strongest_result} onChange={(value) => setPaperCardForm({ ...paperCardForm, strongest_result: value })} span />
+            <InputPair label="证据引用" value={paperCardForm.evidence_refs} onChange={(value) => setPaperCardForm({ ...paperCardForm, evidence_refs: value })} span />
             <button className="button" type="submit">
-              创建 paper card
+              保存 paper card
             </button>
           </form>
 
@@ -169,68 +311,105 @@ export function CreateTab(props: Props) {
               event.preventDefault();
               void props.runAction("create-gap-map", async () => {
                 await props.createGapMap({
-                  topic: props.gapMapForm.topic,
+                  topic: gapMapForm.topic,
                   clusters: [
                     {
-                      name: props.gapMapForm.cluster_name,
+                      name: gapMapForm.cluster_name,
                       gaps: [
                         {
-                          gap_id: props.gapMapForm.gap_id,
-                          description: props.gapMapForm.description,
-                          supporting_papers: parseLines(props.gapMapForm.supporting_papers),
-                          attack_surface: props.gapMapForm.attack_surface,
-                          difficulty: props.gapMapForm.difficulty,
-                          novelty_type: props.gapMapForm.novelty_type,
+                          gap_id: gapMapForm.gap_id,
+                          description: gapMapForm.description,
+                          supporting_papers: parseLines(gapMapForm.supporting_papers),
+                          attack_surface: gapMapForm.attack_surface,
+                          difficulty: gapMapForm.difficulty,
+                          novelty_type: gapMapForm.novelty_type,
                         },
                       ],
                     },
                   ],
                 });
-                props.setNotice(`已创建 gap map ${props.gapMapForm.topic}`);
+                props.setNotice(`已创建 gap map ${gapMapForm.topic}`);
               });
             }}
           >
-            <FormHint title="Gap map" body="一个主题先写一个 cluster 就够了，后续可继续扩展，不必等结构完美再录入。" />
-            <InputPair label="主题" value={props.gapMapForm.topic} onChange={(value) => props.setGapMapForm({ ...props.gapMapForm, topic: value })} required />
-            <InputPair label="聚类名" value={props.gapMapForm.cluster_name} onChange={(value) => props.setGapMapForm({ ...props.gapMapForm, cluster_name: value })} required />
-            <InputPair label="Gap id" value={props.gapMapForm.gap_id} onChange={(value) => props.setGapMapForm({ ...props.gapMapForm, gap_id: value })} required />
-            <InputPair label="难度" value={props.gapMapForm.difficulty} onChange={(value) => props.setGapMapForm({ ...props.gapMapForm, difficulty: value })} />
-            <InputPair label="新颖性类型" value={props.gapMapForm.novelty_type} onChange={(value) => props.setGapMapForm({ ...props.gapMapForm, novelty_type: value })} />
-            <InputPair label="攻击面" value={props.gapMapForm.attack_surface} onChange={(value) => props.setGapMapForm({ ...props.gapMapForm, attack_surface: value })} />
-            <TextPair label="描述" value={props.gapMapForm.description} onChange={(value) => props.setGapMapForm({ ...props.gapMapForm, description: value })} required span />
-            <TextPair label="支持论文" value={props.gapMapForm.supporting_papers} onChange={(value) => props.setGapMapForm({ ...props.gapMapForm, supporting_papers: value })} span />
+            <FormHint title="Gap map" body="支持快速补一条 Gap 记录，先让方向可见，再慢慢扩充 cluster。" />
+            <InputPair label="主题" value={gapMapForm.topic} onChange={(value) => setGapMapForm({ ...gapMapForm, topic: value })} required />
+            <InputPair label="Cluster 名称" value={gapMapForm.cluster_name} onChange={(value) => setGapMapForm({ ...gapMapForm, cluster_name: value })} required />
+            <InputPair label="Gap id" value={gapMapForm.gap_id} onChange={(value) => setGapMapForm({ ...gapMapForm, gap_id: value })} required />
+            <InputPair label="难度" value={gapMapForm.difficulty} onChange={(value) => setGapMapForm({ ...gapMapForm, difficulty: value })} />
+            <InputPair label="新颖性类型" value={gapMapForm.novelty_type} onChange={(value) => setGapMapForm({ ...gapMapForm, novelty_type: value })} />
+            <InputPair label="攻击面" value={gapMapForm.attack_surface} onChange={(value) => setGapMapForm({ ...gapMapForm, attack_surface: value })} />
+            <TextPair label="描述" value={gapMapForm.description} onChange={(value) => setGapMapForm({ ...gapMapForm, description: value })} required span />
+            <TextPair label="支持论文" value={gapMapForm.supporting_papers} onChange={(value) => setGapMapForm({ ...gapMapForm, supporting_papers: value })} span />
             <button className="button" type="submit">
-              创建 gap map
+              保存 gap map
+            </button>
+          </form>
+
+          <form
+            className="form-grid"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void props.runAction("create-lesson", async () => {
+                await props.createLesson({
+                  ...lessonForm,
+                  task_kind: lessonForm.task_kind || null,
+                  agent_name: lessonForm.agent_name || null,
+                  provider_name: lessonForm.provider_name || null,
+                  model_name: lessonForm.model_name || null,
+                  source_task_id: lessonForm.source_task_id || null,
+                  source_run_id: lessonForm.source_run_id || null,
+                  source_claim_id: lessonForm.source_claim_id || null,
+                  context_tags: parseLines(lessonForm.context_tags),
+                  evidence_refs: parseLines(lessonForm.evidence_refs),
+                  artifact_ids: parseLines(lessonForm.artifact_ids),
+                });
+                props.setNotice(`已创建 lesson ${lessonForm.lesson_id}`);
+              });
+            }}
+          >
+            <FormHint title="Lesson" body="记录这次流程的经验和返工原因。用在下游 agent 复用时，比日志更有价值。" />
+            <InputPair label="Lesson id" value={lessonForm.lesson_id} onChange={(value) => setLessonForm({ ...lessonForm, lesson_id: value })} required />
+            <InputPair label="类型" value={lessonForm.lesson_kind} onChange={(value) => setLessonForm({ ...lessonForm, lesson_kind: value })} required />
+            <InputPair label="标题" value={lessonForm.title} onChange={(value) => setLessonForm({ ...lessonForm, title: value })} required />
+            <InputPair label="任务类型" value={lessonForm.task_kind} onChange={(value) => setLessonForm({ ...lessonForm, task_kind: value })} />
+            <TextPair label="摘要" value={lessonForm.summary} onChange={(value) => setLessonForm({ ...lessonForm, summary: value })} required span />
+            <TextPair label="原因" value={lessonForm.rationale} onChange={(value) => setLessonForm({ ...lessonForm, rationale: value })} span />
+            <TextPair label="建议动作" value={lessonForm.recommended_action} onChange={(value) => setLessonForm({ ...lessonForm, recommended_action: value })} span />
+            <InputPair label="Agent name" value={lessonForm.agent_name} onChange={(value) => setLessonForm({ ...lessonForm, agent_name: value })} />
+            <TextPair label="上下文标签" value={lessonForm.context_tags} onChange={(value) => setLessonForm({ ...lessonForm, context_tags: value })} span />
+            <button className="button" type="submit">
+              保存 lesson
             </button>
           </form>
         </div>
       </Panel>
 
-      <Panel title="3. 实验与冻结" subtitle="从 hypothesis 到 run，再到 freeze，建议按这个顺序推进。">
-        <div className="triple-form">
+      <div ref={topicFreezeRef}>
+        <Panel title="冻结、实验与审批" subtitle="这里处理 topic freeze、spec freeze、run、claim、approval 和 results freeze。">
+          <div className="triple-form">
           <form
-            ref={topicFreezeRef}
             className={props.focusSection === "topic_freeze" ? "form-grid focus-ring" : "form-grid"}
             onSubmit={(event) => {
               event.preventDefault();
               void props.runAction("save-topic-freeze", async () => {
                 await props.saveTopicFreeze({
-                  topic_id: props.topicFreezeForm.topic_id,
-                  research_question: props.topicFreezeForm.research_question,
-                  selected_gap_ids: parseLines(props.topicFreezeForm.selected_gap_ids),
-                  novelty_type: parseLines(props.topicFreezeForm.novelty_type),
-                  owner: props.topicFreezeForm.owner,
-                  status: props.topicFreezeForm.status,
+                  topic_id: topicFreezeForm.topic_id,
+                  research_question: topicFreezeForm.research_question,
+                  selected_gap_ids: parseLines(topicFreezeForm.selected_gap_ids),
+                  novelty_type: parseLines(topicFreezeForm.novelty_type),
+                  owner: topicFreezeForm.owner,
+                  status: topicFreezeForm.status,
                 });
-                props.setNotice(`已保存 topic freeze ${props.topicFreezeForm.topic_id}`);
+                props.setNotice(`已保存 topic freeze ${topicFreezeForm.topic_id}`);
               });
             }}
           >
-            <FormHint title="主题冻结" body="决定研究问题、锁定 gap，后续 task 会更清楚。" />
-            <InputPair label="Topic id" value={props.topicFreezeForm.topic_id} onChange={(value) => props.setTopicFreezeForm({ ...props.topicFreezeForm, topic_id: value })} required />
-            <TextPair label="研究问题" value={props.topicFreezeForm.research_question} onChange={(value) => props.setTopicFreezeForm({ ...props.topicFreezeForm, research_question: value })} required span />
-            <TextPair label="选中 gap ids" value={props.topicFreezeForm.selected_gap_ids} onChange={(value) => props.setTopicFreezeForm({ ...props.topicFreezeForm, selected_gap_ids: value })} span />
-            <TextPair label="新颖性类型" value={props.topicFreezeForm.novelty_type} onChange={(value) => props.setTopicFreezeForm({ ...props.topicFreezeForm, novelty_type: value })} span />
+            <FormHint title="Topic freeze" body="这是人工拍板后的入口。系统自动流程也会在这里接棒。" />
+            <InputPair label="Topic id" value={topicFreezeForm.topic_id} onChange={(value) => setTopicFreezeForm({ ...topicFreezeForm, topic_id: value })} required />
+            <TextPair label="研究问题" value={topicFreezeForm.research_question} onChange={(value) => setTopicFreezeForm({ ...topicFreezeForm, research_question: value })} required span />
+            <TextPair label="选中 gap ids" value={topicFreezeForm.selected_gap_ids} onChange={(value) => setTopicFreezeForm({ ...topicFreezeForm, selected_gap_ids: value })} span />
+            <TextPair label="新颖性类型" value={topicFreezeForm.novelty_type} onChange={(value) => setTopicFreezeForm({ ...topicFreezeForm, novelty_type: value })} span />
             <button className="button" type="submit">
               保存 topic freeze
             </button>
@@ -242,30 +421,30 @@ export function CreateTab(props: Props) {
               event.preventDefault();
               void props.runAction("save-spec-freeze", async () => {
                 await props.saveSpecFreeze({
-                  spec_id: props.specFreezeForm.spec_id,
-                  topic_id: props.specFreezeForm.topic_id,
-                  hypothesis: parseLines(props.specFreezeForm.hypothesis),
-                  must_beat_baselines: parseLines(props.specFreezeForm.must_beat_baselines),
-                  datasets: parseLines(props.specFreezeForm.datasets),
-                  metrics: parseLines(props.specFreezeForm.metrics),
-                  fairness_constraints: parseLines(props.specFreezeForm.fairness_constraints),
-                  ablations: parseLines(props.specFreezeForm.ablations),
-                  success_criteria: parseLines(props.specFreezeForm.success_criteria),
-                  failure_criteria: parseLines(props.specFreezeForm.failure_criteria),
-                  approved_by: props.specFreezeForm.approved_by,
-                  status: props.specFreezeForm.status,
+                  spec_id: specFreezeForm.spec_id,
+                  topic_id: specFreezeForm.topic_id,
+                  hypothesis: parseLines(specFreezeForm.hypothesis),
+                  must_beat_baselines: parseLines(specFreezeForm.must_beat_baselines),
+                  datasets: parseLines(specFreezeForm.datasets),
+                  metrics: parseLines(specFreezeForm.metrics),
+                  fairness_constraints: parseLines(specFreezeForm.fairness_constraints),
+                  ablations: parseLines(specFreezeForm.ablations),
+                  success_criteria: parseLines(specFreezeForm.success_criteria),
+                  failure_criteria: parseLines(specFreezeForm.failure_criteria),
+                  approved_by: specFreezeForm.approved_by,
+                  status: specFreezeForm.status,
                 });
-                props.setNotice(`已保存 spec freeze ${props.specFreezeForm.spec_id}`);
+                props.setNotice(`已保存 spec freeze ${specFreezeForm.spec_id}`);
               });
             }}
           >
-            <FormHint title="规格冻结" body="实验假设、基线、数据集和成功标准都应该在这里定下来。" />
-            <InputPair label="Spec id" value={props.specFreezeForm.spec_id} onChange={(value) => props.setSpecFreezeForm({ ...props.specFreezeForm, spec_id: value })} required />
-            <InputPair label="Topic id" value={props.specFreezeForm.topic_id} onChange={(value) => props.setSpecFreezeForm({ ...props.specFreezeForm, topic_id: value })} required />
-            <TextPair label="假设" value={props.specFreezeForm.hypothesis} onChange={(value) => props.setSpecFreezeForm({ ...props.specFreezeForm, hypothesis: value })} span />
-            <TextPair label="必须超过的基线" value={props.specFreezeForm.must_beat_baselines} onChange={(value) => props.setSpecFreezeForm({ ...props.specFreezeForm, must_beat_baselines: value })} span />
-            <TextPair label="数据集" value={props.specFreezeForm.datasets} onChange={(value) => props.setSpecFreezeForm({ ...props.specFreezeForm, datasets: value })} span />
-            <TextPair label="指标" value={props.specFreezeForm.metrics} onChange={(value) => props.setSpecFreezeForm({ ...props.specFreezeForm, metrics: value })} span />
+            <FormHint title="Spec freeze" body="在正式开跑前把 baseline、数据集、指标和成功标准钉住。" />
+            <InputPair label="Spec id" value={specFreezeForm.spec_id} onChange={(value) => setSpecFreezeForm({ ...specFreezeForm, spec_id: value })} required />
+            <InputPair label="Topic id" value={specFreezeForm.topic_id} onChange={(value) => setSpecFreezeForm({ ...specFreezeForm, topic_id: value })} required />
+            <TextPair label="假设" value={specFreezeForm.hypothesis} onChange={(value) => setSpecFreezeForm({ ...specFreezeForm, hypothesis: value })} span />
+            <TextPair label="必须超越的 baseline" value={specFreezeForm.must_beat_baselines} onChange={(value) => setSpecFreezeForm({ ...specFreezeForm, must_beat_baselines: value })} span />
+            <TextPair label="数据集" value={specFreezeForm.datasets} onChange={(value) => setSpecFreezeForm({ ...specFreezeForm, datasets: value })} span />
+            <TextPair label="指标" value={specFreezeForm.metrics} onChange={(value) => setSpecFreezeForm({ ...specFreezeForm, metrics: value })} span />
             <button className="button" type="submit">
               保存 spec freeze
             </button>
@@ -277,148 +456,111 @@ export function CreateTab(props: Props) {
               event.preventDefault();
               void props.runAction("create-run", async () => {
                 await props.createRun({
-                  ...props.runForm,
-                  seed: Number(props.runForm.seed),
+                  ...runForm,
+                  seed: Number(runForm.seed),
                 });
-                props.setNotice(`已创建 run ${props.runForm.run_id}`);
+                props.setNotice(`已创建 run ${runForm.run_id}`);
               });
             }}
           >
-            <FormHint title="创建 run" body="如果 spec 已冻结，这里只要填 run id、commit、dataset snapshot 就能直接发车。" />
-            <InputPair label="Run id" value={props.runForm.run_id} onChange={(value) => props.setRunForm({ ...props.runForm, run_id: value })} required />
-            <InputPair label="Spec id" value={props.runForm.spec_id} onChange={(value) => props.setRunForm({ ...props.runForm, spec_id: value })} required />
-            <InputPair label="Git commit" value={props.runForm.git_commit} onChange={(value) => props.setRunForm({ ...props.runForm, git_commit: value })} required />
-            <InputPair label="配置哈希" value={props.runForm.config_hash} onChange={(value) => props.setRunForm({ ...props.runForm, config_hash: value })} required />
-            <InputPair label="数据快照" value={props.runForm.dataset_snapshot} onChange={(value) => props.setRunForm({ ...props.runForm, dataset_snapshot: value })} required />
-            <InputPair label="Seed" value={props.runForm.seed} onChange={(value) => props.setRunForm({ ...props.runForm, seed: value })} required />
-            <InputPair label="GPU" value={props.runForm.gpu} onChange={(value) => props.setRunForm({ ...props.runForm, gpu: value })} required />
+            <FormHint title="Run / Claim / 审批" body="适合紧急补 run、补 claim 或手动登记人工审批。">
+            </FormHint>
+            <InputPair label="Run id" value={runForm.run_id} onChange={(value) => setRunForm({ ...runForm, run_id: value })} required />
+            <InputPair label="Spec id" value={runForm.spec_id} onChange={(value) => setRunForm({ ...runForm, spec_id: value })} required />
+            <InputPair label="Git commit" value={runForm.git_commit} onChange={(value) => setRunForm({ ...runForm, git_commit: value })} required />
+            <InputPair label="配置哈希" value={runForm.config_hash} onChange={(value) => setRunForm({ ...runForm, config_hash: value })} required />
+            <InputPair label="数据快照" value={runForm.dataset_snapshot} onChange={(value) => setRunForm({ ...runForm, dataset_snapshot: value })} required />
+            <InputPair label="Seed" value={runForm.seed} onChange={(value) => setRunForm({ ...runForm, seed: value })} required />
+            <InputPair label="GPU" value={runForm.gpu} onChange={(value) => setRunForm({ ...runForm, gpu: value })} required />
             <button className="button" type="submit">
               创建 run
             </button>
           </form>
-        </div>
-      </Panel>
-
-      <Panel title="4. 结论、审批与归档" subtitle="把 claim、results freeze、lesson 和审批放到同一段收口。">
-        <div className="double-form">
-          <div className="stack-md">
-            <form
-              className="form-grid"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void props.runAction("create-claim", async () => {
-                  await props.createClaim(props.claimForm);
-                  props.setNotice(`已创建 claim ${props.claimForm.claim_id}`);
-                });
-              }}
-            >
-              <FormHint title="Claim" body="适合在 run 结果初步稳定后登记，后面可直接发起验证。" />
-              <InputPair label="Claim id" value={props.claimForm.claim_id} onChange={(value) => props.setClaimForm({ ...props.claimForm, claim_id: value })} required />
-              <InputPair label="Claim 类型" value={props.claimForm.claim_type} onChange={(value) => props.setClaimForm({ ...props.claimForm, claim_type: value })} required />
-              <InputPair label="风险级别" value={props.claimForm.risk_level} onChange={(value) => props.setClaimForm({ ...props.claimForm, risk_level: value })} />
-              <label className="checkbox-row span-2">
-                <input type="checkbox" checked={props.claimForm.approved_by_human} onChange={(event) => props.setClaimForm({ ...props.claimForm, approved_by_human: event.target.checked })} />
-                已人工批准
-              </label>
-              <TextPair label="Claim 文本" value={props.claimForm.text} onChange={(value) => props.setClaimForm({ ...props.claimForm, text: value })} required span />
-              <button className="button" type="submit">
-                创建 claim
-              </button>
-            </form>
-
-            <form
-              className="form-grid"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void props.runAction("save-results-freeze", async () => {
-                  await props.saveResultsFreeze({
-                    results_id: props.resultsFreezeForm.results_id,
-                    spec_id: props.resultsFreezeForm.spec_id,
-                    main_claims: parseLines(props.resultsFreezeForm.main_claims),
-                    tables: parseLines(props.resultsFreezeForm.tables),
-                    figures: parseLines(props.resultsFreezeForm.figures),
-                    approved_by: props.resultsFreezeForm.approved_by,
-                    status: props.resultsFreezeForm.status,
-                  });
-                  props.setNotice(`已保存 results freeze ${props.resultsFreezeForm.results_id}`);
-                });
-              }}
-            >
-              <FormHint title="结果冻结" body="适合在主要表格和图已经稳定时执行，方便写作台和审批台接手。" />
-              <InputPair label="Results id" value={props.resultsFreezeForm.results_id} onChange={(value) => props.setResultsFreezeForm({ ...props.resultsFreezeForm, results_id: value })} required />
-              <InputPair label="Spec id" value={props.resultsFreezeForm.spec_id} onChange={(value) => props.setResultsFreezeForm({ ...props.resultsFreezeForm, spec_id: value })} required />
-              <TextPair label="主 claims" value={props.resultsFreezeForm.main_claims} onChange={(value) => props.setResultsFreezeForm({ ...props.resultsFreezeForm, main_claims: value })} span />
-              <TextPair label="表格" value={props.resultsFreezeForm.tables} onChange={(value) => props.setResultsFreezeForm({ ...props.resultsFreezeForm, tables: value })} span />
-              <TextPair label="图" value={props.resultsFreezeForm.figures} onChange={(value) => props.setResultsFreezeForm({ ...props.resultsFreezeForm, figures: value })} span />
-              <button className="button" type="submit">
-                保存 results freeze
-              </button>
-            </form>
           </div>
 
-          <div className="stack-md">
-            <form
-              className="form-grid"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void props.runAction("create-lesson", async () => {
-                  await props.createLesson({
-                    ...props.lessonForm,
-                    task_kind: props.lessonForm.task_kind || null,
-                    agent_name: props.lessonForm.agent_name || null,
-                    provider_name: props.lessonForm.provider_name || null,
-                    model_name: props.lessonForm.model_name || null,
-                    source_task_id: props.lessonForm.source_task_id || null,
-                    source_run_id: props.lessonForm.source_run_id || null,
-                    source_claim_id: props.lessonForm.source_claim_id || null,
-                    context_tags: parseLines(props.lessonForm.context_tags),
-                    evidence_refs: parseLines(props.lessonForm.evidence_refs),
-                    artifact_ids: parseLines(props.lessonForm.artifact_ids),
-                  });
-                  props.setNotice(`已创建 lesson ${props.lessonForm.lesson_id}`);
-                });
-              }}
-            >
-              <FormHint title="Lesson" body="把失败原因、经验修正和建议动作记下来，档案室才有价值。" />
-              <InputPair label="Lesson id" value={props.lessonForm.lesson_id} onChange={(value) => props.setLessonForm({ ...props.lessonForm, lesson_id: value })} required />
-              <InputPair label="类型" value={props.lessonForm.lesson_kind} onChange={(value) => props.setLessonForm({ ...props.lessonForm, lesson_kind: value })} required />
-              <InputPair label="标题" value={props.lessonForm.title} onChange={(value) => props.setLessonForm({ ...props.lessonForm, title: value })} required />
-              <InputPair label="任务类型" value={props.lessonForm.task_kind} onChange={(value) => props.setLessonForm({ ...props.lessonForm, task_kind: value })} />
-              <TextPair label="摘要" value={props.lessonForm.summary} onChange={(value) => props.setLessonForm({ ...props.lessonForm, summary: value })} required span />
-              <TextPair label="理由" value={props.lessonForm.rationale} onChange={(value) => props.setLessonForm({ ...props.lessonForm, rationale: value })} span />
-              <TextPair label="建议动作" value={props.lessonForm.recommended_action} onChange={(value) => props.setLessonForm({ ...props.lessonForm, recommended_action: value })} span />
-              <InputPair label="Agent name" value={props.lessonForm.agent_name} onChange={(value) => props.setLessonForm({ ...props.lessonForm, agent_name: value })} />
-              <TextPair label="上下文标签" value={props.lessonForm.context_tags} onChange={(value) => props.setLessonForm({ ...props.lessonForm, context_tags: value })} span />
-              <button className="button" type="submit">
-                创建 lesson
-              </button>
-            </form>
+          <div className="double-form">
+          <form
+            className="form-grid"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void props.runAction("create-claim", async () => {
+                await props.createClaim(claimForm);
+                props.setNotice(`已创建 claim ${claimForm.claim_id}`);
+              });
+            }}
+          >
+            <FormHint title="Claim" body="在 run 已经形成结论后，再把结论结构化成 claim。" />
+            <InputPair label="Claim id" value={claimForm.claim_id} onChange={(value) => setClaimForm({ ...claimForm, claim_id: value })} required />
+            <InputPair label="Claim 类型" value={claimForm.claim_type} onChange={(value) => setClaimForm({ ...claimForm, claim_type: value })} required />
+            <InputPair label="风险级别" value={claimForm.risk_level} onChange={(value) => setClaimForm({ ...claimForm, risk_level: value })} />
+            <label className="checkbox-row span-2">
+              <input
+                type="checkbox"
+                checked={claimForm.approved_by_human}
+                onChange={(event) => setClaimForm({ ...claimForm, approved_by_human: event.target.checked })}
+              />
+              已人工批准
+            </label>
+            <TextPair label="Claim 文本" value={claimForm.text} onChange={(value) => setClaimForm({ ...claimForm, text: value })} required span />
+            <button className="button" type="submit">
+              保存 claim
+            </button>
+          </form>
 
-            <form
-              className="form-grid"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void props.runAction("create-approval", async () => {
-                  await props.createApproval(props.approvalForm);
-                  props.setNotice(`已记录审批 ${props.approvalForm.approval_id}`);
+          <form
+            className="form-grid"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void props.runAction("save-results-freeze", async () => {
+                await props.saveResultsFreeze({
+                  results_id: resultsFreezeForm.results_id,
+                  spec_id: resultsFreezeForm.spec_id,
+                  main_claims: parseLines(resultsFreezeForm.main_claims),
+                  tables: parseLines(resultsFreezeForm.tables),
+                  figures: parseLines(resultsFreezeForm.figures),
+                  approved_by: resultsFreezeForm.approved_by,
+                  status: resultsFreezeForm.status,
                 });
-              }}
-            >
-              <FormHint title="审批" body="适合在 results freeze 或高风险 claim 产生后补人工决定。" />
-              <InputPair label="Approval id" value={props.approvalForm.approval_id} onChange={(value) => props.setApprovalForm({ ...props.approvalForm, approval_id: value })} required />
-              <InputPair label="Project id" value={props.approvalForm.project_id} onChange={(value) => props.setApprovalForm({ ...props.approvalForm, project_id: value })} required />
-              <InputPair label="目标类型" value={props.approvalForm.target_type} onChange={(value) => props.setApprovalForm({ ...props.approvalForm, target_type: value })} required />
-              <InputPair label="目标 id" value={props.approvalForm.target_id} onChange={(value) => props.setApprovalForm({ ...props.approvalForm, target_id: value })} required />
-              <InputPair label="批准人" value={props.approvalForm.approved_by} onChange={(value) => props.setApprovalForm({ ...props.approvalForm, approved_by: value })} required />
-              <InputPair label="决定" value={props.approvalForm.decision} onChange={(value) => props.setApprovalForm({ ...props.approvalForm, decision: value })} required />
-              <TextPair label="备注" value={props.approvalForm.comment} onChange={(value) => props.setApprovalForm({ ...props.approvalForm, comment: value })} span />
-              <button className="button" type="submit">
-                记录审批
-              </button>
-            </form>
+                props.setNotice(`已保存 results freeze ${resultsFreezeForm.results_id}`);
+              });
+            }}
+          >
+            <FormHint title="Results freeze" body="当表格和主结论稳定下来后，把版本钉住，后续写作才不乱。" />
+            <InputPair label="Results id" value={resultsFreezeForm.results_id} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, results_id: value })} required />
+            <InputPair label="Spec id" value={resultsFreezeForm.spec_id} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, spec_id: value })} required />
+            <TextPair label="主 claims" value={resultsFreezeForm.main_claims} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, main_claims: value })} span />
+            <TextPair label="表格" value={resultsFreezeForm.tables} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, tables: value })} span />
+            <TextPair label="图" value={resultsFreezeForm.figures} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, figures: value })} span />
+            <button className="button" type="submit">
+              保存 results freeze
+            </button>
+          </form>
+
+          <form
+            className="form-grid"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void props.runAction("create-approval", async () => {
+                await props.createApproval(approvalForm);
+                props.setNotice(`已记录审批 ${approvalForm.approval_id}`);
+              });
+            }}
+          >
+            <FormHint title="Approval" body="高风险 claim、freeze 或人工拍板都可以在这里补登记。" />
+            <InputPair label="Approval id" value={approvalForm.approval_id} onChange={(value) => setApprovalForm({ ...approvalForm, approval_id: value })} required />
+            <InputPair label="Project id" value={approvalForm.project_id} onChange={(value) => setApprovalForm({ ...approvalForm, project_id: value })} required />
+            <InputPair label="目标类型" value={approvalForm.target_type} onChange={(value) => setApprovalForm({ ...approvalForm, target_type: value })} required />
+            <InputPair label="目标 id" value={approvalForm.target_id} onChange={(value) => setApprovalForm({ ...approvalForm, target_id: value })} required />
+            <InputPair label="批准人" value={approvalForm.approved_by} onChange={(value) => setApprovalForm({ ...approvalForm, approved_by: value })} required />
+            <InputPair label="决定" value={approvalForm.decision} onChange={(value) => setApprovalForm({ ...approvalForm, decision: value })} required />
+            <TextPair label="备注" value={approvalForm.comment} onChange={(value) => setApprovalForm({ ...approvalForm, comment: value })} span />
+            <button className="button" type="submit">
+              记录审批
+            </button>
+          </form>
           </div>
-        </div>
-      </Panel>
+        </Panel>
+      </div>
     </div>
   );
 }

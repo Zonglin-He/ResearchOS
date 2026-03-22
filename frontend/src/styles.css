@@ -2244,6 +2244,31 @@ td strong {
   line-height: 1.5;
 }
 
+.discussion-load-prompt,
+.activity-log {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 1rem;
+}
+
+.discussion-load-prompt {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.discussion-load-prompt p,
+.activity-log p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.activity-log {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .discussion-form span {
   color: var(--muted);
 }
@@ -2368,5 +2393,255 @@ td strong {
 
   .span-2 {
     grid-column: span 1;
+  }
+}
+
+.workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.workspace-layout.system-open {
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 460px);
+}
+
+.workspace-main {
+  min-width: 0;
+}
+
+.system-drawer {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: rgba(6, 14, 22, 0.88);
+  box-shadow: var(--shadow);
+  min-height: 0;
+}
+
+.system-drawer-head,
+.system-switcher,
+.workspace-action-head,
+.workspace-action-actions,
+.sidebar-actions,
+.semantic-task-main,
+.semantic-task-card,
+.workspace-status-stats,
+.workspace-system-grid {
+  display: flex;
+  gap: 0.8rem;
+}
+
+.system-drawer-head,
+.workspace-action-head,
+.semantic-task-card {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.system-switcher,
+.sidebar-actions,
+.workspace-action-actions,
+.workspace-system-grid {
+  flex-wrap: wrap;
+}
+
+.system-switch {
+  padding: 0.72rem 0.95rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
+.system-switch.active {
+  border-color: rgba(121, 197, 255, 0.32);
+  background: rgba(121, 197, 255, 0.1);
+}
+
+.system-drawer-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.workspace-grid,
+.create-grid-compact {
+  grid-template-columns: 1fr;
+}
+
+.workspace-wide-panel {
+  grid-column: 1 / -1;
+}
+
+.workspace-focus-grid,
+.workspace-secondary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 1rem;
+}
+
+.workspace-action-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.workspace-action-card.warn {
+  border-color: rgba(245, 196, 109, 0.32);
+  background: rgba(245, 196, 109, 0.09);
+}
+
+.workspace-action-card.good {
+  border-color: rgba(114, 216, 160, 0.32);
+  background: rgba(114, 216, 160, 0.09);
+}
+
+.workspace-action-head {
+  align-items: flex-start;
+}
+
+.workspace-action-head small {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.workspace-status-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.workspace-status-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.workspace-status-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.stage-pipeline {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.stage-step {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.95rem;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.stage-step.active {
+  border-color: rgba(121, 197, 255, 0.34);
+  background: rgba(121, 197, 255, 0.09);
+}
+
+.stage-step.done {
+  border-color: rgba(114, 216, 160, 0.34);
+  background: rgba(114, 216, 160, 0.09);
+}
+
+.stage-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  flex: 0 0 auto;
+}
+
+.stage-step-copy {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.stage-step-copy small {
+  color: var(--muted);
+}
+
+.semantic-task-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.semantic-task-card {
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.semantic-task-main {
+  align-items: flex-start;
+}
+
+.semantic-task-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(121, 197, 255, 0.08);
+  font-size: 1rem;
+  flex: 0 0 auto;
+}
+
+.semantic-task-copy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.semantic-task-copy p,
+.session-card-focus p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.semantic-task-copy small {
+  color: var(--muted);
+}
+
+.workspace-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.compact .provider-row {
+  padding: 0.75rem 0.85rem;
+}
+
+@media (max-width: 1400px) {
+  .workspace-layout.system-open {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1200px) {
+  .workspace-focus-grid,
+  .workspace-secondary-grid,
+  .stage-pipeline,
+  .workspace-status-stats,
+  .workspace-evidence-grid {
+    grid-template-columns: 1fr;
   }
 }

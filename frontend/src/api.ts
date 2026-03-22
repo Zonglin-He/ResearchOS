@@ -46,6 +46,7 @@ export type Project = {
   name: string;
   description: string;
   status: string;
+  stage: string;
   dispatch_profile: DispatchProfile | null;
   created_at: string;
 };

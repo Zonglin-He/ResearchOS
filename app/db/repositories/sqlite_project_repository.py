@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import json
 
+from app.core.enums import Stage
 from app.db.repositories.project_repository import ProjectRepository
 from app.db.sqlite import SQLiteDatabase
 from app.routing import dispatch_profile_from_dict
@@ -19,14 +20,15 @@ class SQLiteProjectRepository(ProjectRepository):
             connection.execute(
                 """
                 INSERT OR REPLACE INTO projects (
-                    project_id, name, description, status, dispatch_profile_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    project_id, name, description, status, stage, dispatch_profile_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     project.project_id,
                     project.name,
                     project.description,
                     project.status,
+                    project.stage.value,
                     json.dumps(to_record(project.dispatch_profile))
                     if project.dispatch_profile is not None
                     else None,
@@ -63,6 +65,7 @@ class SQLiteProjectRepository(ProjectRepository):
             name=row["name"],
             description=row["description"],
             status=row["status"],
+            stage=Stage(row["stage"]) if row["stage"] else Stage.NEW_TOPIC,
             dispatch_profile=dispatch_profile_from_dict(
                 json.loads(row["dispatch_profile_json"])
                 if row["dispatch_profile_json"]

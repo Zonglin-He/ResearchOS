@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS projects (
     name TEXT NOT NULL,
     description TEXT NOT NULL,
     status TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'NEW_TOPIC',
     dispatch_profile_json TEXT,
     created_at TEXT NOT NULL
 );
@@ -125,6 +126,7 @@ class SQLiteDatabase:
         with self.connect() as connection:
             connection.executescript(SCHEMA_SQL)
             self._ensure_column(connection, "projects", "dispatch_profile_json", "TEXT")
+            self._ensure_column(connection, "projects", "stage", "TEXT NOT NULL DEFAULT 'NEW_TOPIC'")
             self._ensure_column(connection, "tasks", "dispatch_profile_json", "TEXT")
             self._ensure_column(connection, "tasks", "last_run_routing_json", "TEXT")
             self._ensure_column(connection, "tasks", "experiment_proposal_id", "TEXT")

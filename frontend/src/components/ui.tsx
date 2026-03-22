@@ -56,42 +56,21 @@ export function KeyValue(props: { label: string; value: ReactNode }) {
 }
 
 function toStatusClass(value: string): string {
-  const normalized = value.toLowerCase().replace(/[\s_]+/g, "-");
-
-  if (
-    normalized.includes("succeeded") ||
-    normalized.includes("done") ||
-    normalized.includes("approved") ||
-    normalized.includes("supported") ||
-    normalized.includes("available")
-  ) {
+  const normalized = normalizeStatus(value);
+  if (["succeeded", "done", "approved", "supported", "available", "active"].some((item) => normalized.includes(item))) {
     return "good";
   }
-  if (
-    normalized.includes("failed") ||
-    normalized.includes("blocked") ||
-    normalized.includes("cancelled") ||
-    normalized.includes("contradicted") ||
-    normalized.includes("unhealthy")
-  ) {
+  if (["failed", "blocked", "cancelled", "contradicted", "unhealthy", "missing"].some((item) => normalized.includes(item))) {
     return "bad";
   }
-  if (
-    normalized.includes("running") ||
-    normalized.includes("review") ||
-    normalized.includes("waiting") ||
-    normalized.includes("queued") ||
-    normalized.includes("rate") ||
-    normalized.includes("degraded") ||
-    normalized.includes("exhausted")
-  ) {
+  if (["running", "review", "waiting", "queued", "rate", "degraded", "exhausted"].some((item) => normalized.includes(item))) {
     return "warn";
   }
   return "neutral";
 }
 
 function translateStatus(value: string): string {
-  const normalized = value.toLowerCase().replace(/[\s_]+/g, "-");
+  const normalized = normalizeStatus(value);
   const map: Record<string, string> = {
     idle: "空闲",
     running: "运行中",
@@ -114,6 +93,9 @@ function translateStatus(value: string): string {
     active: "启用",
     missing: "缺失",
   };
-
   return map[normalized] ?? value;
+}
+
+function normalizeStatus(value: string) {
+  return value.toLowerCase().replace(/[\s_]+/g, "-");
 }

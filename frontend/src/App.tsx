@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Blocks, RefreshCw, Sparkles, TerminalSquare } from "lucide-react";
+import { Database, FlaskConical, PanelRightClose, PanelRightOpen, RefreshCw, Settings2, Wrench } from "lucide-react";
 import {
   API_BASE,
   getJson,
@@ -26,6 +26,7 @@ import {
   type ProviderHealthSnapshot,
   type ResultsFreeze,
   type RoutingInspection,
+  type RunEvent,
   type RunManifest,
   type SpecFreeze,
   type Task,
@@ -33,14 +34,16 @@ import {
   type Verification,
   type VerificationSummary,
 } from "./api";
-import { CreateTab } from "./components/CreateTab";
+import { CreateTab, type TopicFreezePrefill } from "./components/CreateTab";
 import { OperationsTab } from "./components/OperationsTab";
 import { OverviewTab } from "./components/OverviewTab";
 import { RegistryTab } from "./components/RegistryTab";
-import { Panel, StatCard } from "./components/ui";
+import { Panel } from "./components/ui";
 import { normalizeError } from "./utils";
 
-type TabKey = "overview" | "operations" | "registry" | "create";
+type MainTab = "workspace" | "registry";
+type SystemSection = "operations" | "advanced";
+type AdvancedFocus = "project" | "topic_freeze" | null;
 
 type DashboardData = {
   projects: Project[];
@@ -65,16 +68,17 @@ type DashboardData = {
   auditClaims: AuditReport;
 };
 
-const tabs: Array<{ id: TabKey; label: string; icon: typeof Sparkles }> = [
-  { id: "overview", label: "总览", icon: Sparkles },
-  { id: "operations", label: "控制", icon: TerminalSquare },
-  { id: "registry", label: "登记", icon: Blocks },
-  { id: "create", label: "创建", icon: Blocks },
+const tabs: Array<{ id: MainTab; label: string; icon: typeof FlaskConical }> = [
+  { id: "workspace", label: "研究台", icon: FlaskConical },
+  { id: "registry", label: "数据库", icon: Database },
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
-  const [createFocus, setCreateFocus] = useState<"topic_freeze" | null>(null);
+  const [activeTab, setActiveTab] = useState<MainTab>("workspace");
+  const [systemOpen, setSystemOpen] = useState(false);
+  const [systemSection, setSystemSection] = useState<SystemSection>("operations");
+  const [advancedFocus, setAdvancedFocus] = useState<AdvancedFocus>(null);
+  const [topicFreezePrefill, setTopicFreezePrefill] = useState<TopicFreezePrefill | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,120 +90,8 @@ export default function App() {
   const [routingPreview, setRoutingPreview] = useState<RoutingInspection | null>(null);
   const [selectedRunAudit, setSelectedRunAudit] = useState<AuditReport | null>(null);
   const [busyKeys, setBusyKeys] = useState<string[]>([]);
+  const [activityLog, setActivityLog] = useState<string[]>([]);
   const refreshTimerRef = useRef<number | null>(null);
-
-  const [projectForm, setProjectForm] = useState({
-    project_id: "",
-    name: "",
-    description: "",
-    status: "active",
-    dispatch_profile_json: "",
-  });
-  const [taskForm, setTaskForm] = useState({
-    task_id: "",
-    project_id: "",
-    kind: "paper_ingest",
-    goal: "",
-    owner: "operator",
-    assigned_agent: "",
-    parent_task_id: "",
-    input_payload_json: '{\n  "topic": ""\n}',
-    dispatch_profile_json: "",
-  });
-  const [claimForm, setClaimForm] = useState({
-    claim_id: "",
-    text: "",
-    claim_type: "result",
-    risk_level: "medium",
-    approved_by_human: false,
-  });
-  const [runForm, setRunForm] = useState({
-    run_id: "",
-    spec_id: "",
-    git_commit: "HEAD",
-    config_hash: "",
-    dataset_snapshot: "",
-    seed: "42",
-    gpu: "cpu",
-  });
-  const [paperCardForm, setPaperCardForm] = useState({
-    paper_id: "",
-    title: "",
-    problem: "",
-    setting: "",
-    task_type: "",
-    strongest_result: "",
-    method_summary: "",
-    evidence_refs: "manual:1",
-  });
-  const [gapMapForm, setGapMapForm] = useState({
-    topic: "",
-    cluster_name: "",
-    gap_id: "",
-    description: "",
-    supporting_papers: "",
-    attack_surface: "",
-    difficulty: "",
-    novelty_type: "",
-  });
-  const [lessonForm, setLessonForm] = useState({
-    lesson_id: "",
-    lesson_kind: "lesson",
-    title: "",
-    summary: "",
-    rationale: "",
-    recommended_action: "",
-    task_kind: "",
-    agent_name: "",
-    provider_name: "",
-    model_name: "",
-    context_tags: "",
-    evidence_refs: "",
-    artifact_ids: "",
-    source_task_id: "",
-    source_run_id: "",
-    source_claim_id: "",
-  });
-  const [approvalForm, setApprovalForm] = useState({
-    approval_id: "",
-    project_id: "",
-    target_type: "results_freeze",
-    target_id: "",
-    approved_by: "operator",
-    decision: "approved",
-    comment: "",
-  });
-  const [topicFreezeForm, setTopicFreezeForm] = useState({
-    topic_id: "",
-    research_question: "",
-    selected_gap_ids: "",
-    novelty_type: "",
-    owner: "operator",
-    status: "approved",
-  });
-  const [specFreezeForm, setSpecFreezeForm] = useState({
-    spec_id: "",
-    topic_id: "",
-    hypothesis: "",
-    must_beat_baselines: "",
-    datasets: "",
-    metrics: "",
-    fairness_constraints: "",
-    ablations: "",
-    success_criteria: "",
-    failure_criteria: "",
-    approved_by: "operator",
-    status: "approved",
-  });
-  const [resultsFreezeForm, setResultsFreezeForm] = useState({
-    results_id: "",
-    spec_id: "",
-    main_claims: "",
-    tables: "",
-    figures: "",
-    approved_by: "operator",
-    status: "approved",
-  });
 
   useEffect(() => {
     void loadData();
@@ -207,6 +99,7 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedProjectId) {
+      setActivityLog([]);
       return;
     }
     const stream = new EventSource(`${API_BASE}/projects/${encodeURIComponent(selectedProjectId)}/events/stream`);
@@ -219,10 +112,20 @@ export default function App() {
         void loadData(false, selectedProjectId);
       }, 350);
     };
-    stream.onmessage = scheduleRefresh;
-    stream.onerror = () => {
+    stream.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as RunEvent;
+        if (typeof payload.message === "string" && payload.message.trim()) {
+          setActivityLog((current) => [...current.slice(-4), payload.message.trim()]);
+        }
+      } catch {
+        if (typeof event.data === "string" && event.data.trim()) {
+          setActivityLog((current) => [...current.slice(-4), event.data.trim()]);
+        }
+      }
       scheduleRefresh();
     };
+    stream.onerror = scheduleRefresh;
     return () => {
       stream.close();
       if (refreshTimerRef.current !== null) {
@@ -244,6 +147,7 @@ export default function App() {
         requestedProjectId && projects.some((project) => project.project_id === requestedProjectId)
           ? requestedProjectId
           : projects[0]?.project_id ?? "";
+
       if (nextProjectId !== selectedProjectId) {
         setSelectedProjectId(nextProjectId);
       }
@@ -332,6 +236,12 @@ export default function App() {
     }
   }
 
+  function openSystem(section: SystemSection, focus: AdvancedFocus = null) {
+    setSystemSection(section);
+    setSystemOpen(true);
+    setAdvancedFocus(focus);
+  }
+
   function openHumanSelect(task: Task) {
     const topic =
       typeof task.input_payload.topic === "string" && task.input_payload.topic.trim()
@@ -348,34 +258,25 @@ export default function App() {
         const gapId = (item as Record<string, unknown>).gap_id;
         return typeof gapId === "string" ? gapId : "";
       })
-      .filter(Boolean)
-      .slice(0, 1)
-      .join("\n");
-
-    setTopicFreezeForm((current) => ({
-      ...current,
-      topic_id: current.topic_id || `${topic}-freeze`.toLowerCase().replace(/\s+/g, "-"),
-      research_question: current.research_question || `围绕 ${topic} 确认下一步研究问题。`,
-      selected_gap_ids: current.selected_gap_ids || selectedGapIds,
-      novelty_type: current.novelty_type || "extension",
-      owner: current.owner || "operator",
-      status: current.status || "approved",
-    }));
-    setNotice(`已载入人工决策任务 ${task.task_id}，请在“创建”页完成主题冻结。`);
-    setCreateFocus("topic_freeze");
-    setActiveTab("create");
+      .filter(Boolean);
+    setTopicFreezePrefill({
+      projectId: task.project_id,
+      sourceTaskId: task.task_id,
+      topicId: `${topic}-freeze`.toLowerCase().replace(/\s+/g, "-"),
+      researchQuestion: `围绕 ${topic} 确认下一步研究问题。`,
+      selectedGapIds,
+      noveltyType: ["extension"],
+    });
+    setNotice(`已将人工决策任务 ${task.task_id} 载入高级表单。`);
+    openSystem("advanced", "topic_freeze");
   }
 
   function openTopicFreeze() {
-    setCreateFocus("topic_freeze");
-    setActiveTab("create");
+    openSystem("advanced", "topic_freeze");
   }
 
-  function openProject(projectId: string, tab: TabKey = "overview") {
+  function openProject(projectId: string, tab: MainTab = "workspace") {
     setSelectedProjectId(projectId);
-    if (tab !== "create") {
-      setCreateFocus(null);
-    }
     setActiveTab(tab);
     setArtifactDetail(null);
     setPaperCardDetail(null);
@@ -385,19 +286,23 @@ export default function App() {
   }
 
   async function startResearchFlow(payload: { researchGoal: string; projectName: string }) {
-    await runAction("guide-start", async () => {
-      const response = await postJson<GuideStartResponse>("/guide/start", {
-        research_goal: payload.researchGoal,
-        project_name: payload.projectName,
-      });
-      setSelectedProjectId(response.project_id);
-      setArtifactDetail(null);
-      setPaperCardDetail(null);
-      setGapMapDetail(null);
-      setActiveTab("overview");
-      setNotice(response.next_step);
-      await loadData(false, response.project_id);
-    }, false);
+    await runAction(
+      "guide-start",
+      async () => {
+        const response = await postJson<GuideStartResponse>("/guide/start", {
+          research_goal: payload.researchGoal,
+          project_name: payload.projectName,
+        });
+        setSelectedProjectId(response.project_id);
+        setActiveTab("workspace");
+        setArtifactDetail(null);
+        setPaperCardDetail(null);
+        setGapMapDetail(null);
+        setNotice(response.next_step);
+        await loadData(false, response.project_id);
+      },
+      false,
+    );
   }
 
   async function continueProjectAutopilot() {
@@ -405,11 +310,15 @@ export default function App() {
       setError("请先选择一个项目。");
       return;
     }
-    await runAction("guide-autopilot", async () => {
-      const response = await postJson<ProjectAutopilotResponse>(`/projects/${selectedProjectId}/autopilot`);
-      setNotice(autopilotNotice(response.autopilot.stop_reason));
-      await loadData(false, selectedProjectId);
-    }, false);
+    await runAction(
+      "guide-autopilot",
+      async () => {
+        const response = await postJson<ProjectAutopilotResponse>(`/projects/${selectedProjectId}/autopilot`);
+        setNotice(autopilotNotice(response.autopilot.stop_reason));
+        await loadData(false, selectedProjectId);
+      },
+      false,
+    );
   }
 
   async function adoptGuidedDirection(payload: {
@@ -422,42 +331,39 @@ export default function App() {
       setError("请先选择一个项目。");
       return;
     }
-    await runAction(`adopt-${payload.gapId}`, async () => {
-      const response = await postJson<GuideAdoptDirectionResponse>("/guide/adopt-direction", {
-        project_id: selectedProjectId,
-        human_select_task_id: payload.humanSelectTaskId,
-        gap_id: payload.gapId,
-        research_question: payload.researchQuestion,
-        operator_note: payload.operatorNote,
-      });
-      setNotice(response.next_step);
-      await loadData(false, selectedProjectId);
-    }, false);
+    await runAction(
+      `adopt-${payload.gapId}`,
+      async () => {
+        const response = await postJson<GuideAdoptDirectionResponse>("/guide/adopt-direction", {
+          project_id: selectedProjectId,
+          human_select_task_id: payload.humanSelectTaskId,
+          gap_id: payload.gapId,
+          research_question: payload.researchQuestion,
+          operator_note: payload.operatorNote,
+        });
+        setNotice(response.next_step);
+        await loadData(false, selectedProjectId);
+      },
+      false,
+    );
   }
 
   const projectTasks = data?.tasks.filter((task) => !selectedProjectId || task.project_id === selectedProjectId) ?? [];
-  const projectRuns = data?.runs.filter((run) => projectTasks.some((task) => `run-${task.task_id}` === run.run_id)) ?? [];
-  const projectArtifacts = data?.artifacts.filter((artifact) => projectRuns.some((run) => run.run_id === artifact.run_id)) ?? [];
-
-  const stats = data
-    ? [
-        { label: "项目", value: data.projects.length, meta: `当前视图有 ${projectTasks.length} 个任务` },
-        { label: "产物", value: data.artifacts.length, meta: `当前项目关联 ${projectArtifacts.length} 个产物记录` },
-        { label: "验证", value: data.verificationSummary.total_checks, meta: `已载入 ${data.verifications.length} 条记录` },
-        { label: "审批", value: data.approvals.length, meta: "等待人工处理" },
-      ]
-    : [];
+  const projectRuns =
+    data?.runs.filter((run) => projectTasks.some((task) => `run-${task.task_id}` === run.run_id || task.task_id === run.run_id)) ?? [];
+  const projectArtifacts =
+    data?.artifacts.filter((artifact) => projectRuns.some((run) => run.run_id === artifact.run_id)) ?? [];
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-card">
           <div className="brand-icon">
-            <TerminalSquare size={20} />
+            <FlaskConical size={20} />
           </div>
           <div>
             <span>ResearchOS</span>
-            <strong>研究控制台</strong>
+            <strong>Studio Workspace</strong>
           </div>
         </div>
 
@@ -478,7 +384,7 @@ export default function App() {
             {data?.projects.length ? (
               data.projects.map((project) => (
                 <option key={project.project_id} value={project.project_id}>
-                  {project.project_id} - {project.name}
+                  {project.name} · {project.project_id}
                 </option>
               ))
             ) : (
@@ -491,22 +397,24 @@ export default function App() {
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
-              <button
-                key={tab.id}
-                className={activeTab === tab.id ? "nav-button active" : "nav-button"}
-                onClick={() => {
-                  if (tab.id !== "create") {
-                    setCreateFocus(null);
-                  }
-                  setActiveTab(tab.id);
-                }}
-              >
+              <button key={tab.id} className={activeTab === tab.id ? "nav-button active" : "nav-button"} onClick={() => setActiveTab(tab.id)}>
                 <Icon size={16} />
                 <span>{tab.label}</span>
               </button>
             );
           })}
         </nav>
+
+        <div className="sidebar-actions">
+          <button className="button secondary" type="button" onClick={() => openSystem("advanced", "project")}>
+            <Wrench size={14} />
+            新建 / 高级操作
+          </button>
+          <button className="button secondary" type="button" onClick={() => openSystem("operations")}>
+            <Settings2 size={14} />
+            系统面板
+          </button>
+        </div>
 
         <Panel title="API" subtitle="前端代理目标">
           <div className="mono-block">{API_BASE}</div>
@@ -520,15 +428,20 @@ export default function App() {
       <main className="main-column">
         <header className="topbar">
           <div>
-            <p className="eyebrow">研究运行台</p>
+            <p className="eyebrow">Research Workspace</p>
             <h1>{data?.selectedProject?.name ?? "尚未选择项目"}</h1>
             <div className="topbar-meta">
+              {data?.selectedProject ? <span className="next-tag">当前阶段：{stageLabel(data.selectedProject.stage)}</span> : null}
               {data?.projectDashboard?.recommended_next_task_kind ? (
-                <span className="next-tag">下一步: {data.projectDashboard.recommended_next_task_kind}</span>
+                <span className="next-tag">下一步：{data.projectDashboard.recommended_next_task_kind}</span>
               ) : null}
             </div>
           </div>
           <div className="topbar-actions">
+            <button className="button secondary" onClick={() => setSystemOpen((current) => !current)}>
+              {systemOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+              {systemOpen ? "收起系统" : "打开系统"}
+            </button>
             <button className="button secondary" onClick={() => void loadData()} disabled={loading}>
               <RefreshCw size={14} className={loading ? "spin" : ""} />
               刷新
@@ -538,171 +451,204 @@ export default function App() {
 
         {notice ? <div className="notice-banner">{notice}</div> : null}
         {error ? <div className="error-banner">{error}</div> : null}
-        {loading && !data ? <div className="loading-panel">正在加载 ResearchOS 控制台...</div> : null}
+        {loading && !data ? <div className="loading-panel">正在加载 ResearchOS…</div> : null}
 
         {data ? (
-          <>
-            <section className="stats-grid">
-              {stats.map((item) => (
-                <StatCard key={item.label} label={item.label} value={item.value} meta={item.meta} />
-              ))}
-            </section>
+          <div className={systemOpen ? "workspace-layout system-open" : "workspace-layout"}>
+            <div className="workspace-main">
+              {activeTab === "workspace" ? (
+                <OverviewTab
+                  projects={data.projects}
+                  selectedProject={data.selectedProject}
+                  allTasks={data.tasks}
+                  projectTasks={projectTasks}
+                  projectDashboard={data.projectDashboard}
+                  providers={data.providers}
+                  routingSystem={data.routingSystem}
+                  approvals={data.approvals}
+                  paperCards={data.paperCards}
+                  gapMaps={data.gapMaps}
+                  topicFreeze={data.topicFreeze}
+                  specFreeze={data.specFreeze}
+                  activityLog={activityLog}
+                  startResearch={startResearchFlow}
+                  continueAutopilot={continueProjectAutopilot}
+                  adoptDirection={adoptGuidedDirection}
+                  loadGapMap={(topic) => getJson(`/gap-maps/${encodeURIComponent(topic)}`)}
+                  discussDirection={(payload) =>
+                    postJson<GuideDiscussDirectionResponse>("/guide/discuss-direction", {
+                      project_id: selectedProjectId,
+                      human_select_task_id: payload.humanSelectTaskId,
+                      gap_id: payload.gapId,
+                      user_message: payload.userMessage,
+                      history: payload.history as GuideDiscussionMessage[],
+                    })
+                  }
+                  loadDiscussionHistory={(humanSelectTaskId, gapId) =>
+                    getJson<DiscussionHistory>(
+                      `/projects/${encodeURIComponent(selectedProjectId)}/guide/discussions/${encodeURIComponent(humanSelectTaskId)}/${encodeURIComponent(gapId)}`,
+                    )
+                  }
+                  openProject={openProject}
+                  openSystem={openSystem}
+                  isBusy={(key) => busyKeys.includes(key)}
+                />
+              ) : null}
 
-            {activeTab === "overview" ? (
-              <OverviewTab
-                projects={data.projects}
-                selectedProject={data.selectedProject}
-                allTasks={data.tasks}
-                projectTasks={projectTasks}
-                projectDashboard={data.projectDashboard}
-                providers={data.providers}
-                routingSystem={data.routingSystem}
-                approvals={data.approvals}
-                paperCards={data.paperCards}
-                gapMaps={data.gapMaps}
-                topicFreeze={data.topicFreeze}
-                specFreeze={data.specFreeze}
-                startResearch={startResearchFlow}
-                continueAutopilot={continueProjectAutopilot}
-                adoptDirection={adoptGuidedDirection}
-                loadGapMap={(topic) => getJson(`/gap-maps/${encodeURIComponent(topic)}`)}
-                discussDirection={(payload) =>
-                  postJson<GuideDiscussDirectionResponse>("/guide/discuss-direction", {
-                    project_id: selectedProjectId,
-                    human_select_task_id: payload.humanSelectTaskId,
-                    gap_id: payload.gapId,
-                    user_message: payload.userMessage,
-                    history: payload.history as GuideDiscussionMessage[],
-                  })
-                }
-                loadDiscussionHistory={(humanSelectTaskId, gapId) =>
-                  getJson<DiscussionHistory>(
-                    `/projects/${encodeURIComponent(selectedProjectId)}/guide/discussions/${encodeURIComponent(humanSelectTaskId)}/${encodeURIComponent(gapId)}`,
-                  )
-                }
-                openProject={openProject}
-                isBusy={(key) => busyKeys.includes(key)}
-              />
-            ) : null}
+              {activeTab === "registry" ? (
+                <RegistryTab
+                  projectTasks={projectTasks}
+                  projectArtifacts={projectArtifacts}
+                  artifactDetail={artifactDetail}
+                  paperCardDetail={paperCardDetail}
+                  gapMapDetail={gapMapDetail}
+                  verificationSummary={data.verificationSummary}
+                  auditSummary={data.auditSummary}
+                  paperCards={data.paperCards}
+                  gapMaps={data.gapMaps}
+                  lessons={data.lessons}
+                  topicFreeze={data.topicFreeze}
+                  specFreeze={data.specFreeze}
+                  resultsFreeze={data.resultsFreeze}
+                  runAction={runAction}
+                  loadArtifact={(artifactId) => getJson(`/artifacts/${artifactId}`)}
+                  loadPaperCard={(paperId) => getJson(`/paper-cards/${encodeURIComponent(paperId)}`)}
+                  loadGapMap={(topic) => getJson(`/gap-maps/${encodeURIComponent(topic)}`)}
+                  setArtifactDetail={setArtifactDetail}
+                  setPaperCardDetail={setPaperCardDetail}
+                  setGapMapDetail={setGapMapDetail}
+                  openHumanSelect={openHumanSelect}
+                  openTopicFreeze={openTopicFreeze}
+                />
+              ) : null}
+            </div>
 
-            {activeTab === "operations" ? (
-              <OperationsTab
-                projectTasks={projectTasks}
-                projectRuns={projectRuns}
-                claims={data.claims}
-                providers={data.providers}
-                routingPreview={routingPreview}
-                selectedRunAudit={selectedRunAudit}
-                runAction={runAction}
-                isBusy={(key) => busyKeys.includes(key)}
-                setRoutingPreview={setRoutingPreview}
-                setSelectedRunAudit={setSelectedRunAudit}
-                loadTaskRouting={(taskId) => getJson(`/routing/tasks/${taskId}`)}
-                loadRunAudit={(runId) => getJson(`/audit/runs/${runId}`)}
-                dispatchTask={(taskId) => postJson(`/tasks/${taskId}/dispatch`)}
-                retryTask={(taskId) => postJson(`/tasks/${taskId}/retry`)}
-                cancelTask={(taskId) => postJson(`/tasks/${taskId}/cancel`)}
-                disableProvider={(provider) => postJson(`/providers/${provider}/disable`)}
-                enableProvider={(provider) => postJson(`/providers/${provider}/enable`)}
-                clearCooldown={(provider) => postJson(`/providers/${provider}/clear-cooldown`)}
-                probeProvider={(provider) => postJson(`/providers/${provider}/probe`)}
-                verifyClaim={(claimId) => postJson(`/verifications/claims/${claimId}`)}
-                verifyRun={(runId) => postJson(`/verifications/runs/${runId}`)}
-                openHumanSelect={openHumanSelect}
-              />
-            ) : null}
+            {systemOpen ? (
+              <aside className="system-drawer">
+                <div className="system-drawer-head">
+                  <div>
+                    <span className="eyebrow">System</span>
+                    <h2>系统面板</h2>
+                  </div>
+                  <button className="button secondary" type="button" onClick={() => setSystemOpen(false)}>
+                    <PanelRightClose size={14} />
+                    收起
+                  </button>
+                </div>
 
-            {activeTab === "registry" ? (
-              <RegistryTab
-                projectTasks={projectTasks}
-                projectArtifacts={projectArtifacts}
-                artifactDetail={artifactDetail}
-                paperCardDetail={paperCardDetail}
-                gapMapDetail={gapMapDetail}
-                verificationSummary={data.verificationSummary}
-                auditSummary={data.auditSummary}
-                paperCards={data.paperCards}
-                gapMaps={data.gapMaps}
-                lessons={data.lessons}
-                topicFreeze={data.topicFreeze}
-                specFreeze={data.specFreeze}
-                resultsFreeze={data.resultsFreeze}
-                runAction={runAction}
-                loadArtifact={(artifactId) => getJson(`/artifacts/${artifactId}`)}
-                loadPaperCard={(paperId) => getJson(`/paper-cards/${encodeURIComponent(paperId)}`)}
-                loadGapMap={(topic) => getJson(`/gap-maps/${encodeURIComponent(topic)}`)}
-                setArtifactDetail={setArtifactDetail}
-                setPaperCardDetail={setPaperCardDetail}
-                setGapMapDetail={setGapMapDetail}
-                openHumanSelect={openHumanSelect}
-                openTopicFreeze={openTopicFreeze}
-              />
-            ) : null}
+                <div className="system-switcher">
+                  <button
+                    className={systemSection === "operations" ? "system-switch active" : "system-switch"}
+                    type="button"
+                    onClick={() => setSystemSection("operations")}
+                  >
+                    调度与 Provider
+                  </button>
+                  <button
+                    className={systemSection === "advanced" ? "system-switch active" : "system-switch"}
+                    type="button"
+                    onClick={() => setSystemSection("advanced")}
+                  >
+                    高级表单
+                  </button>
+                </div>
 
-            {activeTab === "create" ? (
-              <CreateTab
-                projectForm={projectForm}
-                setProjectForm={setProjectForm}
-                taskForm={taskForm}
-                setTaskForm={setTaskForm}
-                claimForm={claimForm}
-                setClaimForm={setClaimForm}
-                runForm={runForm}
-                setRunForm={setRunForm}
-                paperCardForm={paperCardForm}
-                setPaperCardForm={setPaperCardForm}
-                gapMapForm={gapMapForm}
-                setGapMapForm={setGapMapForm}
-                lessonForm={lessonForm}
-                setLessonForm={setLessonForm}
-                approvalForm={approvalForm}
-                setApprovalForm={setApprovalForm}
-                topicFreezeForm={topicFreezeForm}
-                setTopicFreezeForm={setTopicFreezeForm}
-                specFreezeForm={specFreezeForm}
-                setSpecFreezeForm={setSpecFreezeForm}
-                resultsFreezeForm={resultsFreezeForm}
-                setResultsFreezeForm={setResultsFreezeForm}
-                runAction={runAction}
-                createProject={(payload) => postJson("/projects", payload)}
-                createTask={(payload) => postJson("/tasks", payload)}
-                createClaim={(payload) => postJson("/claims", payload)}
-                createRun={(payload) => postJson("/runs", payload)}
-                createPaperCard={(payload) => postJson("/paper-cards", payload)}
-                createGapMap={(payload) => postJson("/gap-maps", payload)}
-                createLesson={(payload) => postJson("/lessons", payload)}
-                createApproval={(payload) => postJson("/approvals", payload)}
-                saveTopicFreeze={(payload) => postJson("/freezes/topic", payload)}
-                saveSpecFreeze={(payload) => postJson("/freezes/spec", payload)}
-                saveResultsFreeze={(payload) => postJson("/freezes/results", payload)}
-                setNotice={setNotice}
-                focusSection={createFocus}
-              />
+                <div className="system-drawer-body">
+                  {systemSection === "operations" ? (
+                    <OperationsTab
+                      projectTasks={projectTasks}
+                      projectRuns={projectRuns}
+                      claims={data.claims}
+                      providers={data.providers}
+                      routingPreview={routingPreview}
+                      selectedRunAudit={selectedRunAudit}
+                      runAction={runAction}
+                      isBusy={(key) => busyKeys.includes(key)}
+                      setRoutingPreview={setRoutingPreview}
+                      setSelectedRunAudit={setSelectedRunAudit}
+                      loadTaskRouting={(taskId) => getJson(`/routing/tasks/${taskId}`)}
+                      loadRunAudit={(runId) => getJson(`/audit/runs/${runId}`)}
+                      dispatchTask={(taskId) => postJson(`/tasks/${taskId}/dispatch`)}
+                      retryTask={(taskId) => postJson(`/tasks/${taskId}/retry`)}
+                      cancelTask={(taskId) => postJson(`/tasks/${taskId}/cancel`)}
+                      disableProvider={(provider) => postJson(`/providers/${provider}/disable`)}
+                      enableProvider={(provider) => postJson(`/providers/${provider}/enable`)}
+                      clearCooldown={(provider) => postJson(`/providers/${provider}/clear-cooldown`)}
+                      probeProvider={(provider) => postJson(`/providers/${provider}/probe`)}
+                      verifyClaim={(claimId) => postJson(`/verifications/claims/${claimId}`)}
+                      verifyRun={(runId) => postJson(`/verifications/runs/${runId}`)}
+                      openHumanSelect={openHumanSelect}
+                    />
+                  ) : (
+                    <CreateTab
+                      selectedProjectId={selectedProjectId}
+                      selectedProjectName={data.selectedProject?.name ?? ""}
+                      focusSection={advancedFocus}
+                      topicFreezePrefill={topicFreezePrefill}
+                      runAction={runAction}
+                      createProject={(payload) => postJson("/projects", payload)}
+                      createTask={(payload) => postJson("/tasks", payload)}
+                      createClaim={(payload) => postJson("/claims", payload)}
+                      createRun={(payload) => postJson("/runs", payload)}
+                      createPaperCard={(payload) => postJson("/paper-cards", payload)}
+                      createGapMap={(payload) => postJson("/gap-maps", payload)}
+                      createLesson={(payload) => postJson("/lessons", payload)}
+                      createApproval={(payload) => postJson("/approvals", payload)}
+                      saveTopicFreeze={(payload) => postJson("/freezes/topic", payload)}
+                      saveSpecFreeze={(payload) => postJson("/freezes/spec", payload)}
+                      saveResultsFreeze={(payload) => postJson("/freezes/results", payload)}
+                      setNotice={setNotice}
+                    />
+                  )}
+                </div>
+              </aside>
             ) : null}
-          </>
+          </div>
         ) : null}
       </main>
     </div>
   );
 }
 
+function stageLabel(stage: string) {
+  const labels: Record<string, string> = {
+    NEW_TOPIC: "新主题",
+    INGEST_PAPERS: "论文摄入",
+    BUILD_PAPER_CARDS: "构建卡片",
+    MAP_GAPS: "Gap 分析",
+    HUMAN_SELECT: "人工选题",
+    FREEZE_TOPIC: "冻结方向",
+    FREEZE_SPEC: "冻结规格",
+    REPRO_BASELINES: "复现实验",
+    IMPLEMENT_IDEA: "实现方案",
+    RUN_EXPERIMENTS: "运行实验",
+    AUDIT_RESULTS: "审计结果",
+    FREEZE_RESULTS: "冻结结果",
+    WRITE_DRAFT: "撰写草稿",
+    REVIEW_DRAFT: "审阅草稿",
+    STYLE_PASS: "样式整理",
+    SUBMISSION_READY: "准备提交",
+  };
+  return labels[stage] ?? stage;
+}
+
 function autopilotNotice(stopReason: string) {
   switch (stopReason) {
     case "human_select_ready":
-      return "AI 已整理出候选 idea，请在总览页选择一个方向继续。";
+      return "AI 已经整理出候选方向，请在研究台选一个方向继续。";
     case "blocked":
-      return "自动流程被阻塞了，请去控制页检查失败原因。";
+      return "自动流程被阻塞了，请打开系统面板处理失败或阻塞任务。";
     case "waiting_approval":
       return "自动流程进入待审批状态，需要人工确认。";
     case "failed":
-      return "自动流程失败了，请去控制页查看失败任务。";
+      return "自动流程失败了，请到系统面板查看失败任务。";
     case "running":
       return "当前还有任务在运行，稍后刷新即可。";
     case "idle":
       return "当前没有可继续自动推进的任务。";
     case "dispatch_limit_reached":
-      return "本轮已自动推进一批任务，可以再次点击继续。";
+      return "本轮已自动推进一批任务，可以继续点击一次。";
     default:
-      return "自动流程已完成这一轮推进。";
+      return "自动流程已经完成这一轮推进。";
   }
 }
