@@ -290,10 +290,10 @@ class ResearchGuideService:
         spec_id = self._slugify(f"{topic_id}-spec", fallback="spec-freeze")
         build_task = self.task_service.create_task(
             Task(
-                task_id=self._ensure_unique_task_id(f"{project_id}-build-spec-{gap_id}"),
+                task_id=self._ensure_unique_task_id(f"{project_id}-branch-plan-{gap_id}"),
                 project_id=project_id,
-                kind="build_spec",
-                goal=f"Design, execute, and review the selected direction {gap_id} for {topic}.",
+                kind="branch_plan",
+                goal=f"Plan and explore experiment branches for the selected direction {gap_id} in {topic}.",
                 input_payload={
                     "topic": topic,
                     "topic_id": topic_id,
@@ -303,9 +303,12 @@ class ResearchGuideService:
                     "research_question": resolved_question,
                     "operator_note": operator_note.strip(),
                     "novelty_type": novelty,
+                    "target_venue": "NeurIPS",
                 },
                 owner=owner,
                 depends_on=[human_select_task.task_id],
+                fanout_group=f"{project_id}:{gap_id}:branching",
+                join_key="branch_plan",
             )
         )
         self.project_service.update_stage(project_id, Stage.IMPLEMENT_IDEA)
@@ -776,11 +779,11 @@ class ResearchGuideService:
             return []
 
         first = ordered_runnable[0]
-        if first.kind == "paper_ingest" and first.fanout_group:
+        if first.fanout_group:
             batch = [
                 task
                 for task in ordered_runnable
-                if task.kind == "paper_ingest" and task.fanout_group == first.fanout_group
+                if task.fanout_group == first.fanout_group and task.kind == first.kind
             ]
             return batch[:limit]
 
@@ -877,6 +880,10 @@ class ResearchGuideService:
             return Stage.FREEZE_TOPIC
         if task_kind in {"build_spec", "implement_experiment", "reproduce_baseline"}:
             return Stage.IMPLEMENT_IDEA if terminal_status != TaskStatus.SUCCEEDED else Stage.RUN_EXPERIMENTS
+        if task_kind == "branch_plan":
+            return Stage.IMPLEMENT_IDEA if terminal_status != TaskStatus.SUCCEEDED else Stage.RUN_EXPERIMENTS
+        if task_kind == "branch_review":
+            return Stage.FREEZE_RESULTS if terminal_status == TaskStatus.SUCCEEDED else Stage.RUN_EXPERIMENTS
         if task_kind == "analyze_run":
             return Stage.AUDIT_RESULTS
         if task_kind in {"review_build", "audit_run"}:

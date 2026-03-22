@@ -1,5 +1,7 @@
+import { useMemo, useState } from "react";
 import { FileCheck2, Hand, PlayCircle, Route, ShieldAlert, Sparkles, Square, Undo2 } from "lucide-react";
 import type {
+  Approval,
   AuditReport,
   Claim,
   ProviderHealthSnapshot,
@@ -13,6 +15,7 @@ type Props = {
   projectTasks: Task[];
   projectRuns: RunManifest[];
   claims: Claim[];
+  approvals: Approval[];
   providers: ProviderHealthSnapshot[];
   routingPreview: RoutingInspection | null;
   selectedRunAudit: AuditReport | null;
@@ -31,24 +34,162 @@ type Props = {
   probeProvider: (provider: string) => Promise<unknown>;
   verifyClaim: (claimId: string) => Promise<unknown>;
   verifyRun: (runId: string) => Promise<unknown>;
+  createApproval: (payload: unknown) => Promise<unknown>;
   openHumanSelect: (task: Task) => void;
 };
 
+type ApprovalDraft = {
+  approvedBy: string;
+  comment: string;
+  conditionText: string;
+};
+
 export function OperationsTab(props: Props) {
+  const [approvalDrafts, setApprovalDrafts] = useState<Record<string, ApprovalDraft>>({});
+
   const blockedCount = props.projectTasks.filter((task) =>
     ["blocked", "failed", "waiting_approval"].includes(task.status),
   ).length;
   const queuedCount = props.projectTasks.filter((task) => task.status === "queued").length;
   const runningCount = props.projectTasks.filter((task) => task.status === "running").length;
+  const pendingApprovals = useMemo(
+    () => props.approvals.filter((approval) => approval.decision === "pending"),
+    [props.approvals],
+  );
+
+  function getDraft(approval: Approval): ApprovalDraft {
+    return (
+      approvalDrafts[approval.approval_id] ?? {
+        approvedBy: approval.approved_by || "operator",
+        comment: approval.comment || "",
+        conditionText: approval.condition_text || "",
+      }
+    );
+  }
+
+  function updateDraft(approvalId: string, patch: Partial<ApprovalDraft>) {
+    setApprovalDrafts((current) => ({
+      ...current,
+      [approvalId]: {
+        ...(current[approvalId] ?? { approvedBy: "operator", comment: "", conditionText: "" }),
+        ...patch,
+      },
+    }));
+  }
+
+  async function submitApproval(approval: Approval, decision: "approved" | "rejected" | "approved_with_conditions") {
+    const draft = getDraft(approval);
+    await props.runAction(`approval-${approval.approval_id}-${decision}`, () =>
+      props.createApproval({
+        approval_id: approval.approval_id,
+        project_id: approval.project_id,
+        target_type: approval.target_type,
+        target_id: approval.target_id,
+        approved_by: draft.approvedBy || "operator",
+        decision,
+        comment: draft.comment,
+        condition_text: decision === "approved_with_conditions" ? draft.conditionText : "",
+        context_summary: approval.context_summary,
+        recommended_action: approval.recommended_action,
+        due_at: approval.due_at,
+      }),
+    );
+  }
 
   return (
     <div className="content-grid operations-grid">
-      <Panel title="操作导航" subtitle="先处理排队和阻塞任务，再看路由、验证和 provider 状态。">
+      <Panel title="操作导航" subtitle="先处理排队和阻塞任务，再看路由、审批和 provider 状态。">
         <div className="ops-guide-grid">
           <GuideCard title="先调度" body={`当前有 ${queuedCount} 个排队任务。`} tone="blue" />
           <GuideCard title="先排障" body={`当前有 ${blockedCount} 个阻塞、失败或待审批任务。`} tone="orange" />
           <GuideCard title="看运行" body={`当前有 ${runningCount} 个运行中任务。`} tone="green" />
         </div>
+      </Panel>
+
+      <Panel title="待审批" subtitle="支持通过、拒绝和带条件通过，不再回到高级表单里补。">
+        {pendingApprovals.length ? (
+          <div className="approval-stack">
+            {pendingApprovals.map((approval) => {
+              const draft = getDraft(approval);
+              return (
+                <article key={approval.approval_id} className="approval-card">
+                  <div className="approval-card-head">
+                    <div>
+                      <strong>{approval.target_type}</strong>
+                      <small>
+                        {approval.approval_id} · {approval.target_id}
+                      </small>
+                    </div>
+                    <StatusPill value="waiting_approval" />
+                  </div>
+                  <div className="approval-meta">
+                    <span>提交人：{approval.approved_by || "operator"}</span>
+                    <span>截止：{approval.due_at ? approval.due_at.replace("T", " ").slice(0, 16) : "未设置"}</span>
+                  </div>
+                  <div className="approval-context">
+                    <strong>上下文</strong>
+                    <p>{approval.context_summary || "当前没有额外上下文摘要。"}</p>
+                  </div>
+                  <div className="approval-context">
+                    <strong>推荐动作</strong>
+                    <p>{approval.recommended_action || "当前没有推荐动作。"}</p>
+                  </div>
+                  <label>
+                    审批人
+                    <input
+                      value={draft.approvedBy}
+                      onChange={(event) => updateDraft(approval.approval_id, { approvedBy: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    备注
+                    <textarea
+                      value={draft.comment}
+                      onChange={(event) => updateDraft(approval.approval_id, { comment: event.target.value })}
+                      placeholder="可写通过原因、驳回原因或额外说明。"
+                    />
+                  </label>
+                  <label>
+                    条件通过附加条件
+                    <textarea
+                      value={draft.conditionText}
+                      onChange={(event) => updateDraft(approval.approval_id, { conditionText: event.target.value })}
+                      placeholder="例如：重点对比 FGSM 而非 PGD；限制显存不超过 12GB。"
+                    />
+                  </label>
+                  <div className="approval-decision-row">
+                    <button
+                      className="button tiny"
+                      type="button"
+                      onClick={() => void submitApproval(approval, "approved")}
+                      disabled={props.isBusy(`approval-${approval.approval_id}-approved`)}
+                    >
+                      通过
+                    </button>
+                    <button
+                      className="button tiny secondary"
+                      type="button"
+                      onClick={() => void submitApproval(approval, "approved_with_conditions")}
+                      disabled={!draft.conditionText.trim() || props.isBusy(`approval-${approval.approval_id}-approved_with_conditions`)}
+                    >
+                      带条件通过
+                    </button>
+                    <button
+                      className="button tiny ghost"
+                      type="button"
+                      onClick={() => void submitApproval(approval, "rejected")}
+                      disabled={props.isBusy(`approval-${approval.approval_id}-rejected`)}
+                    >
+                      拒绝
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState title="当前没有待审批项" body="一旦流程进入待审批状态，这里会直接给出上下文和操作按钮。" />
+        )}
       </Panel>
 
       <Panel title="任务控制台" subtitle="按时间倒序显示任务。人工节点不会再显示自动调度按钮。">
@@ -82,10 +223,7 @@ export function OperationsTab(props: Props) {
                       <td>
                         <div className="button-row">
                           {task.kind === "human_select" ? (
-                            <button
-                              className="button tiny"
-                              onClick={() => props.openHumanSelect(task)}
-                            >
+                            <button className="button tiny" onClick={() => props.openHumanSelect(task)}>
                               <Hand size={14} />
                               人工决策
                             </button>
@@ -103,9 +241,7 @@ export function OperationsTab(props: Props) {
                           )}
                           <button
                             className="button tiny secondary"
-                            onClick={() =>
-                              void props.runAction(`retry-${task.task_id}`, () => props.retryTask(task.task_id))
-                            }
+                            onClick={() => void props.runAction(`retry-${task.task_id}`, () => props.retryTask(task.task_id))}
                             disabled={props.isBusy(`retry-${task.task_id}`)}
                           >
                             <Undo2 size={14} />
@@ -113,9 +249,7 @@ export function OperationsTab(props: Props) {
                           </button>
                           <button
                             className="button tiny ghost"
-                            onClick={() =>
-                              void props.runAction(`cancel-${task.task_id}`, () => props.cancelTask(task.task_id))
-                            }
+                            onClick={() => void props.runAction(`cancel-${task.task_id}`, () => props.cancelTask(task.task_id))}
                             disabled={props.isBusy(`cancel-${task.task_id}`)}
                           >
                             <Square size={14} />
@@ -143,7 +277,7 @@ export function OperationsTab(props: Props) {
             </table>
           </div>
         ) : (
-          <EmptyState title="当前没有任务" body="先去创建页添加任务，再回来调度。" />
+          <EmptyState title="当前没有任务" body="先去创建项目或让研究台自动生成任务。" />
         )}
       </Panel>
 
@@ -231,9 +365,7 @@ export function OperationsTab(props: Props) {
                       <button
                         className="button tiny"
                         onClick={() =>
-                          void props.runAction(`verify-claim-${claim.claim_id}`, () =>
-                            props.verifyClaim(claim.claim_id),
-                          )
+                          void props.runAction(`verify-claim-${claim.claim_id}`, () => props.verifyClaim(claim.claim_id))
                         }
                       >
                         <FileCheck2 size={14} />
@@ -271,9 +403,7 @@ export function OperationsTab(props: Props) {
                       <div className="button-row">
                         <button
                           className="button tiny"
-                          onClick={() =>
-                            void props.runAction(`verify-run-${run.run_id}`, () => props.verifyRun(run.run_id))
-                          }
+                          onClick={() => void props.runAction(`verify-run-${run.run_id}`, () => props.verifyRun(run.run_id))}
                         >
                           <FileCheck2 size={14} />
                           验证
@@ -307,18 +437,12 @@ export function OperationsTab(props: Props) {
             <div className="inspect-card">
               <div className="inspect-title">
                 <Route size={16} />
-                <strong>路由预览: {props.routingPreview.subject_id ?? "system"}</strong>
+                <strong>路由预览：{props.routingPreview.subject_id ?? "system"}</strong>
               </div>
               <KeyValue label="Provider" value={props.routingPreview.resolved_dispatch.provider_name} />
               <KeyValue label="模型" value={props.routingPreview.resolved_dispatch.model ?? "<default>"} />
-              <KeyValue
-                label="Fallback"
-                value={props.routingPreview.resolved_dispatch.fallback_reason ?? "无"}
-              />
-              <KeyValue
-                label="决策原因"
-                value={props.routingPreview.resolved_dispatch.decision_reason ?? "system_default"}
-              />
+              <KeyValue label="Fallback" value={props.routingPreview.resolved_dispatch.fallback_reason ?? "无"} />
+              <KeyValue label="决策原因" value={props.routingPreview.resolved_dispatch.decision_reason ?? "system_default"} />
             </div>
           ) : null}
 
@@ -326,7 +450,7 @@ export function OperationsTab(props: Props) {
             <div className="inspect-card">
               <div className="inspect-title">
                 <ShieldAlert size={16} />
-                <strong>Run 审计: {props.selectedRunAudit.status}</strong>
+                <strong>Run 审计：{props.selectedRunAudit.status}</strong>
               </div>
               <p>{props.selectedRunAudit.findings.join(" | ") || "没有发现问题。"}</p>
               <ul className="plain-list">

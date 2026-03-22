@@ -5,6 +5,7 @@ import type {
   GapMapDetail,
   GuideDiscussDirectionResponse,
   GuideDiscussionMessage,
+  KnowledgeRecord,
   PaperCard,
   Project,
   ProjectDashboard,
@@ -31,6 +32,7 @@ type Props = {
   approvals: Array<{ approval_id: string; target_type: string; target_id: string; decision: string; approved_by: string }>;
   paperCards: PaperCard[];
   gapMaps: GapMap[];
+  openQuestions: KnowledgeRecord[];
   topicFreeze: TopicFreeze | null;
   specFreeze: SpecFreeze | null;
   activityLog: string[];
@@ -58,10 +60,14 @@ type Props = {
 type Candidate = {
   gapId: string;
   summary: string;
+  rationale: string;
   score: number | null;
   feasibility: string;
   novelty: number;
   supportingPapers: string[];
+  difficulty: string;
+  noveltyType: string;
+  attackSurface: string;
 };
 
 type SessionSummary = {
@@ -85,14 +91,18 @@ const PIPELINE_STEPS = [
 ] as const;
 
 const TASK_KIND_META: Record<string, { icon: string; label: string }> = {
-  paper_ingest: { icon: "文", label: "摄入论文" },
-  gap_mapping: { icon: "图", label: "分析 Gap" },
-  human_select: { icon: "选", label: "选择方向" },
-  build_spec: { icon: "规", label: "生成规格" },
-  experiment_spec: { icon: "规", label: "实验规格" },
-  implement_experiment: { icon: "建", label: "实现实验" },
-  run_experiment: { icon: "跑", label: "运行实验" },
-  write_draft: { icon: "稿", label: "写作草稿" },
+  paper_ingest: { icon: "📄", label: "摄入论文" },
+  gap_mapping: { icon: "🗺", label: "分析 Gap" },
+  human_select: { icon: "🎯", label: "选择方向" },
+  build_spec: { icon: "🧩", label: "生成规格" },
+  experiment_spec: { icon: "🧩", label: "实验规格" },
+  branch_plan: { icon: "🌿", label: "规划分支" },
+  branch_review: { icon: "🏁", label: "分支收敛" },
+  implement_experiment: { icon: "🔬", label: "实现实验" },
+  run_experiment: { icon: "⚡", label: "运行实验" },
+  analyze_run: { icon: "📊", label: "分析结果" },
+  review_build: { icon: "🛡", label: "复核构建" },
+  write_draft: { icon: "✍", label: "写作草稿" },
 };
 
 export function OverviewTab(props: Props) {
@@ -105,6 +115,9 @@ export function OverviewTab(props: Props) {
   const [threadByGap, setThreadByGap] = useState<Record<string, GuideDiscussionMessage[]>>({});
   const [questionByGap, setQuestionByGap] = useState<Record<string, string>>({});
   const [historyLoadedByGap, setHistoryLoadedByGap] = useState<Record<string, boolean>>({});
+  const [expandedDebates, setExpandedDebates] = useState<Record<string, boolean>>({});
+  const [minNovelty, setMinNovelty] = useState(0);
+  const [minFeasibility, setMinFeasibility] = useState(1);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
 
   const humanSelectTask = useMemo(
@@ -125,18 +138,51 @@ export function OverviewTab(props: Props) {
       .map((item) => ({
         gapId: typeof item.gap_id === "string" ? item.gap_id : "",
         summary:
-          typeof item.evidence_summary === "string" && item.evidence_summary.trim()
-            ? item.evidence_summary.trim()
-            : typeof item.rationale === "string" && item.rationale.trim()
-              ? item.rationale.trim()
-              : "",
+          firstNonEmptyString(item.evidence_summary, item.description, item.rationale) ||
+          (typeof item.gap_id === "string" ? item.gap_id : ""),
+        rationale: firstNonEmptyString(item.rationale, item.evidence_summary),
         score: typeof item.score === "number" ? item.score : null,
-        feasibility: typeof item.feasibility === "string" ? item.feasibility : "-",
+        feasibility: typeof item.feasibility === "string" ? item.feasibility : "",
         novelty: typeof item.novelty_score === "number" ? item.novelty_score : 0,
         supportingPapers: Array.isArray(item.supporting_papers) ? item.supporting_papers.map(String) : [],
+        difficulty: typeof item.difficulty === "string" ? item.difficulty : "",
+        noveltyType: typeof item.novelty_type === "string" ? item.novelty_type : "",
+        attackSurface: typeof item.attack_surface === "string" ? item.attack_surface : "",
       }))
       .filter((item) => item.gapId);
   }, [humanSelectTask]);
+
+  const candidateGapIds = useMemo(() => new Set(candidates.map((candidate) => candidate.gapId)), [candidates]);
+
+  const debateByGap = useMemo(() => {
+    const grouped: Record<string, KnowledgeRecord[]> = {};
+    for (const record of props.openQuestions) {
+      if (props.selectedProject && record.project_id !== props.selectedProject.project_id) {
+        continue;
+      }
+      const payload = record.payload ?? {};
+      const payloadGapId =
+        typeof payload.candidate_gap_id === "string"
+          ? payload.candidate_gap_id
+          : typeof payload.gap_id === "string"
+            ? payload.gap_id
+            : "";
+      const taggedGapId = record.context_tags.find((tag) => candidateGapIds.has(tag)) ?? "";
+      const gapId = payloadGapId || taggedGapId;
+      if (!gapId) continue;
+      grouped[gapId] = [...(grouped[gapId] ?? []), record];
+    }
+    return grouped;
+  }, [candidateGapIds, props.openQuestions, props.selectedProject]);
+
+  const filteredCandidates = useMemo(
+    () =>
+      candidates.filter(
+        (candidate) =>
+          candidate.novelty >= minNovelty && feasibilityScore(candidate.feasibility) >= minFeasibility,
+      ),
+    [candidates, minNovelty, minFeasibility],
+  );
 
   useEffect(() => {
     if (!props.selectedProject || researchGoal) return;
@@ -153,12 +199,14 @@ export function OverviewTab(props: Props) {
   }, [props, topic]);
 
   useEffect(() => {
-    if (!candidates.length) {
+    if (!filteredCandidates.length) {
       setSelectedGapId("");
       return;
     }
-    setSelectedGapId((current) => (candidates.some((item) => item.gapId === current) ? current : candidates[0].gapId));
-  }, [candidates]);
+    setSelectedGapId((current) =>
+      filteredCandidates.some((item) => item.gapId === current) ? current : filteredCandidates[0].gapId,
+    );
+  }, [filteredCandidates]);
 
   useEffect(() => {
     if (!selectedGapId || !humanSelectTask || historyLoadedByGap[selectedGapId]) return;
@@ -173,7 +221,10 @@ export function OverviewTab(props: Props) {
           const restored = discussionFromHistory(history, selectedGapId);
           if (restored) {
             setDiscussionByGap((current) => ({ ...current, [selectedGapId]: restored }));
-            setQuestionByGap((current) => ({ ...current, [selectedGapId]: restored.research_question_suggestion }));
+            setQuestionByGap((current) => ({
+              ...current,
+              [selectedGapId]: restored.research_question_suggestion,
+            }));
           }
         }
       } catch {
@@ -194,12 +245,18 @@ export function OverviewTab(props: Props) {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [selectedGapId, threadByGap]);
 
+  const selectedCandidate = filteredCandidates.find((candidate) => candidate.gapId === selectedGapId) ?? null;
+  const selectedGapDetail = useMemo(() => findGapDetail(gapMapDetail, selectedGapId), [gapMapDetail, selectedGapId]);
   const currentDiscussion = selectedGapId ? discussionByGap[selectedGapId] ?? null : null;
   const currentThread = selectedGapId ? threadByGap[selectedGapId] ?? [] : [];
-  const researchQuestion = selectedGapId ? questionByGap[selectedGapId] ?? currentDiscussion?.research_question_suggestion ?? "" : "";
-  const selectedCandidate = candidates.find((candidate) => candidate.gapId === selectedGapId) ?? null;
-  const recentTasks = props.projectTasks.slice().sort((left, right) => right.created_at.localeCompare(left.created_at)).slice(0, 6);
+  const researchQuestion = selectedGapId
+    ? questionByGap[selectedGapId] ?? currentDiscussion?.research_question_suggestion ?? ""
+    : "";
   const stageIndex = stageStepIndex(props.selectedProject?.stage ?? "NEW_TOPIC");
+  const recentTasks = props.projectTasks
+    .slice()
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))
+    .slice(0, 6);
   const attention = buildAttention(props, humanSelectTask);
   const shouldShowLoadAdvisorPrompt =
     Boolean(selectedGapId) &&
@@ -243,8 +300,15 @@ export function OverviewTab(props: Props) {
         { role: "assistant", content: response.assistant_message, metadata: discussionMetadata(response) },
       ],
     }));
-    setQuestionByGap((current) => ({ ...current, [selectedGapId]: current[selectedGapId] || response.research_question_suggestion }));
+    setQuestionByGap((current) => ({
+      ...current,
+      [selectedGapId]: current[selectedGapId] || response.research_question_suggestion,
+    }));
     setChatDraft("");
+  }
+
+  function toggleDebate(gapId: string) {
+    setExpandedDebates((current) => ({ ...current, [gapId]: !current[gapId] }));
   }
 
   return (
@@ -252,11 +316,20 @@ export function OverviewTab(props: Props) {
       <Panel
         className="workspace-wide-panel"
         title="研究流程"
-        subtitle={props.selectedProject ? `当前阶段：${stageLabel(props.selectedProject.stage)}` : "启动一个研究主题后，这里会显示完整流程。"}
+        subtitle={
+          props.selectedProject
+            ? `当前阶段：${stageLabel(props.selectedProject.stage)}`
+            : "启动一个研究主题后，这里会显示完整流程。"
+        }
       >
         <div className="stage-pipeline">
           {PIPELINE_STEPS.map((step, index) => (
-            <div key={step.label} className={stageIndex === index ? "stage-step active" : stageIndex > index ? "stage-step done" : "stage-step"}>
+            <div
+              key={step.label}
+              className={
+                stageIndex === index ? "stage-step active" : stageIndex > index ? "stage-step done" : "stage-step"
+              }
+            >
               <div className="stage-step-index">{stageIndex > index ? "✓" : index + 1}</div>
               <div className="stage-step-copy">
                 <strong>{step.label}</strong>
@@ -268,41 +341,150 @@ export function OverviewTab(props: Props) {
       </Panel>
 
       {humanSelectTask && candidates.length ? (
-        <div className="workspace-wide-panel" style={{ order: 1 }}>
-        <Panel className="workspace-wide-panel" title="方向工作台" subtitle="先选方向，再按需加载顾问分析。">
+        <Panel
+          className="workspace-wide-panel"
+          title="方向工作台"
+          subtitle="先用矩阵筛一遍候选方向，再按需加载顾问分析。"
+        >
           <div className="idea-workbench">
             <div className="candidate-stack">
-              {candidates.map((candidate) => (
-                <button
-                  key={candidate.gapId}
-                  type="button"
-                  className={selectedGapId === candidate.gapId ? "candidate-card candidate-card-active" : "candidate-card"}
-                  onClick={() => setSelectedGapId(candidate.gapId)}
-                >
-                  <div className="candidate-head">
-                    <div>
-                      <strong>{(candidate.summary || candidate.gapId).slice(0, 60)}</strong>
-                      <small>
-                        {candidate.gapId}
-                        {candidate.score !== null ? ` · 评分 ${candidate.score.toFixed(2)}` : " · 候选方向"}
-                      </small>
-                    </div>
-                    <StatusPill value="waiting_approval" />
+              <div className="candidate-matrix-card">
+                <div className="candidate-matrix-head">
+                  <div>
+                    <strong>Novelty × Feasibility</strong>
+                    <small>点击矩阵上的点或左下角卡片，右侧再决定是否加载顾问分析。</small>
                   </div>
-                  <p>{candidate.summary || "当前还没有更详细的证据摘要。"}</p>
-                  {candidate.supportingPapers.length ? (
-                    <div className="candidate-paper-list">
-                      {candidate.supportingPapers.slice(0, 3).map((paperId) => (
-                        <small key={paperId}>{paperId}</small>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="candidate-meta">
-                    <span>可行性 {candidate.feasibility || "-"}</span>
-                    <span>新颖度 {candidate.novelty ? candidate.novelty.toFixed(1) : "-"}</span>
+                  <span>{filteredCandidates.length} 个候选</span>
+                </div>
+                <div className="matrix-filter-bar">
+                  <label className="matrix-filter-group">
+                    <span>最低新颖度：{minNovelty.toFixed(1)}</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="5"
+                      step="0.5"
+                      value={minNovelty}
+                      onChange={(event) => setMinNovelty(Number(event.target.value))}
+                    />
+                  </label>
+                  <label className="matrix-filter-group">
+                    <span>最低可行性：{feasibilityLabel(minFeasibility)}</span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="3"
+                      step="1"
+                      value={minFeasibility}
+                      onChange={(event) => setMinFeasibility(Number(event.target.value))}
+                    />
+                  </label>
+                </div>
+                <div className="candidate-matrix">
+                  <div className="candidate-matrix-axis candidate-matrix-axis-y">
+                    <span>高可行</span>
+                    <span>低可行</span>
                   </div>
-                </button>
-              ))}
+                  <div className="candidate-matrix-axis candidate-matrix-axis-x">
+                    <span>低新颖</span>
+                    <span>高新颖</span>
+                  </div>
+                  {filteredCandidates.map((candidate) => (
+                    <button
+                      key={candidate.gapId}
+                      type="button"
+                      className={selectedGapId === candidate.gapId ? "matrix-point matrix-point-active" : "matrix-point"}
+                      style={matrixPointStyle(candidate)}
+                      onClick={() => setSelectedGapId(candidate.gapId)}
+                    >
+                      {candidate.gapId}
+                    </button>
+                  ))}
+                </div>
+                {!filteredCandidates.length ? (
+                  <div className="matrix-empty">当前筛选条件下没有候选方向，调低阈值后再看。</div>
+                ) : null}
+              </div>
+
+              <div className="candidate-stack-header">
+                <strong>候选方向</strong>
+                <small>卡片标题直接显示方向描述，技术 ID 放到副标题。</small>
+              </div>
+
+              {filteredCandidates.length ? (
+                filteredCandidates.map((candidate) => {
+                  const debates = debateByGap[candidate.gapId] ?? [];
+                  return (
+                    <button
+                      key={candidate.gapId}
+                      type="button"
+                      className={selectedGapId === candidate.gapId ? "candidate-card candidate-card-active" : "candidate-card"}
+                      onClick={() => setSelectedGapId(candidate.gapId)}
+                    >
+                      <div className="candidate-head">
+                        <div>
+                          <strong>{candidate.summary.slice(0, 88)}</strong>
+                          <small>
+                            {candidate.gapId}
+                            {candidate.score !== null ? ` · 评分 ${candidate.score.toFixed(2)}` : " · 候选方向"}
+                          </small>
+                        </div>
+                        <StatusPill value="waiting_approval" />
+                      </div>
+                      <p>{candidate.rationale || candidate.summary}</p>
+                      <div className="candidate-evidence">
+                        <strong>方向画像</strong>
+                        <p>
+                          攻击面：{candidate.attackSurface || "未说明"} · 难度：{candidate.difficulty || "未说明"} ·
+                          可行性：{candidate.feasibility || "未说明"} · 新颖类型：{candidate.noveltyType || "未说明"}
+                        </p>
+                      </div>
+                      {candidate.supportingPapers.length ? (
+                        <div className="candidate-paper-list">
+                          {candidate.supportingPapers.slice(0, 4).map((paperId) => (
+                            <small key={paperId}>{paperId}</small>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="candidate-meta">
+                        <span>可行性：{candidate.feasibility || "-"}</span>
+                        <span>新颖度：{candidate.novelty ? candidate.novelty.toFixed(1) : "-"}</span>
+                      </div>
+                      {debates.length ? (
+                        <div className="candidate-debate-block" onClick={(event) => event.stopPropagation()}>
+                          <button
+                            className="button tiny secondary candidate-debate-toggle"
+                            type="button"
+                            onClick={() => toggleDebate(candidate.gapId)}
+                          >
+                            {expandedDebates[candidate.gapId] ? "收起质疑记录" : `展开质疑记录 (${debates.length})`}
+                          </button>
+                          {expandedDebates[candidate.gapId] ? (
+                            <div className="candidate-debate-panel">
+                              {debates.map((record) => {
+                                const constraints = Array.isArray(record.payload.recommended_constraints)
+                                  ? record.payload.recommended_constraints.map(String)
+                                  : [];
+                                return (
+                                  <article key={record.record_id} className="candidate-debate-item">
+                                    <strong>{record.title}</strong>
+                                    <p>{record.summary}</p>
+                                    {constraints.length ? (
+                                      <small>建议约束：{constraints.join("；")}</small>
+                                    ) : null}
+                                  </article>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </button>
+                  );
+                })
+              ) : (
+                <EmptyState title="没有符合筛选条件的方向" body="调低筛选条件，或者先回看原始 Gap Map。" />
+              )}
             </div>
 
             <aside className="discussion-panel">
@@ -314,27 +496,43 @@ export function OverviewTab(props: Props) {
                 {currentDiscussion ? (
                   <div className="assistant-chip-group">
                     <span className="assistant-chip">{currentDiscussion.assistant_role}</span>
-                    <span className="assistant-chip">{currentDiscussion.provider_name} / {currentDiscussion.model_name}</span>
+                    <span className="assistant-chip">
+                      {currentDiscussion.provider_name} / {currentDiscussion.model_name}
+                    </span>
                     <span className="assistant-chip">推理 {currentDiscussion.reasoning_effort}</span>
                   </div>
                 ) : null}
               </div>
 
-              {selectedGapId ? (
+              {selectedGapId && selectedCandidate ? (
                 <div className="discussion-chat-shell">
-                  {selectedCandidate ? (
-                    <div className="discussion-brief-card">
-                      <div className="discussion-brief-head">
-                        <div>
-                          <strong>{(selectedCandidate.summary || selectedCandidate.gapId).slice(0, 100)}</strong>
-                          <small>{selectedCandidate.gapId}</small>
-                        </div>
-                        <StatusPill value="waiting_approval" />
+                  <div className="discussion-brief-card">
+                    <div className="discussion-brief-head">
+                      <div>
+                        <strong>{selectedCandidate.summary}</strong>
+                        <small>{selectedCandidate.gapId}</small>
                       </div>
-                      <p>{selectedCandidate.summary || "这个方向还没有更长的摘要。你可以先加载顾问分析，再继续追问。"}</p>
-                      <div className="candidate-meta">
-                        <span>可行性 {selectedCandidate.feasibility}</span>
-                        <span>新颖度 {selectedCandidate.novelty ? selectedCandidate.novelty.toFixed(1) : "-"}</span>
+                      <StatusPill value="waiting_approval" />
+                    </div>
+                    <p>{selectedCandidate.rationale || selectedCandidate.summary}</p>
+                    <div className="candidate-meta">
+                      <span>可行性：{selectedCandidate.feasibility || "-"}</span>
+                      <span>新颖度：{selectedCandidate.novelty ? selectedCandidate.novelty.toFixed(1) : "-"}</span>
+                      {selectedGapDetail?.difficulty ? <span>难度：{selectedGapDetail.difficulty}</span> : null}
+                    </div>
+                  </div>
+
+                  {selectedGapDetail ? (
+                    <div className="discussion-card discussion-detail-card">
+                      <strong>Gap 详情</strong>
+                      <p>{selectedGapDetail.description}</p>
+                      <div className="discussion-support-papers">
+                        <span>支撑论文</span>
+                        <div className="candidate-paper-list">
+                          {selectedGapDetail.supporting_papers.map((paperId) => (
+                            <small key={paperId}>{paperId}</small>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ) : null}
@@ -342,8 +540,13 @@ export function OverviewTab(props: Props) {
                   {shouldShowLoadAdvisorPrompt ? (
                     <div className="discussion-load-prompt">
                       <strong>顾问分析尚未加载</strong>
-                      <p>只有你真正需要看这个方向时，才会触发顾问分析。首次加载通常需要约 30 秒。</p>
-                      <button className="button" type="button" onClick={() => void hydrateGap(selectedGapId)} disabled={props.isBusy(`discuss-${selectedGapId}`)}>
+                      <p>只有在你真的想深聊这个方向时，才会触发模型分析。首次加载通常需要约 30 秒。</p>
+                      <button
+                        className="button"
+                        type="button"
+                        onClick={() => void hydrateGap(selectedGapId)}
+                        disabled={props.isBusy(`discuss-${selectedGapId}`)}
+                      >
                         加载顾问分析
                       </button>
                     </div>
@@ -353,7 +556,14 @@ export function OverviewTab(props: Props) {
                         <div className="discussion-thread">
                           {currentThread.length ? (
                             currentThread.map((message, index) => (
-                              <div key={`${message.role}-${message.message_id ?? index}`} className={message.role === "assistant" ? "chat-message chat-message-assistant" : "chat-message chat-message-user"}>
+                              <div
+                                key={`${message.role}-${message.message_id ?? index}`}
+                                className={
+                                  message.role === "assistant"
+                                    ? "chat-message chat-message-assistant"
+                                    : "chat-message chat-message-user"
+                                }
+                              >
                                 <div className="chat-avatar">{message.role === "assistant" ? "AI" : "你"}</div>
                                 <div className="chat-message-body">
                                   <div className="chat-message-meta">
@@ -365,7 +575,7 @@ export function OverviewTab(props: Props) {
                               </div>
                             ))
                           ) : props.isBusy(`discuss-${selectedGapId}`) ? (
-                            <EmptyState title="顾问分析生成中" body="正在读取 Gap Map 和相关 paper card。" />
+                            <EmptyState title="顾问分析生成中" body="正在读取 Gap Map 和相关论文卡片。" />
                           ) : (
                             <EmptyState title="还没有讨论内容" body="先点击上面的按钮加载顾问分析，再继续追问。" />
                           )}
@@ -377,15 +587,27 @@ export function OverviewTab(props: Props) {
                         <div className="discussion-insight-grid">
                           <div className="discussion-card discussion-insight-card">
                             <strong>优势</strong>
-                            <ul className="plain-list">{currentDiscussion.strengths.map((item) => <li key={item}>{item}</li>)}</ul>
+                            <ul className="plain-list">
+                              {currentDiscussion.strengths.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
                           </div>
                           <div className="discussion-card discussion-insight-card">
                             <strong>风险</strong>
-                            <ul className="plain-list">{currentDiscussion.risks.map((item) => <li key={item}>{item}</li>)}</ul>
+                            <ul className="plain-list">
+                              {currentDiscussion.risks.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
                           </div>
                           <div className="discussion-card discussion-insight-card">
                             <strong>下一步确认</strong>
-                            <ul className="plain-list">{currentDiscussion.next_checks.map((item) => <li key={item}>{item}</li>)}</ul>
+                            <ul className="plain-list">
+                              {currentDiscussion.next_checks.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
                           </div>
                         </div>
                       ) : null}
@@ -405,7 +627,12 @@ export function OverviewTab(props: Props) {
                         />
                         <div className="discussion-composer-actions">
                           <small>讨论历史会保存在当前项目里，再次进入会恢复。</small>
-                          <button className="button" type="button" onClick={() => void continueDiscussion()} disabled={!chatDraft.trim() || props.isBusy(`discuss-${selectedGapId}`)}>
+                          <button
+                            className="button"
+                            type="button"
+                            onClick={() => void continueDiscussion()}
+                            disabled={!chatDraft.trim() || props.isBusy(`discuss-${selectedGapId}`)}
+                          >
                             发送
                           </button>
                         </div>
@@ -414,7 +641,13 @@ export function OverviewTab(props: Props) {
                       <div className="discussion-freeze-card">
                         <label className="discussion-form">
                           <span>冻结用研究问题</span>
-                          <textarea value={researchQuestion} onChange={(event) => setQuestionByGap((current) => ({ ...current, [selectedGapId]: event.target.value }))} placeholder="不填就采用顾问建议。" />
+                          <textarea
+                            value={researchQuestion}
+                            onChange={(event) =>
+                              setQuestionByGap((current) => ({ ...current, [selectedGapId]: event.target.value }))
+                            }
+                            placeholder="不填就采用顾问建议。"
+                          />
                         </label>
                         <button
                           className="button"
@@ -424,8 +657,12 @@ export function OverviewTab(props: Props) {
                             void props.adoptDirection({
                               humanSelectTaskId: humanSelectTask.task_id,
                               gapId: selectedGapId,
-                              researchQuestion: researchQuestion || currentDiscussion?.research_question_suggestion || "",
-                              operatorNote: currentThread.filter((message) => message.role === "user").map((message) => message.content).join("\n\n"),
+                              researchQuestion:
+                                researchQuestion || currentDiscussion?.research_question_suggestion || "",
+                              operatorNote: currentThread
+                                .filter((message) => message.role === "user")
+                                .map((message) => message.content)
+                                .join("\n\n"),
                             });
                           }}
                           disabled={!selectedGapId || props.isBusy(`adopt-${selectedGapId}`)}
@@ -437,47 +674,92 @@ export function OverviewTab(props: Props) {
                   )}
                 </div>
               ) : (
-                <EmptyState title="先选一个候选方向" body="左边点一个方向，右边就会显示聊天式讨论区。" />
+                <EmptyState title="先选一个候选方向" body="左边点击一个方向，右边会显示顾问对话区。" />
               )}
             </aside>
           </div>
         </Panel>
-        </div>
       ) : null}
 
-      <div className="workspace-focus-grid workspace-wide-panel" style={{ order: 2 }}>
+      <div className="workspace-focus-grid workspace-wide-panel">
         <Panel title="现在需要你" subtitle="这里只放当前最重要的一件事。">
           {!props.selectedProject ? (
-            <form className="pilot-form" onSubmit={(event) => { event.preventDefault(); void props.startResearch({ researchGoal, projectName }); }}>
+            <form
+              className="pilot-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void props.startResearch({ researchGoal, projectName });
+              }}
+            >
               <label>
                 <span>研究方向</span>
-                <textarea value={researchGoal} onChange={(event) => setResearchGoal(event.target.value)} placeholder="例如：研究 CIFAR-10 对抗鲁棒性的低算力可复现改进方向。" required />
+                <textarea
+                  value={researchGoal}
+                  onChange={(event) => setResearchGoal(event.target.value)}
+                  placeholder="例如：研究 CIFAR-10 对抗鲁棒性的低算力可复现改进方向。"
+                  required
+                />
               </label>
               <label>
                 <span>项目名称（可选）</span>
-                <input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="不填就自动生成" />
+                <input
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                  placeholder="不填就自动生成"
+                />
               </label>
               <div className="pilot-actions">
-                <button className="button" type="submit" disabled={props.isBusy("guide-start")}>开始自动调研</button>
-                <button className="button secondary" type="button" onClick={() => props.openSystem("advanced", "project")}>手动立项</button>
+                <button className="button" type="submit" disabled={props.isBusy("guide-start")}>
+                  开始自动调研
+                </button>
+                <button
+                  className="button secondary"
+                  type="button"
+                  onClick={() => props.openSystem("advanced", "project")}
+                >
+                  手动立项
+                </button>
               </div>
             </form>
           ) : (
-            <div className={attention.tone === "warn" ? "workspace-action-card warn" : attention.tone === "good" ? "workspace-action-card good" : "workspace-action-card"}>
+            <div
+              className={
+                attention.tone === "warn"
+                  ? "workspace-action-card warn"
+                  : attention.tone === "good"
+                    ? "workspace-action-card good"
+                    : "workspace-action-card"
+              }
+            >
               <div className="workspace-action-head">
                 <div>
                   <strong>{attention.title}</strong>
                   <small>{attention.body}</small>
                 </div>
-                <StatusPill value={attention.tone === "warn" ? "blocked" : attention.tone === "good" ? "succeeded" : "running"} />
+                <StatusPill
+                  value={attention.tone === "warn" ? "blocked" : attention.tone === "good" ? "succeeded" : "running"}
+                />
               </div>
               <div className="workspace-action-actions">
-                {attention.onAction ? <button className="button" type="button" onClick={attention.onAction}>{attention.actionLabel}</button> : null}
-                <button className="button secondary" type="button" onClick={() => void props.continueAutopilot()} disabled={props.isBusy("guide-autopilot")}>继续自动推进</button>
+                {attention.onAction ? (
+                  <button className="button" type="button" onClick={attention.onAction}>
+                    {attention.actionLabel}
+                  </button>
+                ) : null}
+                <button
+                  className="button secondary"
+                  type="button"
+                  onClick={() => void props.continueAutopilot()}
+                  disabled={props.isBusy("guide-autopilot")}
+                >
+                  继续自动推进
+                </button>
               </div>
               {props.isBusy("guide-autopilot") && props.activityLog.length ? (
                 <div className="activity-log">
-                  {props.activityLog.map((line, index) => <p key={`${line}-${index}`}>{line}</p>)}
+                  {props.activityLog.map((line, index) => (
+                    <p key={`${line}-${index}`}>{line}</p>
+                  ))}
                 </div>
               ) : null}
             </div>
@@ -506,14 +788,12 @@ export function OverviewTab(props: Props) {
         </Panel>
       </div>
 
-      <div className="workspace-wide-panel" style={{ order: 3 }}>
-        <Panel className="workspace-wide-panel overview-studio-panel" title="像素研究楼层" subtitle="地图占整行，不再被工作台挤压。">
-          <PixelStudio projectTasks={props.projectTasks} projectDashboard={props.projectDashboard} />
-        </Panel>
-      </div>
+      <Panel className="workspace-wide-panel overview-studio-panel" title="像素研究楼层" subtitle="地图占整行，不再被工作台挤压。">
+        <PixelStudio projectTasks={props.projectTasks} projectDashboard={props.projectDashboard} />
+      </Panel>
 
-      <div className="workspace-secondary-grid workspace-wide-panel" style={{ order: 4 }}>
-        <Panel title="当前任务流" subtitle="语义化展示任务，不默认暴露技术 ID。">
+      <div className="workspace-secondary-grid workspace-wide-panel">
+        <Panel title="当前任务流" subtitle="默认显示语义化任务，而不是技术 ID。">
           {recentTasks.length ? (
             <div className="semantic-task-list">
               {recentTasks.map((task) => {
@@ -542,7 +822,12 @@ export function OverviewTab(props: Props) {
           {props.projects.length ? (
             <div className="session-grid">
               {buildSessions(props).map((session) => (
-                <article key={session.projectId} className={props.selectedProject?.project_id === session.projectId ? "session-card session-card-active" : "session-card"}>
+                <article
+                  key={session.projectId}
+                  className={
+                    props.selectedProject?.project_id === session.projectId ? "session-card session-card-active" : "session-card"
+                  }
+                >
                   <div className="session-card-head">
                     <div>
                       <strong>{session.name}</strong>
@@ -558,7 +843,9 @@ export function OverviewTab(props: Props) {
                     <strong>{session.stage}</strong>
                     <p>{session.helperText}</p>
                   </div>
-                  <button className="button" type="button" onClick={() => props.openProject(session.projectId, "workspace")}>{session.actionLabel}</button>
+                  <button className="button" type="button" onClick={() => props.openProject(session.projectId, "workspace")}>
+                    {session.actionLabel}
+                  </button>
                 </article>
               ))}
             </div>
@@ -568,8 +855,7 @@ export function OverviewTab(props: Props) {
         </Panel>
       </div>
 
-      <div className="workspace-wide-panel" style={{ order: 5 }}>
-        <Panel title="系统快照" subtitle="不切到系统抽屉也能看到默认路由和 Provider 健康。">
+      <Panel className="workspace-wide-panel" title="系统快照" subtitle="不切到系统抽屉也能看到默认路由和 Provider 健康。">
         <div className="workspace-system-grid">
           <KeyValue label="默认 Provider" value={props.routingSystem.resolved_dispatch.provider_name} />
           <KeyValue label="模型" value={props.routingSystem.resolved_dispatch.model ?? "<default>"} />
@@ -587,19 +873,18 @@ export function OverviewTab(props: Props) {
           </div>
         </div>
       </Panel>
-      </div>
     </div>
   );
 }
 
 function taskMeta(kind: string) {
-  return TASK_KIND_META[kind] ?? { icon: "任", label: kind };
+  return TASK_KIND_META[kind] ?? { icon: "🧠", label: kind };
 }
 
 function taskSummary(task: Task) {
   if (typeof task.input_payload.title === "string" && task.input_payload.title) return task.input_payload.title;
   if (typeof task.input_payload.goal === "string" && task.input_payload.goal) return task.input_payload.goal;
-  if (task.input_payload.source_summary && typeof task.input_payload.source_summary === "object") {
+  if (typeof task.input_payload.source_summary === "object" && task.input_payload.source_summary) {
     const title = (task.input_payload.source_summary as Record<string, unknown>).title;
     if (typeof title === "string" && title) return title;
   }
@@ -611,7 +896,9 @@ function buildSessions(props: Props): SessionSummary[] {
     const tasks = props.allTasks.filter((task) => task.project_id === project.project_id);
     const ingestCount = tasks.filter((task) => task.kind === "paper_ingest" && task.status === "succeeded").length;
     const gapCount = tasks.filter((task) => task.kind === "gap_mapping" && task.status === "succeeded").length;
-    const pendingHuman = tasks.find((task) => task.kind === "human_select" && task.status !== "cancelled" && task.status !== "succeeded");
+    const pendingHuman = tasks.find(
+      (task) => task.kind === "human_select" && task.status !== "cancelled" && task.status !== "succeeded",
+    );
     const running = tasks.find((task) => task.status === "running");
     const blocked = tasks.find((task) => ["blocked", "failed", "waiting_approval"].includes(task.status));
     return {
@@ -634,7 +921,11 @@ function buildSessions(props: Props): SessionSummary[] {
 
 function buildAttention(props: Props, humanSelectTask: Task | null) {
   if (!props.selectedProject) {
-    return { title: "还没有项目", body: "从一个研究方向开始，系统会自动帮你检索论文并推进到需要人工拍板的阶段。", tone: "normal" as const };
+    return {
+      title: "还没有项目",
+      body: "从一个研究方向开始，系统会自动帮你检索论文并推进到需要人工拍板的阶段。",
+      tone: "normal" as const,
+    };
   }
   const blockedTask = props.projectTasks.find((task) => ["blocked", "failed", "waiting_approval"].includes(task.status));
   const runningTask = props.projectTasks.find((task) => task.status === "running");
@@ -642,7 +933,7 @@ function buildAttention(props: Props, humanSelectTask: Task | null) {
   if (humanSelectTask) {
     return {
       title: "现在需要你选方向",
-      body: "文献摄入和 Gap 聚合已经完成。上方工作台会先展示候选方向，再由你决定是否加载顾问分析。",
+      body: "文献摄入和 Gap 聚合已经完成。方向工作台已经被提到上方，直接筛方向、看质疑记录和顾问分析即可。",
       actionLabel: "查看方向工作台",
       onAction: () => document.querySelector(".idea-workbench")?.scrollIntoView({ behavior: "smooth", block: "start" }),
       tone: "warn" as const,
@@ -675,7 +966,11 @@ function buildAttention(props: Props, humanSelectTask: Task | null) {
       tone: "normal" as const,
     };
   }
-  return { title: "当前没有人工阻塞点", body: "流程处于可继续推进状态。你可以让系统继续自动跑。", tone: "good" as const };
+  return {
+    title: "当前没有人工阻塞点",
+    body: "流程处于可继续推进状态。你可以让系统继续自动跑。",
+    tone: "good" as const,
+  };
 }
 
 function stageLabel(stage: string) {
@@ -694,7 +989,7 @@ function stageLabel(stage: string) {
     FREEZE_RESULTS: "冻结结果",
     WRITE_DRAFT: "撰写草稿",
     REVIEW_DRAFT: "审阅草稿",
-    STYLE_PASS: "样式整理",
+    STYLE_PASS: "格式整理",
     SUBMISSION_READY: "准备提交",
   };
   return labels[stage] ?? stage;
@@ -743,11 +1038,49 @@ function discussionFromHistory(history: DiscussionHistory, gapId: string): Guide
     risks: Array.isArray(metadata.risks) ? metadata.risks.map(String) : [],
     next_checks: Array.isArray(metadata.next_checks) ? metadata.next_checks.map(String) : [],
     cited_papers: Array.isArray(metadata.cited_papers) ? metadata.cited_papers.map(String) : [],
-    research_question_suggestion: typeof metadata.research_question_suggestion === "string" ? metadata.research_question_suggestion : "",
+    research_question_suggestion:
+      typeof metadata.research_question_suggestion === "string" ? metadata.research_question_suggestion : "",
     assistant_role: typeof metadata.assistant_role === "string" ? metadata.assistant_role : "Advisor",
     provider_name: typeof metadata.provider_name === "string" ? metadata.provider_name : "codex",
     model_name: typeof metadata.model_name === "string" ? metadata.model_name : "gpt-5.4",
     reasoning_effort: typeof metadata.reasoning_effort === "string" ? metadata.reasoning_effort : "high",
     skill_name: typeof metadata.skill_name === "string" ? metadata.skill_name : "research-direction-advisor",
   };
+}
+
+function findGapDetail(gapMapDetail: GapMapDetail | null, gapId: string) {
+  if (!gapMapDetail || !gapId) return null;
+  for (const cluster of gapMapDetail.clusters) {
+    const match = cluster.gaps.find((gap) => gap.gap_id === gapId);
+    if (match) return match;
+  }
+  return null;
+}
+
+function matrixPointStyle(candidate: Candidate) {
+  const left = 8 + (Math.min(5, Math.max(0, candidate.novelty)) / 5) * 84;
+  const top = 88 - ((feasibilityScore(candidate.feasibility) - 1) / 2) * 72;
+  return { left: `${left}%`, top: `${top}%` };
+}
+
+function feasibilityScore(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (["high", "高", "easy", "strong"].includes(normalized)) return 3;
+  if (["medium", "中", "moderate"].includes(normalized)) return 2;
+  return 1;
+}
+
+function feasibilityLabel(score: number) {
+  if (score >= 3) return "高";
+  if (score >= 2) return "中";
+  return "低";
+}
+
+function firstNonEmptyString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
 }

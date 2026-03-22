@@ -165,20 +165,13 @@ class BuilderAgent(PromptDrivenAgent):
             claim_ids.append(claim.claim_id)
 
         next_tasks = [
-            build_child_task(
+            self._analysis_task(
                 task,
-                kind="analyze_run",
-                goal=f"Analyze build outputs for run {manifest.run_id}",
-                input_payload={
-                    "run_id": manifest.run_id,
-                    "claim_ids": claim_ids,
-                    "artifact_ids": artifact_ids,
-                    "stdout": None if execution_result is None else execution_result["stdout"],
-                    "stderr": None if execution_result is None else execution_result["stderr"],
-                    "returncode": None if execution_result is None else execution_result["returncode"],
-                    "metrics": manifest.metrics,
-                },
-                assigned_agent="analyst_agent",
+                manifest_run_id=manifest.run_id,
+                claim_ids=claim_ids,
+                artifact_ids=artifact_ids,
+                execution_result=execution_result,
+                metrics=manifest.metrics,
             )
         ]
 
@@ -196,6 +189,37 @@ class BuilderAgent(PromptDrivenAgent):
             next_tasks=next_tasks,
             audit_notes=output.get("audit_notes", []),
         )
+
+    @staticmethod
+    def _analysis_task(
+        task: Task,
+        *,
+        manifest_run_id: str,
+        claim_ids: list[str],
+        artifact_ids: list[str],
+        execution_result: dict[str, Any] | None,
+        metrics: dict[str, Any],
+    ) -> Task:
+        analysis_task = build_child_task(
+            task,
+            kind="analyze_run",
+            goal=f"Analyze build outputs for run {manifest_run_id}",
+            input_payload={
+                "run_id": manifest_run_id,
+                "claim_ids": claim_ids,
+                "artifact_ids": artifact_ids,
+                "stdout": None if execution_result is None else execution_result["stdout"],
+                "stderr": None if execution_result is None else execution_result["stderr"],
+                "returncode": None if execution_result is None else execution_result["returncode"],
+                "metrics": metrics,
+                "branch_id": task.input_payload.get("branch_id"),
+                "branch_title": task.input_payload.get("branch_title"),
+            },
+            assigned_agent="analyst_agent",
+        )
+        analysis_task.fanout_group = task.fanout_group
+        analysis_task.join_key = task.join_key
+        return analysis_task
 
     @staticmethod
     def _execution_timeout(task: Task) -> int:

@@ -17,6 +17,7 @@ import {
   type GuideDiscussionMessage,
   type GuideDiscussDirectionResponse,
   type GuideStartResponse,
+  type KnowledgeRecord,
   type KnowledgeSummary,
   type Lesson,
   type PaperCard,
@@ -56,6 +57,7 @@ type DashboardData = {
   artifacts: Artifact[];
   lessons: Lesson[];
   knowledgeSummary: KnowledgeSummary;
+  openQuestions: KnowledgeRecord[];
   verifications: Verification[];
   verificationSummary: VerificationSummary;
   approvals: Approval[];
@@ -161,6 +163,7 @@ export default function App() {
         artifacts,
         lessons,
         knowledgeSummary,
+        openQuestions,
         verifications,
         verificationSummary,
         approvals,
@@ -181,6 +184,7 @@ export default function App() {
         getJson<Artifact[]>("/artifacts"),
         getJson<Lesson[]>("/lessons"),
         getJson<KnowledgeSummary>("/kb/summary"),
+        getJson<KnowledgeRecord[]>("/kb/open_questions"),
         getJson<Verification[]>("/verifications"),
         getJson<VerificationSummary>("/verifications/summary"),
         getJson<Approval[]>("/approvals/pending"),
@@ -206,6 +210,7 @@ export default function App() {
         artifacts,
         lessons,
         knowledgeSummary,
+        openQuestions,
         verifications,
         verificationSummary,
         approvals,
@@ -473,6 +478,7 @@ export default function App() {
                   approvals={data.approvals}
                   paperCards={data.paperCards}
                   gapMaps={data.gapMaps}
+                  openQuestions={data.openQuestions}
                   topicFreeze={data.topicFreeze}
                   specFreeze={data.specFreeze}
                   activityLog={activityLog}
@@ -565,6 +571,7 @@ export default function App() {
                       projectTasks={projectTasks}
                       projectRuns={projectRuns}
                       claims={data.claims}
+                      approvals={data.approvals}
                       providers={data.providers}
                       routingPreview={routingPreview}
                       selectedRunAudit={selectedRunAudit}
@@ -583,6 +590,7 @@ export default function App() {
                       probeProvider={(provider) => postJson(`/providers/${provider}/probe`)}
                       verifyClaim={(claimId) => postJson(`/verifications/claims/${claimId}`)}
                       verifyRun={(runId) => postJson(`/verifications/runs/${runId}`)}
+                      createApproval={(payload) => postJson("/approvals", payload)}
                       openHumanSelect={openHumanSelect}
                     />
                   ) : (

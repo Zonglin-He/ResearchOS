@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from app.agents.analyst import AnalystAgent
 from app.agents.archivist import ArchivistAgent
+from app.agents.branch_manager import BranchManagerAgent
 from app.agents.builder import BuilderAgent
 from app.agents.mapper import MapperAgent
 from app.agents.orchestrator import Orchestrator
@@ -244,6 +245,27 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             ),
         ),
         handles={"gap_mapping", "map_gaps"},
+    )
+    orchestrator.register_agent(
+        BranchManagerAgent(
+            default_provider,
+            task_service=services.task_service,
+            checkpoint_service=services.checkpoint_service,
+            freeze_service=services.freeze_service,
+            model=config.provider_model or None,
+            tool_registry=tool_registry,
+            provider_registry=services.provider_registry,
+            provider_invocation_service=services.provider_invocation_service,
+            role_prompt_registry=services.role_prompt_registry,
+            role_skill_registry=services.role_skill_registry,
+            routing_policy=build_agent_routing_policy(
+                agent_name="branch_manager_agent",
+                default_role_policy=build_role_routing_policy("analyst"),
+                fallback_provider=build_fallback_provider(config),
+                fallback_model_profile=build_fallback_model_profile(config, "branch_manager_agent"),
+            ),
+        ),
+        handles={"branch_plan", "branch_review"},
     )
     orchestrator.register_agent(
         BuilderAgent(

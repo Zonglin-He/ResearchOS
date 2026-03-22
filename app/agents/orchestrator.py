@@ -348,6 +348,10 @@ class Orchestrator:
             return Stage.MAP_GAPS
         if task.kind == "human_select":
             return Stage.FREEZE_TOPIC
+        if task.kind == "branch_plan":
+            return Stage.RUN_EXPERIMENTS if task.status == TaskStatus.SUCCEEDED else Stage.IMPLEMENT_IDEA
+        if task.kind == "branch_review":
+            return Stage.FREEZE_RESULTS if task.status == TaskStatus.SUCCEEDED else Stage.RUN_EXPERIMENTS
         if task.kind in {"build_spec", "implement_experiment", "reproduce_baseline"}:
             return Stage.RUN_EXPERIMENTS if task.status == TaskStatus.SUCCEEDED else Stage.IMPLEMENT_IDEA
         if task.kind == "analyze_run":

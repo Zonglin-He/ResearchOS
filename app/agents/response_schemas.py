@@ -274,6 +274,45 @@ ANALYST_RESPONSE_SCHEMA = {
     "required": ["summary"],
 }
 
+BRANCH_PLAN_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "branches": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "branch_id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "hypothesis": {"type": "string"},
+                    "datasets": {"type": "array", "items": {"type": "string"}},
+                    "metrics": {"type": "array", "items": {"type": "string"}},
+                    "feasibility": {"type": "string"},
+                    "expected_gain": {"type": "string"},
+                    "constraints": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["branch_id", "title", "hypothesis"],
+            },
+        },
+        "audit_notes": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["branches"],
+}
+
+BRANCH_REVIEW_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "selected_branch_id": {"type": "string"},
+        "winning_rationale": {"type": "string"},
+        "discarded_branches": {"type": "array", "items": {"type": "string"}},
+        "recommended_next_step": {"type": "string"},
+        "audit_notes": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["selected_branch_id", "winning_rationale"],
+}
+
 VERIFIER_RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {

@@ -1881,6 +1881,51 @@ td strong {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.matrix-filter-bar,
+.candidate-stack-header,
+.candidate-debate-block,
+.approval-stack,
+.approval-card,
+.approval-card-head,
+.approval-meta,
+.approval-context,
+.approval-decision-row {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.matrix-filter-bar {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 1rem;
+}
+
+.matrix-filter-group {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.matrix-filter-group span,
+.candidate-stack-header small,
+.approval-meta span,
+.approval-context p,
+.candidate-debate-item p,
+.candidate-debate-item small,
+.discussion-support-papers span {
+  color: var(--muted);
+}
+
+.matrix-filter-group input[type="range"] {
+  width: 100%;
+}
+
+.matrix-empty {
+  margin-top: 0.9rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 16px;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+}
+
 .idea-workbench {
   grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
   align-items: start;
@@ -1992,6 +2037,37 @@ td strong {
   gap: 0.45rem;
 }
 
+.candidate-stack-header {
+  margin-top: 0.2rem;
+}
+
+.candidate-debate-block {
+  margin-top: 0.95rem;
+}
+
+.candidate-debate-toggle {
+  justify-self: start;
+}
+
+.candidate-debate-panel {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.candidate-debate-item,
+.approval-card {
+  padding: 0.9rem;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.candidate-debate-item strong,
+.approval-context strong {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
 .candidate-meta span,
 .candidate-paper-list small {
   padding: 0.2rem 0.55rem;
@@ -2091,6 +2167,16 @@ td strong {
   margin: 0.5rem 0 0.85rem;
   line-height: 1.65;
   color: var(--text);
+}
+
+.discussion-detail-card p {
+  margin: 0.55rem 0 0.8rem;
+  line-height: 1.65;
+}
+
+.discussion-support-papers {
+  display: grid;
+  gap: 0.45rem;
 }
 
 .discussion-brief-head {
@@ -2269,6 +2355,44 @@ td strong {
   gap: 0.45rem;
 }
 
+.approval-card-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.approval-card-head small {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+}
+
+.approval-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.approval-context {
+  gap: 0.35rem;
+}
+
+.approval-context p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.approval-card label {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--muted);
+}
+
+.approval-card textarea {
+  min-height: 92px;
+}
+
+.approval-decision-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .discussion-form span {
   color: var(--muted);
 }
@@ -2339,6 +2463,9 @@ td strong {
   .pilot-evidence-grid,
   .candidate-grid,
   .idea-workbench,
+  .matrix-filter-bar,
+  .approval-meta,
+  .approval-decision-row,
   .discussion-columns,
   .discussion-insight-grid,
   .discussion-summary-grid {
