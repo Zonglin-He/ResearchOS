@@ -53,6 +53,14 @@ class PromptDrivenAgent(BaseAgent):
         system_prompt = self._build_system_prompt(task)
         user_payload = self.build_user_payload(task, ctx)
         user_input = json.dumps(user_payload, ensure_ascii=False, default=str)
+        ctx.record_checkpoint(
+            "llm_request_prepared",
+            {
+                "task_id": task.task_id,
+                "provider_name": None if ctx.routing is None else ctx.routing.provider_name,
+                "model": self._resolve_model(ctx),
+            },
+        )
         if (
             self.provider_invocation_service is not None
             and self.provider_registry is not None
@@ -75,7 +83,23 @@ class PromptDrivenAgent(BaseAgent):
                 response_schema=self.get_response_schema(task, ctx),
                 model=self._resolve_model(ctx),
             )
+        ctx.record_checkpoint(
+            "llm_response_received",
+            {
+                "task_id": task.task_id,
+                "output_keys": sorted(output.keys()),
+            },
+        )
         result = self.build_result(task, ctx, output)
+        ctx.record_checkpoint(
+            "agent_result_built",
+            {
+                "task_id": task.task_id,
+                "result_status": result.status,
+                "artifact_count": len(result.artifacts),
+                "next_task_count": len(result.next_tasks),
+            },
+        )
         role_asset_note = self._build_role_asset_audit_note(task)
         if role_asset_note is not None:
             result.audit_notes.append(role_asset_note)
@@ -100,6 +124,9 @@ class PromptDrivenAgent(BaseAgent):
                 "task_id": ctx.task_id,
                 "shared_state": to_record(ctx.shared_state),
                 "artifacts_dir": ctx.artifacts_dir,
+                "checkpoint_dir": ctx.checkpoint_dir,
+                "checkpoint_path": ctx.checkpoint_path,
+                "resume_from_checkpoint": ctx.resume_from_checkpoint,
                 "max_steps": ctx.max_steps,
                 "routing": to_record(ctx.routing),
                 "prior_lessons": to_record(ctx.prior_lessons),

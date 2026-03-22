@@ -39,10 +39,12 @@ from app.routing.provider_router import ProviderInvocationService
 from app.routing.resolver import RoutingResolver
 from app.skills import ROLE_SKILL_REGISTRY, RoleSkillRegistry
 from app.services.approval_service import ApprovalService
+from app.services.activity_service import ActivityService
 from app.services.artifact_annotation_service import ArtifactAnnotationService
 from app.services.artifact_service import ArtifactService
 from app.services.audit_service import AuditService
 from app.services.claim_service import ClaimService
+from app.services.checkpoint_service import CheckpointService
 from app.services.experiment_manager import ExperimentManager
 from app.services.experiment_registry import ExperimentRegistry
 from app.services.freeze_service import FreezeService
@@ -69,6 +71,8 @@ from app.tools.shell_tool import ShellTool
 
 @dataclass
 class RuntimeServices:
+    activity_service: ActivityService
+    checkpoint_service: CheckpointService
     project_service: ProjectService
     task_service: TaskService
     claim_service: ClaimService
@@ -187,6 +191,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
         routing_resolver=services.routing_resolver,
         lessons_service=services.lessons_service,
         artifacts_dir=WorkspacePaths.from_root(config.workspace_root).artifacts_dir,
+        activity_service=services.activity_service,
+        checkpoint_service=services.checkpoint_service,
     )
     orchestrator.register_agent(
         ReaderAgent(
@@ -375,30 +381,49 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
 
 def build_runtime_services(config: AppConfig) -> RuntimeServices:
     workspace_paths = WorkspacePaths.from_root(config.workspace_root)
+    sqlite_database: SQLiteDatabase | None = None
     if config.database_url:
         session_factory = create_session_factory(config.database_url)
         project_repository = SAProjectRepository(session_factory)
         task_repository = SATaskRepository(session_factory)
     else:
-        database = SQLiteDatabase(config.db_path)
-        database.initialize()
-        project_repository = SQLiteProjectRepository(database)
-        task_repository = SQLiteTaskRepository(database)
+        sqlite_database = SQLiteDatabase(config.db_path)
+        sqlite_database.initialize()
+        project_repository = SQLiteProjectRepository(sqlite_database)
+        task_repository = SQLiteTaskRepository(sqlite_database)
 
     claim_service = ClaimService(workspace_paths.registry_file("claims.jsonl"))
     run_service = RunService(workspace_paths.registry_file("runs.jsonl"))
     freeze_service = FreezeService(workspace_paths.freezes_dir)
-    approval_service = ApprovalService(workspace_paths.registry_file("approvals.jsonl"))
+    activity_service = ActivityService(
+        database=sqlite_database,
+        events_path=workspace_paths.state_dir / "run_events.jsonl",
+        conversations_path=workspace_paths.state_dir / "conversation_messages.jsonl",
+    )
+    checkpoint_service = CheckpointService(workspace_paths.artifacts_dir / "checkpoints")
+    approval_service = ApprovalService(
+        workspace_paths.registry_file("approvals.jsonl"),
+        database=sqlite_database,
+    )
     artifact_service = ArtifactService(
         workspace_paths.registry_file("artifacts.jsonl"),
         workspace_root=workspace_paths.root,
     )
-    paper_card_service = PaperCardService(workspace_paths.registry_file("paper_cards.jsonl"))
-    gap_map_service = GapMapService(workspace_paths.registry_file("gap_maps.jsonl"))
+    paper_card_service = PaperCardService(
+        workspace_paths.registry_file("paper_cards.jsonl"),
+        database=sqlite_database,
+    )
+    gap_map_service = GapMapService(
+        workspace_paths.registry_file("gap_maps.jsonl"),
+        database=sqlite_database,
+    )
     artifact_annotation_service = ArtifactAnnotationService(
         workspace_paths.registry_file("artifact_annotations.jsonl")
     )
-    lessons_service = LessonsService(workspace_paths.registry_file("lessons.jsonl"))
+    lessons_service = LessonsService(
+        workspace_paths.registry_file("lessons.jsonl"),
+        database=sqlite_database,
+    )
     audit_service = AuditService(claim_service, run_service)
     verification_service = VerificationService(
         run_service=run_service,
@@ -408,7 +433,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         registry_path=workspace_paths.registry_file("verifications.jsonl"),
     )
     project_service = ProjectService(project_repository)
-    task_service = TaskService(task_repository)
+    task_service = TaskService(task_repository, activity_service=activity_service)
     provider_registry = build_provider_registry()
     provider_health_service = ProviderHealthService(
         cooldown_seconds=config.provider_cooldown_seconds,
@@ -439,8 +464,12 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         routing_resolver=routing_resolver,
         lessons_service=lessons_service,
         artifacts_dir=workspace_paths.artifacts_dir,
+        activity_service=activity_service,
+        checkpoint_service=checkpoint_service,
     )
     services = RuntimeServices(
+        activity_service=activity_service,
+        checkpoint_service=checkpoint_service,
         project_service=project_service,
         task_service=task_service,
         claim_service=claim_service,
@@ -493,6 +522,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
             paper_card_service=paper_card_service,
             provider_registry=provider_registry,
             orchestrator=placeholder_orchestrator,
+            activity_service=activity_service,
         ),
     )
     services.orchestrator = build_orchestrator(config, services)
@@ -504,6 +534,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         paper_card_service=paper_card_service,
         provider_registry=provider_registry,
         orchestrator=services.orchestrator,
+        activity_service=activity_service,
     )
     services.operator_inspection_service = OperatorInspectionService(
         project_service=project_service,

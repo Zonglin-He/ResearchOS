@@ -8,11 +8,13 @@ from typing import Any
 
 from app.agents.orchestrator import Orchestrator
 from app.providers.registry import ProviderRegistry
+from app.schemas.activity import ConversationMessage, RunEvent
 from app.schemas.freeze import TopicFreeze
 from app.schemas.gap_map import Gap, GapMap
 from app.schemas.paper_card import PaperCard
 from app.schemas.project import Project
 from app.schemas.task import Task, TaskStatus
+from app.services.activity_service import ActivityService
 from app.services.freeze_service import FreezeService
 from app.services.gap_map_service import GapMapService
 from app.services.paper_card_service import PaperCardService
@@ -55,6 +57,7 @@ class IdeaAdoptionResult:
 
 @dataclass(frozen=True)
 class DirectionDiscussionResult:
+    thread_id: str
     assistant_message: str
     gap_id: str
     topic: str
@@ -81,6 +84,7 @@ class ResearchGuideService:
         paper_card_service: PaperCardService,
         provider_registry: ProviderRegistry,
         orchestrator: Orchestrator,
+        activity_service: ActivityService,
     ) -> None:
         self.project_service = project_service
         self.task_service = task_service
@@ -89,6 +93,7 @@ class ResearchGuideService:
         self.paper_card_service = paper_card_service
         self.provider_registry = provider_registry
         self.orchestrator = orchestrator
+        self.activity_service = activity_service
         self._discussion_prompt = _DISCUSSION_PROMPT_PATH.read_text(encoding="utf-8").strip()
         self._discussion_skill = _DISCUSSION_SKILL_PATH.read_text(encoding="utf-8").strip()
         self._discussion_runtime_reference = _DISCUSSION_RUNTIME_REF_PATH.read_text(encoding="utf-8").strip()
@@ -140,6 +145,15 @@ class ResearchGuideService:
         )
 
         autopilot = AutopilotResult(dispatched_task_ids=tuple(), stop_reason="created")
+        self.activity_service.record_event(
+            RunEvent(
+                project_id=project.project_id,
+                task_id=intake_task.task_id,
+                event_type="guide.started",
+                message=f"Research guide started for project {project.project_id}",
+                payload={"research_goal": goal, "project_name": project.name},
+            )
+        )
         if auto_dispatch:
             autopilot = await self.autopilot_project(resolved_project_id)
         return ResearchStartResult(project=project, intake_task=intake_task, autopilot=autopilot)
@@ -174,14 +188,9 @@ class ResearchGuideService:
             )
         )
 
-        if human_select_task.status in {
-            TaskStatus.QUEUED,
-            TaskStatus.BLOCKED,
-            TaskStatus.RUNNING,
-            TaskStatus.WAITING_APPROVAL,
-            TaskStatus.FAILED,
-        }:
-            self.task_service.update_status(human_select_task.task_id, TaskStatus.CANCELLED)
+        if human_select_task.status != TaskStatus.SUCCEEDED:
+            human_select_task.status = TaskStatus.SUCCEEDED
+            self.task_service.save_task(human_select_task)
 
         spec_id = self._slugify(f"{topic_id}-spec", fallback="spec-freeze")
         build_task = self.task_service.create_task(
@@ -201,10 +210,25 @@ class ResearchGuideService:
                     "novelty_type": novelty,
                 },
                 owner=owner,
+                depends_on=[human_select_task.task_id],
             )
         )
 
         autopilot = AutopilotResult(dispatched_task_ids=tuple(), stop_reason="created")
+        self.activity_service.record_event(
+            RunEvent(
+                project_id=project_id,
+                task_id=build_task.task_id,
+                event_type="guide.direction_adopted",
+                message=f"Direction adopted: {gap_id}",
+                payload={
+                    "human_select_task_id": human_select_task.task_id,
+                    "gap_id": gap_id,
+                    "topic_id": topic_id,
+                    "research_question": resolved_question,
+                },
+            )
+        )
         if auto_dispatch:
             autopilot = await self.autopilot_project(project_id)
         return IdeaAdoptionResult(topic_freeze=topic_freeze, build_task=build_task, autopilot=autopilot)
@@ -220,6 +244,10 @@ class ResearchGuideService:
     ) -> DirectionDiscussionResult:
         human_select_task = self._require_human_select_task(project_id, human_select_task_id)
         topic = str(human_select_task.input_payload.get("topic", "")).strip() or project_id
+        thread_id = self.activity_service.discussion_thread_id(
+            human_select_task_id=human_select_task_id,
+            gap_id=gap_id,
+        )
         gap_map = self.gap_map_service.get_gap_map(topic)
         gap = self._find_gap(gap_map, gap_id)
         if gap is None:
@@ -228,6 +256,36 @@ class ResearchGuideService:
         candidate = self._require_candidate(human_select_task, gap_id)
         paper_cards = self._supporting_cards(gap)
         known_citations = self._paper_citation_labels(paper_cards)
+        persisted_history = [
+            {"role": item.role, "content": item.content}
+            for item in self.activity_service.list_conversation_messages(
+                project_id=project_id,
+                thread_id=thread_id,
+            )
+        ]
+        normalized_history = persisted_history or self._normalize_history(history)
+        normalized_user_message = user_message.strip()
+
+        if normalized_user_message:
+            self.activity_service.record_conversation_message(
+                ConversationMessage(
+                    project_id=project_id,
+                    thread_id=thread_id,
+                    human_select_task_id=human_select_task_id,
+                    gap_id=gap_id,
+                    role="user",
+                    content=normalized_user_message,
+                )
+            )
+            self.activity_service.record_event(
+                RunEvent(
+                    project_id=project_id,
+                    task_id=human_select_task_id,
+                    event_type="conversation.message",
+                    message=f"Operator replied in discussion thread {thread_id}",
+                    payload={"thread_id": thread_id, "gap_id": gap_id, "role": "user"},
+                )
+            )
 
         response_schema = {
             "type": "object",
@@ -266,8 +324,8 @@ class ResearchGuideService:
             "candidate": candidate,
             "paper_cards": [self._paper_card_payload(card) for card in paper_cards],
             "known_citations": known_citations,
-            "conversation_history": self._normalize_history(history),
-            "latest_user_message": user_message.strip(),
+            "conversation_history": normalized_history[-10:],
+            "latest_user_message": normalized_user_message,
             "output_language": "zh-Hans",
         }
         system_prompt = self._build_discussion_system_prompt()
@@ -297,8 +355,41 @@ class ResearchGuideService:
             gap_id,
             candidate,
         )
+        self.activity_service.record_conversation_message(
+            ConversationMessage(
+                project_id=project_id,
+                thread_id=thread_id,
+                human_select_task_id=human_select_task_id,
+                gap_id=gap_id,
+                role="assistant",
+                content=assistant_message,
+                metadata={
+                    "provider_name": _DISCUSSION_PROVIDER,
+                    "model_name": _DISCUSSION_MODEL,
+                    "reasoning_effort": _DISCUSSION_REASONING_EFFORT,
+                    "research_question_suggestion": suggested_question,
+                    "strengths": strengths,
+                    "risks": risks,
+                    "next_checks": next_checks,
+                    "cited_papers": cited_papers,
+                    "assistant_role": _DISCUSSION_ROLE,
+                    "skill_name": _DISCUSSION_SKILL,
+                    "topic": topic,
+                },
+            )
+        )
+        self.activity_service.record_event(
+            RunEvent(
+                project_id=project_id,
+                task_id=human_select_task_id,
+                event_type="conversation.message",
+                message=f"Advisor responded in discussion thread {thread_id}",
+                payload={"thread_id": thread_id, "gap_id": gap_id, "role": "assistant"},
+            )
+        )
 
         return DirectionDiscussionResult(
+            thread_id=thread_id,
             assistant_message=assistant_message,
             gap_id=gap_id,
             topic=topic,
@@ -327,7 +418,7 @@ class ResearchGuideService:
                     human_select_task_id=human_select_task.task_id,
                 )
 
-            next_task = self._next_autopilot_task(tasks)
+            next_task = self._next_autopilot_task(project_id, tasks)
             if next_task is None:
                 return AutopilotResult(
                     dispatched_task_ids=tuple(dispatched),
@@ -487,6 +578,19 @@ class ResearchGuideService:
     def _project_tasks(self, project_id: str) -> list[Task]:
         return [task for task in self.task_service.list_tasks() if task.project_id == project_id]
 
+    def list_discussion_messages(
+        self,
+        *,
+        project_id: str,
+        human_select_task_id: str,
+        gap_id: str,
+    ) -> list[ConversationMessage]:
+        thread_id = self.activity_service.discussion_thread_id(
+            human_select_task_id=human_select_task_id,
+            gap_id=gap_id,
+        )
+        return self.activity_service.list_conversation_messages(project_id=project_id, thread_id=thread_id)
+
     @staticmethod
     def _find_gap(gap_map: GapMap | None, gap_id: str) -> Gap | None:
         if gap_map is None:
@@ -507,13 +611,14 @@ class ResearchGuideService:
             return task
         return None
 
-    @staticmethod
-    def _next_autopilot_task(tasks: list[Task]) -> Task | None:
-        for task in sorted(tasks, key=lambda item: item.created_at):
+    def _next_autopilot_task(self, project_id: str, tasks: list[Task]) -> Task | None:
+        runnable = self.task_service.list_runnable_tasks(project_id=project_id)
+        ordered = {task.task_id: task for task in sorted(tasks, key=lambda item: item.created_at)}
+        for task in runnable:
             if task.kind == "human_select":
                 continue
-            if task.status == TaskStatus.QUEUED:
-                return task
+            if task.task_id in ordered:
+                return ordered[task.task_id]
         return None
 
     @staticmethod

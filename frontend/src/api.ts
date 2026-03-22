@@ -59,10 +59,18 @@ export type Task = {
   owner: string;
   assigned_agent: string | null;
   parent_task_id: string | null;
+  depends_on: string[];
+  join_key: string | null;
+  fanout_group: string | null;
+  max_retries: number;
   dispatch_profile: DispatchProfile | null;
   status: string;
   experiment_proposal_id: string | null;
   last_run_routing: ResolvedDispatch | null;
+  retry_count: number;
+  last_error: string | null;
+  next_retry_at: string | null;
+  checkpoint_path: string | null;
   created_at: string;
 };
 
@@ -377,6 +385,7 @@ export type ProjectAutopilotResponse = {
 };
 
 export type GuideDiscussDirectionResponse = {
+  thread_id: string;
   assistant_message: string;
   gap_id: string;
   topic: string;
@@ -393,8 +402,27 @@ export type GuideDiscussDirectionResponse = {
 };
 
 export type GuideDiscussionMessage = {
+  message_id?: number | null;
   role: "user" | "assistant";
   content: string;
+  created_at?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type DiscussionHistory = {
+  thread_id: string;
+  messages: GuideDiscussionMessage[];
+};
+
+export type RunEvent = {
+  event_id: number;
+  project_id: string;
+  task_id: string | null;
+  run_id: string | null;
+  event_type: string;
+  message: string;
+  payload: Record<string, unknown>;
+  created_at: string;
 };
 
 export type ArtifactDetail = Artifact & {

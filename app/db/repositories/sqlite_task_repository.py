@@ -28,11 +28,19 @@ class SQLiteTaskRepository(TaskRepository):
                     assigned_agent,
                     status,
                     parent_task_id,
+                    depends_on_json,
+                    join_key,
+                    fanout_group,
                     experiment_proposal_id,
                     dispatch_profile_json,
                     last_run_routing_json,
+                    retry_count,
+                    max_retries,
+                    last_error,
+                    next_retry_at,
+                    checkpoint_path,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     task.task_id,
@@ -44,6 +52,9 @@ class SQLiteTaskRepository(TaskRepository):
                     task.assigned_agent,
                     task.status.value,
                     task.parent_task_id,
+                    json.dumps(task.depends_on),
+                    task.join_key,
+                    task.fanout_group,
                     task.experiment_proposal_id,
                     json.dumps(to_record(task.dispatch_profile))
                     if task.dispatch_profile is not None
@@ -51,6 +62,11 @@ class SQLiteTaskRepository(TaskRepository):
                     json.dumps(to_record(task.last_run_routing))
                     if task.last_run_routing is not None
                     else None,
+                    task.retry_count,
+                    task.max_retries,
+                    task.last_error,
+                    task.next_retry_at.isoformat() if task.next_retry_at is not None else None,
+                    task.checkpoint_path,
                     task.created_at.isoformat(),
                 ),
             )
@@ -69,9 +85,17 @@ class SQLiteTaskRepository(TaskRepository):
                     assigned_agent = ?,
                     status = ?,
                     parent_task_id = ?,
+                    depends_on_json = ?,
+                    join_key = ?,
+                    fanout_group = ?,
                     experiment_proposal_id = ?,
                     dispatch_profile_json = ?,
                     last_run_routing_json = ?,
+                    retry_count = ?,
+                    max_retries = ?,
+                    last_error = ?,
+                    next_retry_at = ?,
+                    checkpoint_path = ?,
                     created_at = ?
                 WHERE task_id = ?
                 """,
@@ -84,6 +108,9 @@ class SQLiteTaskRepository(TaskRepository):
                     task.assigned_agent,
                     task.status.value,
                     task.parent_task_id,
+                    json.dumps(task.depends_on),
+                    task.join_key,
+                    task.fanout_group,
                     task.experiment_proposal_id,
                     json.dumps(to_record(task.dispatch_profile))
                     if task.dispatch_profile is not None
@@ -91,6 +118,11 @@ class SQLiteTaskRepository(TaskRepository):
                     json.dumps(to_record(task.last_run_routing))
                     if task.last_run_routing is not None
                     else None,
+                    task.retry_count,
+                    task.max_retries,
+                    task.last_error,
+                    task.next_retry_at.isoformat() if task.next_retry_at is not None else None,
+                    task.checkpoint_path,
                     task.created_at.isoformat(),
                     task.task_id,
                 ),
@@ -130,6 +162,9 @@ class SQLiteTaskRepository(TaskRepository):
             assigned_agent=row["assigned_agent"],
             status=TaskStatus(row["status"]),
             parent_task_id=row["parent_task_id"],
+            depends_on=json.loads(row["depends_on_json"]) if row["depends_on_json"] else [],
+            join_key=row["join_key"],
+            fanout_group=row["fanout_group"],
             experiment_proposal_id=row["experiment_proposal_id"],
             dispatch_profile=dispatch_profile_from_dict(
                 json.loads(row["dispatch_profile_json"])
@@ -141,5 +176,12 @@ class SQLiteTaskRepository(TaskRepository):
                 if row["last_run_routing_json"]
                 else None
             ),
+            retry_count=row["retry_count"] or 0,
+            max_retries=row["max_retries"] or 2,
+            last_error=row["last_error"],
+            next_retry_at=datetime.fromisoformat(row["next_retry_at"])
+            if row["next_retry_at"]
+            else None,
+            checkpoint_path=row["checkpoint_path"],
             created_at=datetime.fromisoformat(row["created_at"]),
         )

@@ -17,6 +17,10 @@ class TaskCreate(BaseModel):
     owner: str
     assigned_agent: str | None = None
     parent_task_id: str | None = None
+    depends_on: list[str] = Field(default_factory=list)
+    join_key: str | None = None
+    fanout_group: str | None = None
+    max_retries: int = 2
     dispatch_profile: DispatchProfileModel | None = None
 
 
@@ -24,6 +28,10 @@ class TaskRead(TaskCreate):
     status: str
     experiment_proposal_id: str | None = None
     last_run_routing: ResolvedDispatchModel | None = None
+    retry_count: int
+    last_error: str | None = None
+    next_retry_at: datetime | None = None
+    checkpoint_path: str | None = None
     created_at: datetime
 
 

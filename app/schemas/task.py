@@ -27,7 +27,15 @@ class Task:
     assigned_agent: str | None = None
     status: TaskStatus = TaskStatus.QUEUED
     parent_task_id: str | None = None
+    depends_on: list[str] = field(default_factory=list)
+    join_key: str | None = None
+    fanout_group: str | None = None
     experiment_proposal_id: str | None = None
     dispatch_profile: DispatchProfile | None = None
     last_run_routing: ResolvedDispatch | None = None
+    retry_count: int = 0
+    max_retries: int = 2
+    last_error: str | None = None
+    next_retry_at: datetime | None = None
+    checkpoint_path: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

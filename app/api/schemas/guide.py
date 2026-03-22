@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -58,8 +60,11 @@ class AutopilotResponse(BaseModel):
 
 
 class DiscussionMessage(BaseModel):
+    message_id: int | None = None
     role: str
     content: str
+    created_at: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DiscussDirectionRequest(BaseModel):
@@ -71,6 +76,7 @@ class DiscussDirectionRequest(BaseModel):
 
 
 class DiscussDirectionResponse(BaseModel):
+    thread_id: str
     assistant_message: str
     gap_id: str
     topic: str
@@ -84,3 +90,8 @@ class DiscussDirectionResponse(BaseModel):
     model_name: str
     reasoning_effort: str
     skill_name: str
+
+
+class DiscussionHistoryRead(BaseModel):
+    thread_id: str
+    messages: list[DiscussionMessage] = Field(default_factory=list)

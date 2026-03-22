@@ -1,3 +1,4 @@
+from app.api.schemas.activity import RunEventRead
 from app.api.schemas.artifact_annotations import ArtifactAnnotationCreate, ArtifactAnnotationRead
 from app.api.schemas.artifacts import ArtifactDetailRead, ArtifactRead
 from app.api.schemas.audit import AuditEntryRead, AuditReportRead, AuditSummaryRead
@@ -20,6 +21,7 @@ from app.api.schemas.guide import (
     AutopilotRead,
     AutopilotResponse,
     DiscussionMessage,
+    DiscussionHistoryRead,
     DiscussDirectionRequest,
     DiscussDirectionResponse,
     IdeaCandidateRead,
@@ -79,11 +81,13 @@ __all__ = [
     "AuditEntryRead",
     "AuditReportRead",
     "AuditSummaryRead",
+    "DiscussionHistoryRead",
     "ApprovalCreate",
     "ApprovalRead",
     "ClaimCreate",
     "ClaimRead",
     "DispatchProfileModel",
+    "RunEventRead",
     "EvidenceRefModel",
     "GapCreate",
     "GapClusterCreate",

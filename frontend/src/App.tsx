@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Blocks, RefreshCw, Sparkles, TerminalSquare } from "lucide-react";
 import {
   API_BASE,
@@ -9,6 +9,7 @@ import {
   type ArtifactDetail,
   type AuditReport,
   type AuditSummary,
+  type DiscussionHistory,
   type Claim,
   type GapMap,
   type GapMapDetail,
@@ -85,6 +86,7 @@ export default function App() {
   const [routingPreview, setRoutingPreview] = useState<RoutingInspection | null>(null);
   const [selectedRunAudit, setSelectedRunAudit] = useState<AuditReport | null>(null);
   const [busyKeys, setBusyKeys] = useState<string[]>([]);
+  const refreshTimerRef = useRef<number | null>(null);
 
   const [projectForm, setProjectForm] = useState({
     project_id: "",
@@ -204,10 +206,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      void loadData(false);
-    }, 15000);
-    return () => window.clearInterval(timer);
+    if (!selectedProjectId) {
+      return;
+    }
+    const stream = new EventSource(`${API_BASE}/projects/${encodeURIComponent(selectedProjectId)}/events/stream`);
+    const scheduleRefresh = () => {
+      if (refreshTimerRef.current !== null) {
+        return;
+      }
+      refreshTimerRef.current = window.setTimeout(() => {
+        refreshTimerRef.current = null;
+        void loadData(false, selectedProjectId);
+      }, 350);
+    };
+    stream.onmessage = scheduleRefresh;
+    stream.onerror = () => {
+      scheduleRefresh();
+    };
+    return () => {
+      stream.close();
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
   }, [selectedProjectId]);
 
   async function loadData(showLoading = true, projectOverride?: string) {
@@ -537,6 +559,11 @@ export default function App() {
                     user_message: payload.userMessage,
                     history: payload.history as GuideDiscussionMessage[],
                   })
+                }
+                loadDiscussionHistory={(humanSelectTaskId, gapId) =>
+                  getJson<DiscussionHistory>(
+                    `/projects/${encodeURIComponent(selectedProjectId)}/guide/discussions/${encodeURIComponent(humanSelectTaskId)}/${encodeURIComponent(gapId)}`,
+                  )
                 }
                 isBusy={(key) => busyKeys.includes(key)}
               />

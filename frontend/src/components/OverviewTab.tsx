@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  DiscussionHistory,
   GapMap,
   GapMapDetail,
   GuideDiscussDirectionResponse,
@@ -48,6 +49,7 @@ type Props = {
     userMessage: string;
     history: GuideDiscussionMessage[];
   }) => Promise<GuideDiscussDirectionResponse>;
+  loadDiscussionHistory: (humanSelectTaskId: string, gapId: string) => Promise<DiscussionHistory>;
   isBusy: (key: string) => boolean;
 };
 
@@ -74,6 +76,7 @@ export function OverviewTab(props: Props) {
   const [discussionByGap, setDiscussionByGap] = useState<Record<string, GuideDiscussDirectionResponse>>({});
   const [threadsByGap, setThreadsByGap] = useState<Record<string, GuideDiscussionMessage[]>>({});
   const [researchQuestionByGap, setResearchQuestionByGap] = useState<Record<string, string>>({});
+  const threadEndRef = useRef<HTMLDivElement | null>(null);
 
   const humanSelectTask = useMemo(
     () =>
@@ -117,7 +120,7 @@ export function OverviewTab(props: Props) {
       return;
     }
     void props.loadGapMap(topic).then(setGapMapDetail).catch(() => setGapMapDetail(null));
-  }, [topic]);
+  }, [props, topic]);
 
   useEffect(() => {
     if (!rankedCandidates.length) {
@@ -161,37 +164,72 @@ export function OverviewTab(props: Props) {
   const researchQuestion = selectedGapId ? researchQuestionByGap[selectedGapId] ?? suggestedResearchQuestion : "";
 
   useEffect(() => {
-    if (!selectedGapId || !humanSelectTask) {
+    if (!selectedGapId || !humanSelectTask || threadsByGap[selectedGapId]?.length) {
       return;
     }
-    if (threadsByGap[selectedGapId]?.length) {
-      return;
-    }
-    void props
-      .discussDirection({
-        humanSelectTaskId: humanSelectTask.task_id,
-        gapId: selectedGapId,
-        userMessage: "",
-        history: [],
-      })
-      .then((response) => {
+    let cancelled = false;
+    const humanSelectTaskId = humanSelectTask.task_id;
+
+    async function hydrate() {
+      try {
+        const history = await props.loadDiscussionHistory(humanSelectTaskId, selectedGapId);
+        if (cancelled) {
+          return;
+        }
+        if (history.messages.length) {
+          setThreadsByGap((current) => ({ ...current, [selectedGapId]: history.messages }));
+          const restored = discussionFromHistory(history, selectedGapId);
+          if (restored) {
+            setDiscussionByGap((current) => ({ ...current, [selectedGapId]: restored }));
+            setResearchQuestionByGap((current) => ({
+              ...current,
+              [selectedGapId]:
+                current[selectedGapId] || restored.research_question_suggestion,
+            }));
+          }
+          return;
+        }
+
+        const response = await props.discussDirection({
+          humanSelectTaskId,
+          gapId: selectedGapId,
+          userMessage: "",
+          history: [],
+        });
+        if (cancelled) {
+          return;
+        }
         setDiscussionByGap((current) => ({ ...current, [selectedGapId]: response }));
         setThreadsByGap((current) => ({
           ...current,
-          [selectedGapId]: [{ role: "assistant", content: response.assistant_message }],
+          [selectedGapId]: [
+            {
+              role: "assistant",
+              content: response.assistant_message,
+              metadata: discussionMetadata(response),
+            },
+          ],
         }));
         setResearchQuestionByGap((current) => ({
           ...current,
           [selectedGapId]: current[selectedGapId] || response.research_question_suggestion,
         }));
-      })
-      .catch(() => {
+      } catch {
+        if (cancelled) {
+          return;
+        }
         setThreadsByGap((current) => ({
           ...current,
           [selectedGapId]: [{ role: "assistant", content: "当前无法连接讨论代理，请稍后再试。" }],
         }));
-      });
-  }, [humanSelectTask, selectedGapId, threadsByGap]);
+      }
+    }
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [humanSelectTask, props, selectedGapId, threadsByGap]);
 
   async function continueDiscussion(message: string) {
     if (!humanSelectTask || !selectedGapId) {
@@ -211,7 +249,11 @@ export function OverviewTab(props: Props) {
       [selectedGapId]: [
         ...history,
         ...(trimmed ? [{ role: "user", content: trimmed } satisfies GuideDiscussionMessage] : []),
-        { role: "assistant", content: response.assistant_message },
+        {
+          role: "assistant",
+          content: response.assistant_message,
+          metadata: discussionMetadata(response),
+        },
       ],
     }));
     setResearchQuestionByGap((current) => ({
@@ -228,6 +270,10 @@ export function OverviewTab(props: Props) {
     .map((message) => message.content)
     .join("\n\n");
 
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [currentThread]);
+
   return (
     <div className="content-grid overview-grid">
       <Panel
@@ -239,10 +285,7 @@ export function OverviewTab(props: Props) {
             className="pilot-form"
             onSubmit={(event) => {
               event.preventDefault();
-              void props.startResearch({
-                researchGoal,
-                projectName,
-              });
+              void props.startResearch({ researchGoal, projectName });
             }}
           >
             <label>
@@ -250,7 +293,7 @@ export function OverviewTab(props: Props) {
               <textarea
                 value={researchGoal}
                 onChange={(event) => setResearchGoal(event.target.value)}
-                placeholder="例如：研究 CIFAR-10 对抗鲁棒性的可复现改进方向。"
+                placeholder="例如：研究 CIFAR-10 对抗鲁棒性的低算力可复现改进方向。"
                 required
               />
             </label>
@@ -285,8 +328,8 @@ export function OverviewTab(props: Props) {
               <ol className="pilot-steps">
                 <li>创建项目并发起 `paper_ingest`。</li>
                 <li>自动继续到 `gap_mapping`。</li>
-                <li>停在 `human_select`，把候选方向交给你决策。</li>
-                <li>选定方向后继续做实验、审阅和初稿。</li>
+                <li>停在 `human_select`，把候选方向交给你选择。</li>
+                <li>选定方向后继续生成 spec、实验、审阅和初稿。</li>
               </ol>
             </div>
             {props.projectDashboard ? (
@@ -306,7 +349,7 @@ export function OverviewTab(props: Props) {
       <Panel
         className="overview-studio-panel"
         title="像素研究楼层"
-        subtitle="点击工位查看状态。地图保持完整场景，不再被右侧面板挤压。"
+        subtitle="点击工位看状态。地图保持完整场景，不再被右侧面板挤压。"
       >
         <PixelStudio projectTasks={props.projectTasks} projectDashboard={props.projectDashboard} />
       </Panel>
@@ -316,7 +359,7 @@ export function OverviewTab(props: Props) {
         title="选题工作台"
         subtitle={
           humanSelectTask
-            ? "左边看候选方向和证据，右边直接和 LLM 讨论可行性，然后一键继续自动推进。"
+            ? "左边看候选方向和证据，右边直接和 LLM 对话判断可行性，然后一键继续自动推进。"
             : "自动流程跑到 human_select 后，这里会出现候选方向和讨论侧栏。"
         }
       >
@@ -345,7 +388,7 @@ export function OverviewTab(props: Props) {
                       </div>
                       <StatusPill value="waiting_approval" />
                     </div>
-                    <p>{gap?.description || candidate.rationale || "当前候选方向暂时没有详细描述。"}</p>
+                    <p>{gap?.description || candidate.rationale || "当前候选方向暂无详细描述。"}</p>
                     <div className="candidate-meta">
                       <span>难度 {gap?.difficulty || "-"}</span>
                       <span>新颖性 {gap?.noveltyType || "-"}</span>
@@ -364,9 +407,9 @@ export function OverviewTab(props: Props) {
             </div>
 
             <aside className="discussion-panel">
-              <div className="discussion-head">
+              <div className="discussion-head discussion-head-chat">
                 <div>
-                  <strong>LLM 讨论侧栏</strong>
+                  <strong>选题对话</strong>
                   <small>{selectedGapId || "先选一个候选方向"}</small>
                 </div>
                 {currentDiscussion ? (
@@ -376,47 +419,75 @@ export function OverviewTab(props: Props) {
                       {currentDiscussion.provider_name} / {currentDiscussion.model_name}
                     </span>
                     <span className="assistant-chip">推理 {currentDiscussion.reasoning_effort}</span>
-                    <span className="assistant-chip">{currentDiscussion.skill_name}</span>
                   </div>
                 ) : null}
               </div>
 
               {selectedGap ? (
-                <div className="discussion-context">
-                  <div className="discussion-card">
-                    <strong>这个 idea 在做什么</strong>
+                <div className="discussion-chat-shell">
+                  <div className="discussion-brief-card">
+                    <div className="discussion-brief-head">
+                      <div>
+                        <strong>{selectedGapId}</strong>
+                        <small>{currentDiscussion?.skill_name || "research-direction-advisor"}</small>
+                      </div>
+                      <StatusPill value="running" />
+                    </div>
                     <p>{selectedGap.description}</p>
                     <div className="candidate-meta">
                       <span>难度 {selectedGap.difficulty || "-"}</span>
                       <span>新颖性 {selectedGap.noveltyType || "-"}</span>
                       <span>攻击面 {selectedGap.attackSurface || topic || "-"}</span>
                     </div>
-                  </div>
-
-                  <div className="discussion-card">
-                    <strong>对话记录</strong>
-                    <div className="discussion-chat">
-                      {currentThread.length ? (
-                        currentThread.map((message, index) => (
-                          <div
-                            key={`${message.role}-${index}`}
-                            className={message.role === "assistant" ? "chat-bubble chat-ai" : "chat-bubble chat-user"}
-                          >
-                            <strong>{message.role === "assistant" ? "AI" : "你"}</strong>
-                            <p>{message.content}</p>
-                          </div>
-                        ))
+                    <div className="candidate-paper-list">
+                      {(currentDiscussion?.cited_papers || []).length ? (
+                        currentDiscussion?.cited_papers.map((item) => <small key={item}>{item}</small>)
                       ) : (
-                        <div className="chat-bubble chat-ai">
-                          <strong>AI</strong>
-                          <p>正在读取当前 gap、候选方向和关联 paper card。</p>
-                        </div>
+                        <small>当前回复还没有返回明确引用。</small>
                       )}
                     </div>
                   </div>
 
-                  <div className="discussion-columns">
-                    <div className="discussion-card">
+                  <div className="discussion-thread-shell">
+                    <div className="discussion-thread">
+                      {currentThread.length ? (
+                        currentThread.map((message, index) => (
+                          <div
+                            key={`${message.role}-${message.message_id ?? index}`}
+                            className={
+                              message.role === "assistant"
+                                ? "chat-message chat-message-assistant"
+                                : "chat-message chat-message-user"
+                            }
+                          >
+                            <div className="chat-avatar">{message.role === "assistant" ? "AI" : "你"}</div>
+                            <div className="chat-message-body">
+                              <div className="chat-message-meta">
+                                <strong>{message.role === "assistant" ? "ResearchOS Advisor" : "你"}</strong>
+                                <small>{message.role === "assistant" ? "基于 paper card / gap map 回答" : "追问"}</small>
+                              </div>
+                              <p>{message.content}</p>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="chat-message chat-message-assistant">
+                          <div className="chat-avatar">AI</div>
+                          <div className="chat-message-body">
+                            <div className="chat-message-meta">
+                              <strong>ResearchOS Advisor</strong>
+                              <small>初始化中</small>
+                            </div>
+                            <p>正在读取当前 gap、候选方向和关联 paper card。</p>
+                          </div>
+                        </div>
+                      )}
+                      <div ref={threadEndRef} />
+                    </div>
+                  </div>
+
+                  <div className="discussion-insight-grid">
+                    <div className="discussion-card discussion-insight-card">
                       <strong>优势</strong>
                       <ul className="plain-list">
                         {(currentDiscussion?.strengths || []).map((item) => (
@@ -424,7 +495,7 @@ export function OverviewTab(props: Props) {
                         ))}
                       </ul>
                     </div>
-                    <div className="discussion-card">
+                    <div className="discussion-card discussion-insight-card">
                       <strong>风险</strong>
                       <ul className="plain-list">
                         {(currentDiscussion?.risks || []).map((item) => (
@@ -432,82 +503,83 @@ export function OverviewTab(props: Props) {
                         ))}
                       </ul>
                     </div>
-                  </div>
-
-                  <div className="discussion-card">
-                    <strong>接下来先确认什么</strong>
-                    <ul className="plain-list">
-                      {(currentDiscussion?.next_checks || []).map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="discussion-card">
-                    <strong>当前引用证据</strong>
-                    <div className="candidate-paper-list">
-                      {(currentDiscussion?.cited_papers || []).length ? (
-                        currentDiscussion?.cited_papers.map((item) => <small key={item}>{item}</small>)
-                      ) : (
-                        <small>当前回答没有返回明确引用。</small>
-                      )}
+                    <div className="discussion-card discussion-insight-card">
+                      <strong>接下来先确认什么</strong>
+                      <ul className="plain-list">
+                        {(currentDiscussion?.next_checks || []).map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
                     </div>
                   </div>
 
-                  <div className="discussion-card">
-                    <strong>继续问 AI</strong>
-                    <textarea
-                      value={chatDraft}
-                      onChange={(event) => setChatDraft(event.target.value)}
-                      placeholder="例如：如果我只想做低算力实验，这个方向还值得做吗？"
-                    />
-                    <div className="pilot-actions">
+                  <div className="discussion-composer-shell">
+                    <div className="discussion-composer-card">
+                      <textarea
+                        value={chatDraft}
+                        onChange={(event) => setChatDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            if (chatDraft.trim()) {
+                              void continueDiscussion(chatDraft);
+                            }
+                          }
+                        }}
+                        className="discussion-composer-input"
+                        placeholder="继续追问这个 idea。按 Enter 发送，Shift + Enter 换行。"
+                      />
+                      <div className="discussion-composer-actions">
+                        <small>当前对话会作为 operator note 一并带入后续 topic freeze。</small>
+                        <button
+                          className="button"
+                          type="button"
+                          disabled={!selectedGapId || !chatDraft.trim() || props.isBusy(`discuss-${selectedGapId}`)}
+                          onClick={() => {
+                            void continueDiscussion(chatDraft);
+                          }}
+                        >
+                          发送
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="discussion-freeze-card">
+                      <label className="discussion-form">
+                        <span>冻结用研究问题</span>
+                        <textarea
+                          value={researchQuestion}
+                          onChange={(event) => {
+                            if (!selectedGapId) {
+                              return;
+                            }
+                            const value = event.target.value;
+                            setResearchQuestionByGap((current) => ({ ...current, [selectedGapId]: value }));
+                          }}
+                          placeholder="如果不填，系统会采用 LLM 给出的研究问题建议。"
+                        />
+                      </label>
+
                       <button
-                        className="button secondary"
+                        className="button"
                         type="button"
-                        disabled={!selectedGapId || !chatDraft.trim() || props.isBusy(`discuss-${selectedGapId}`)}
+                        disabled={!selectedGapId || props.isBusy(`adopt-${selectedGapId}`)}
                         onClick={() => {
-                          void continueDiscussion(chatDraft);
+                          if (!humanSelectTask || !selectedGapId) {
+                            return;
+                          }
+                          void props.adoptDirection({
+                            humanSelectTaskId: humanSelectTask.task_id,
+                            gapId: selectedGapId,
+                            researchQuestion: researchQuestion || suggestedResearchQuestion,
+                            operatorNote: operatorNotes,
+                          });
                         }}
                       >
-                        继续讨论
+                        采用这个方向并继续
                       </button>
                     </div>
                   </div>
-
-                  <label className="discussion-form">
-                    <span>研究问题草案</span>
-                    <textarea
-                      value={researchQuestion}
-                      onChange={(event) => {
-                        if (!selectedGapId) {
-                          return;
-                        }
-                        const value = event.target.value;
-                        setResearchQuestionByGap((current) => ({ ...current, [selectedGapId]: value }));
-                      }}
-                      placeholder="如果不填，系统会用 LLM 给出的建议问题。"
-                    />
-                  </label>
-
-                  <button
-                    className="button"
-                    type="button"
-                    disabled={!selectedGapId || props.isBusy(`adopt-${selectedGapId}`)}
-                    onClick={() => {
-                      if (!humanSelectTask || !selectedGapId) {
-                        return;
-                      }
-                      void props.adoptDirection({
-                        humanSelectTaskId: humanSelectTask.task_id,
-                        gapId: selectedGapId,
-                        researchQuestion: researchQuestion || suggestedResearchQuestion,
-                        operatorNote: operatorNotes,
-                      });
-                    }}
-                  >
-                    采用这个方向并继续
-                  </button>
                 </div>
               ) : (
                 <EmptyState title="先选一个候选方向" body="点左侧任意候选卡片，右侧就会载入真实 LLM 讨论。" />
@@ -517,7 +589,7 @@ export function OverviewTab(props: Props) {
         ) : (
           <EmptyState
             title="还没有候选方向"
-            body="先点击上面的“开始自动调研”或“继续自动推进”。系统跑到 human_select 时，这里会自动出现候选 idea。"
+            body="先点上面的“开始自动调研”或“继续自动推进”。系统跑到 human_select 时，这里会自动出现候选 idea。"
           />
         )}
       </Panel>
@@ -633,4 +705,56 @@ export function OverviewTab(props: Props) {
       </Panel>
     </div>
   );
+}
+
+function discussionMetadata(response: GuideDiscussDirectionResponse): Record<string, unknown> {
+  return {
+    thread_id: response.thread_id,
+    gap_id: response.gap_id,
+    topic: response.topic,
+    strengths: response.strengths,
+    risks: response.risks,
+    next_checks: response.next_checks,
+    cited_papers: response.cited_papers,
+    research_question_suggestion: response.research_question_suggestion,
+    assistant_role: response.assistant_role,
+    provider_name: response.provider_name,
+    model_name: response.model_name,
+    reasoning_effort: response.reasoning_effort,
+    skill_name: response.skill_name,
+  };
+}
+
+function discussionFromHistory(
+  history: DiscussionHistory,
+  gapId: string,
+): GuideDiscussDirectionResponse | null {
+  const assistant = [...history.messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.metadata);
+  if (!assistant?.metadata) {
+    return null;
+  }
+  const metadata = assistant.metadata;
+  return {
+    thread_id: typeof metadata.thread_id === "string" ? metadata.thread_id : history.thread_id,
+    assistant_message: assistant.content,
+    gap_id: gapId,
+    topic: typeof metadata.topic === "string" ? metadata.topic : "",
+    strengths: Array.isArray(metadata.strengths) ? metadata.strengths.map(String) : [],
+    risks: Array.isArray(metadata.risks) ? metadata.risks.map(String) : [],
+    next_checks: Array.isArray(metadata.next_checks) ? metadata.next_checks.map(String) : [],
+    cited_papers: Array.isArray(metadata.cited_papers) ? metadata.cited_papers.map(String) : [],
+    research_question_suggestion:
+      typeof metadata.research_question_suggestion === "string"
+        ? metadata.research_question_suggestion
+        : "",
+    assistant_role: typeof metadata.assistant_role === "string" ? metadata.assistant_role : "Advisor",
+    provider_name: typeof metadata.provider_name === "string" ? metadata.provider_name : "codex",
+    model_name: typeof metadata.model_name === "string" ? metadata.model_name : "gpt-5.4",
+    reasoning_effort:
+      typeof metadata.reasoning_effort === "string" ? metadata.reasoning_effort : "high",
+    skill_name:
+      typeof metadata.skill_name === "string" ? metadata.skill_name : "research-direction-advisor",
+  };
 }

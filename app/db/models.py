@@ -44,9 +44,17 @@ class TaskModel(Base):
     assigned_agent: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False)
     parent_task_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    depends_on: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    join_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    fanout_group: Mapped[str | None] = mapped_column(String, nullable=True)
     experiment_proposal_id: Mapped[str | None] = mapped_column(String, nullable=True)
     dispatch_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     last_run_routing: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    retry_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    max_retries: Mapped[int] = mapped_column(default=2, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String, nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    checkpoint_path: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

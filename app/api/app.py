@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, HTTPException
+import asyncio
+import json
+
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_project_service, get_task_service
 from app.api.schemas import (
@@ -24,6 +28,7 @@ from app.api.schemas import (
     ClaimCreate,
     ClaimSupportRefRead,
     ClaimRead,
+    DiscussionHistoryRead,
     DiscussDirectionRequest,
     DiscussDirectionResponse,
     EvidenceRefModel,
@@ -48,6 +53,7 @@ from app.api.schemas import (
     ResultsFreezeSave,
     ResultsFreezeSaveResponse,
     RoutingInspectionRead,
+    RunEventRead,
     RunEvidenceRefRead,
     RunManifestCreate,
     RunManifestRead,
@@ -137,6 +143,8 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
     app.state.provider_registry = services.provider_registry
     app.state.orchestrator = services.orchestrator
     app.state.research_guide_service = services.research_guide_service
+    app.state.activity_service = services.activity_service
+    app.state.checkpoint_service = services.checkpoint_service
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -214,6 +222,7 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
         except RuntimeError as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
         return DiscussDirectionResponse(
+            thread_id=result.thread_id,
             assistant_message=result.assistant_message,
             gap_id=result.gap_id,
             topic=result.topic,
@@ -227,6 +236,37 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             model_name=result.model_name,
             reasoning_effort=result.reasoning_effort,
             skill_name=result.skill_name,
+        )
+
+    @app.get(
+        "/projects/{project_id}/guide/discussions/{human_select_task_id}/{gap_id}",
+        response_model=DiscussionHistoryRead,
+    )
+    def guide_discussion_history(
+        project_id: str,
+        human_select_task_id: str,
+        gap_id: str,
+    ) -> DiscussionHistoryRead:
+        messages = app.state.research_guide_service.list_discussion_messages(
+            project_id=project_id,
+            human_select_task_id=human_select_task_id,
+            gap_id=gap_id,
+        )
+        return DiscussionHistoryRead(
+            thread_id=app.state.activity_service.discussion_thread_id(
+                human_select_task_id=human_select_task_id,
+                gap_id=gap_id,
+            ),
+            messages=[
+                {
+                    "message_id": message.message_id,
+                    "role": message.role,
+                    "content": message.content,
+                    "created_at": message.created_at.isoformat(),
+                    "metadata": message.metadata,
+                }
+                for message in messages
+            ],
         )
 
     @app.post("/projects/{project_id}/autopilot", response_model=AutopilotResponse)
@@ -301,12 +341,65 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
                 owner=payload.owner,
                 assigned_agent=payload.assigned_agent,
                 parent_task_id=payload.parent_task_id,
+                depends_on=payload.depends_on,
+                join_key=payload.join_key,
+                fanout_group=payload.fanout_group,
+                max_retries=payload.max_retries,
                 dispatch_profile=dispatch_profile_from_dict(
                     payload.dispatch_profile.model_dump() if payload.dispatch_profile is not None else None
                 ),
             )
         )
         return _to_task_read(task)
+
+    @app.get("/projects/{project_id}/events", response_model=list[RunEventRead])
+    def list_project_events(
+        project_id: str,
+        after_id: int = Query(default=0, ge=0),
+        limit: int = Query(default=100, ge=1, le=500),
+    ) -> list[RunEventRead]:
+        return [
+            RunEventRead(
+                event_id=event.event_id or 0,
+                project_id=event.project_id,
+                task_id=event.task_id,
+                run_id=event.run_id,
+                event_type=event.event_type,
+                message=event.message,
+                payload=event.payload,
+                created_at=event.created_at,
+            )
+            for event in app.state.activity_service.list_events(project_id, after_id=after_id, limit=limit)
+        ]
+
+    @app.get("/projects/{project_id}/events/stream")
+    async def stream_project_events(
+        project_id: str,
+        after_id: int = Query(default=0, ge=0),
+    ) -> StreamingResponse:
+        async def event_stream():
+            cursor = after_id
+            while True:
+                events = app.state.activity_service.list_events(project_id, after_id=cursor, limit=100)
+                if events:
+                    for event in events:
+                        cursor = max(cursor, event.event_id or cursor)
+                        payload = RunEventRead(
+                            event_id=event.event_id or 0,
+                            project_id=event.project_id,
+                            task_id=event.task_id,
+                            run_id=event.run_id,
+                            event_type=event.event_type,
+                            message=event.message,
+                            payload=event.payload,
+                            created_at=event.created_at,
+                        )
+                        yield f"id: {payload.event_id}\ndata: {payload.model_dump_json()}\n\n"
+                else:
+                    yield ": keep-alive\n\n"
+                await asyncio.sleep(1.0)
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     @app.get("/tasks", response_model=list[TaskRead])
     def list_tasks(
@@ -876,10 +969,18 @@ def _to_task_read(task: Task) -> TaskRead:
         owner=task.owner,
         assigned_agent=task.assigned_agent,
         parent_task_id=task.parent_task_id,
+        depends_on=task.depends_on,
+        join_key=task.join_key,
+        fanout_group=task.fanout_group,
+        max_retries=task.max_retries,
         dispatch_profile=to_record(task.dispatch_profile),
         status=task.status.value,
         experiment_proposal_id=task.experiment_proposal_id,
         last_run_routing=to_record(task.last_run_routing),
+        retry_count=task.retry_count,
+        last_error=task.last_error,
+        next_retry_at=task.next_retry_at,
+        checkpoint_path=task.checkpoint_path,
         created_at=task.created_at,
     )
 
