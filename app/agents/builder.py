@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 from app.agents.llm_agent import PromptDrivenAgent
@@ -11,9 +13,11 @@ from app.schemas.claim import Claim
 from app.schemas.result import AgentResult
 from app.schemas.run_manifest import RunManifest
 from app.schemas.task import Task
+from app.tools.experiment_runner import run_experiment
 from app.services.artifact_service import ArtifactService
 from app.services.claim_service import ClaimService
 from app.services.run_service import RunService
+from app.agents.utils import write_artifact
 
 
 class BuilderAgent(PromptDrivenAgent):
@@ -66,6 +70,27 @@ class BuilderAgent(PromptDrivenAgent):
         return payload
 
     def build_result(self, task: Task, ctx, output: dict[str, Any]) -> AgentResult:
+        experiment_script = str(output.get("experiment_script", "")).strip()
+        execution_command = str(output.get("execution_command", "")).strip() or "python experiment.py"
+        script_artifact = None
+        execution_result = None
+        execution_metrics: dict[str, Any] = {}
+        if experiment_script:
+            script_artifact = write_artifact(
+                run_id=ctx.run_id,
+                artifact_id=f"{ctx.run_id}-experiment",
+                kind="experiment_script",
+                content=experiment_script,
+                extension="py",
+                metadata={"execution_command": execution_command},
+                artifacts_dir=ctx.artifacts_dir or "artifacts",
+            )
+            if self.artifact_service is not None:
+                self.artifact_service.register_artifact(script_artifact)
+            timeout_seconds = self._execution_timeout(task)
+            execution_result = run_experiment(script_artifact.path, timeout=timeout_seconds)
+            execution_metrics = self._extract_metrics(execution_result["stdout"])
+
         run_payload = output["run_manifest"]
         manifest = RunManifest(
             run_id=run_payload["run_id"],
@@ -77,8 +102,8 @@ class BuilderAgent(PromptDrivenAgent):
             gpu=run_payload["gpu"],
             experiment_proposal_id=task.experiment_proposal_id,
             experiment_branch=run_payload.get("experiment_branch") or task.input_payload.get("branch_name"),
-            status=run_payload.get("status", "completed"),
-            metrics=run_payload.get("metrics", {}),
+            status=self._manifest_status(run_payload.get("status", "completed"), execution_result),
+            metrics={**run_payload.get("metrics", {}), **execution_metrics},
             artifacts=run_payload.get("artifacts", []),
             dispatch_routing=ctx.routing,
         )
@@ -86,6 +111,23 @@ class BuilderAgent(PromptDrivenAgent):
             self.run_service.register_run(manifest)
 
         artifact_ids = []
+        if script_artifact is not None:
+            artifact_ids.append(script_artifact.artifact_id)
+
+        if execution_result is not None:
+            execution_artifact = write_artifact(
+                run_id=ctx.run_id,
+                artifact_id=f"{ctx.run_id}-execution-log",
+                kind="execution_log",
+                content=json.dumps(execution_result, ensure_ascii=False, indent=2),
+                extension="json",
+                metadata={"execution_command": execution_command},
+                artifacts_dir=ctx.artifacts_dir or "artifacts",
+            )
+            if self.artifact_service is not None:
+                self.artifact_service.register_artifact(execution_artifact)
+            artifact_ids.append(execution_artifact.artifact_id)
+
         for item in output.get("artifacts", []):
             artifact = ArtifactRecord(
                 artifact_id=item["artifact_id"],
@@ -116,14 +158,18 @@ class BuilderAgent(PromptDrivenAgent):
         next_tasks = [
             build_child_task(
                 task,
-                kind="review_build",
-                goal=f"Review build outputs for run {manifest.run_id}",
+                kind="analyze_run",
+                goal=f"Analyze build outputs for run {manifest.run_id}",
                 input_payload={
                     "run_id": manifest.run_id,
                     "claim_ids": claim_ids,
                     "artifact_ids": artifact_ids,
+                    "stdout": None if execution_result is None else execution_result["stdout"],
+                    "stderr": None if execution_result is None else execution_result["stderr"],
+                    "returncode": None if execution_result is None else execution_result["returncode"],
+                    "metrics": manifest.metrics,
                 },
-                assigned_agent="reviewer_agent",
+                assigned_agent="analyst_agent",
             )
         ]
 
@@ -131,6 +177,8 @@ class BuilderAgent(PromptDrivenAgent):
             status="success",
             output={
                 "summary": output.get("summary", ""),
+                "experiment_script": experiment_script,
+                "execution_result": execution_result,
                 "run_manifest": run_payload,
                 "claims": output.get("claims", []),
                 "artifacts": output.get("artifacts", []),
@@ -139,3 +187,31 @@ class BuilderAgent(PromptDrivenAgent):
             next_tasks=next_tasks,
             audit_notes=output.get("audit_notes", []),
         )
+
+    @staticmethod
+    def _execution_timeout(task: Task) -> int:
+        try:
+            return max(30, int(task.input_payload.get("timeout_seconds", 600)))
+        except (TypeError, ValueError):
+            return 600
+
+    @staticmethod
+    def _manifest_status(base_status: str, execution_result: dict[str, Any] | None) -> str:
+        if execution_result is None:
+            return base_status
+        return "completed" if execution_result.get("returncode") == 0 else "failed"
+
+    @staticmethod
+    def _extract_metrics(stdout: str) -> dict[str, Any]:
+        metrics: dict[str, Any] = {}
+        json_match = re.search(r"\{[\s\S]*\}", stdout)
+        if json_match is not None:
+            try:
+                parsed = json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                return parsed
+        for key, value in re.findall(r"([A-Za-z_][A-Za-z0-9_\-]*)\s*[:=]\s*(-?\d+(?:\.\d+)?)", stdout):
+            metrics[key] = float(value)
+        return metrics

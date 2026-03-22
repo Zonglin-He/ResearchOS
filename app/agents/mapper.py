@@ -80,6 +80,7 @@ class MapperAgent(PromptDrivenAgent):
                     input_payload={
                         "topic": gap_map.topic,
                         "ranked_candidates": ranked_candidates,
+                        "gap_map": gap_map_payload,
                     },
                 )
             )
@@ -106,9 +107,12 @@ class MapperAgent(PromptDrivenAgent):
                             gap_id=gap["gap_id"],
                             description=gap["description"],
                             supporting_papers=gap.get("supporting_papers", []),
+                            evidence_summary=gap.get("evidence_summary", ""),
                             attack_surface=gap.get("attack_surface", ""),
                             difficulty=gap.get("difficulty", ""),
                             novelty_type=gap.get("novelty_type", ""),
+                            feasibility=gap.get("feasibility", ""),
+                            novelty_score=float(gap.get("novelty_score", 0.0)),
                         )
                         for gap in cluster.get("gaps", [])
                     ],
@@ -132,9 +136,12 @@ class MapperAgent(PromptDrivenAgent):
                     "gap_id": gap_id,
                     "description": description,
                     "supporting_papers": [card.paper_id],
+                    "evidence_summary": f"Derived from {card.paper_id}: {card.strongest_result or card.problem}",
                     "attack_surface": card.setting,
                     "difficulty": "medium",
                     "novelty_type": "extension",
+                    "feasibility": "medium",
+                    "novelty_score": float(max(1, len(cards) - index + 1)),
                 }
             )
             ranked.append(
@@ -142,6 +149,9 @@ class MapperAgent(PromptDrivenAgent):
                     "gap_id": gap_id,
                     "score": float(max(1, len(cards) - index + 1)),
                     "rationale": f"Grounded in paper card {card.paper_id} and topic {topic}.",
+                    "feasibility": "medium",
+                    "novelty_score": float(max(1, len(cards) - index + 1)),
+                    "evidence_summary": f"Primary support comes from {card.title}.",
                 }
             )
 
@@ -151,9 +161,12 @@ class MapperAgent(PromptDrivenAgent):
                     "gap_id": "gap-1",
                     "description": f"Map open questions for {topic}.",
                     "supporting_papers": task.input_payload.get("paper_ids", []),
+                    "evidence_summary": f"No strong cluster found yet; synthesized from topic {topic}.",
                     "attack_surface": topic,
                     "difficulty": "medium",
                     "novelty_type": "open_question",
+                    "feasibility": "medium",
+                    "novelty_score": 1.0,
                 }
             )
             ranked.append(
@@ -161,6 +174,9 @@ class MapperAgent(PromptDrivenAgent):
                     "gap_id": "gap-1",
                     "score": 1.0,
                     "rationale": f"Fallback candidate synthesized from topic {topic}.",
+                    "feasibility": "medium",
+                    "novelty_score": 1.0,
+                    "evidence_summary": f"Synthesized from topic {topic}.",
                 }
             )
 

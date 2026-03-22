@@ -52,6 +52,21 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--frontend-port", type=int, default=5173)
     web.set_defaults(handler=_handle_web)
 
+    start = subparsers.add_parser("start")
+    start.add_argument("topic")
+    start.add_argument("--project-name", default="")
+    start.add_argument("--project-id", default="")
+    start.add_argument("--papers", type=int, default=8)
+    start.add_argument("--expected-min-papers", type=int, default=5)
+    start.add_argument("--owner", default="operator")
+    start.add_argument(
+        "--no-auto-dispatch",
+        action="store_false",
+        dest="auto_dispatch",
+        help="Only create the project and intake task without continuing the flow.",
+    )
+    start.set_defaults(handler=_handle_start_research, auto_dispatch=True)
+
     create_project = subparsers.add_parser("create-project")
     create_project.add_argument("--project-id", required=True)
     create_project.add_argument("--name", required=True)
@@ -386,6 +401,38 @@ def _handle_init_db(
     return 0
 
 
+def _handle_start_research(
+    args: argparse.Namespace,
+    project_service: ProjectService,
+    task_service: TaskService,
+    claim_service: ClaimService,
+    run_service: RunService,
+    freeze_service: FreezeService,
+    paper_card_service: PaperCardService,
+    gap_map_service: GapMapService,
+    approval_service: ApprovalService,
+) -> int:
+    result = asyncio.run(
+        args.runtime_services.research_guide_service.start_research(
+            research_goal=args.topic,
+            project_name=args.project_name,
+            project_id=args.project_id,
+            owner=args.owner,
+            max_papers=max(1, args.papers),
+            expected_min_papers=max(1, args.expected_min_papers),
+            auto_dispatch=args.auto_dispatch,
+        )
+    )
+    print(f"Project started: {result.project.project_id}\t{result.project.name}")
+    print(f"Intake task: {result.intake_task.task_id}")
+    if result.autopilot.dispatched_task_ids:
+        print("Autopilot dispatched: " + ", ".join(result.autopilot.dispatched_task_ids))
+    print(f"Next step: {result.autopilot.stop_reason}")
+    if result.autopilot.human_select_task_id:
+        print(f"Human select task: {result.autopilot.human_select_task_id}")
+    return 0
+
+
 def _terminate_process(process: subprocess.Popen[bytes] | subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
@@ -592,6 +639,13 @@ def _handle_dispatch_task(
             f"model={dispatch.result.routing.model or '<default>'} "
             f"sources={to_record(dispatch.result.routing.sources)}"
         )
+    if dispatch.task.status == TaskStatus.SUCCEEDED:
+        autopilot = asyncio.run(
+            services.research_guide_service.autopilot_project(dispatch.task.project_id)
+        )
+        print(f"Autopilot next step: {autopilot.stop_reason}")
+        if autopilot.human_select_task_id is not None:
+            print(f"Human select task: {autopilot.human_select_task_id}")
     return 0
 
 

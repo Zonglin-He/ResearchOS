@@ -20,6 +20,7 @@ from app.services.gap_map_service import GapMapService
 from app.services.paper_card_service import PaperCardService
 from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
+from app.tools.arxiv_fetcher import search_arxiv
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DISCUSSION_PROMPT_PATH = _REPO_ROOT / "prompts" / "guide" / "discussion_advisor.md"
@@ -128,6 +129,11 @@ class ResearchGuideService:
         )
 
         derived_keywords = keywords or self._derive_keywords(goal)
+        arxiv_query = " ".join(derived_keywords[:6]) if derived_keywords else goal
+        try:
+            seed_papers = search_arxiv(arxiv_query, max_results=max(3, max_papers))
+        except Exception:
+            seed_papers = []
         intake_task = self.task_service.create_task(
             Task(
                 task_id=self._ensure_unique_task_id(f"{resolved_project_id}-paper-ingest"),
@@ -137,6 +143,9 @@ class ResearchGuideService:
                 input_payload={
                     "topic": goal,
                     "keywords": derived_keywords,
+                    "search_query": arxiv_query,
+                    "search_source": "arxiv",
+                    "seed_papers": seed_papers,
                     "max_papers": max(1, max_papers),
                     "expected_min_papers": max(1, expected_min_papers),
                 },
@@ -151,7 +160,12 @@ class ResearchGuideService:
                 task_id=intake_task.task_id,
                 event_type="guide.started",
                 message=f"Research guide started for project {project.project_id}",
-                payload={"research_goal": goal, "project_name": project.name},
+                payload={
+                    "research_goal": goal,
+                    "project_name": project.name,
+                    "search_source": "arxiv",
+                    "seed_paper_count": len(seed_papers),
+                },
             )
         )
         if auto_dispatch:

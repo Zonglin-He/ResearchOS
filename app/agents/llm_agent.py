@@ -53,6 +53,11 @@ class PromptDrivenAgent(BaseAgent):
         system_prompt = self._build_system_prompt(task)
         user_payload = self.build_user_payload(task, ctx)
         user_input = json.dumps(user_payload, ensure_ascii=False, default=str)
+        resumed_output = self._resume_output_from_checkpoint(ctx)
+        if resumed_output is not None:
+            result = self.build_result(task, ctx, resumed_output)
+            result.audit_notes.append("resumed from checkpointed llm output")
+            return result
         ctx.record_checkpoint(
             "llm_request_prepared",
             {
@@ -87,7 +92,7 @@ class PromptDrivenAgent(BaseAgent):
             "llm_response_received",
             {
                 "task_id": task.task_id,
-                "output_keys": sorted(output.keys()),
+                "output": output,
             },
         )
         result = self.build_result(task, ctx, output)
@@ -96,6 +101,7 @@ class PromptDrivenAgent(BaseAgent):
             {
                 "task_id": task.task_id,
                 "result_status": result.status,
+                "output": output,
                 "artifact_count": len(result.artifacts),
                 "next_task_count": len(result.next_tasks),
             },
@@ -104,6 +110,19 @@ class PromptDrivenAgent(BaseAgent):
         if role_asset_note is not None:
             result.audit_notes.append(role_asset_note)
         return result
+
+    @staticmethod
+    def _resume_output_from_checkpoint(ctx: RunContext) -> dict[str, Any] | None:
+        checkpoint = ctx.resume_from_checkpoint
+        if not isinstance(checkpoint, dict):
+            return None
+        payload = checkpoint.get("payload")
+        if not isinstance(payload, dict):
+            return None
+        output = payload.get("output")
+        if isinstance(output, dict) and output:
+            return output
+        return None
 
     def _resolve_provider(self, ctx: RunContext) -> BaseProvider:
         if ctx.routing is not None and self.provider_registry is not None:

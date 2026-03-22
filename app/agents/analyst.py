@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.agents.utils import build_child_task
 from app.agents.llm_agent import PromptDrivenAgent
 from app.agents.response_schemas import ANALYST_RESPONSE_SCHEMA
 from app.agents.utils import write_artifact
@@ -58,14 +59,39 @@ class AnalystAgent(PromptDrivenAgent):
         )
         if self.artifact_service is not None:
             self.artifact_service.register_artifact(artifact)
+        next_tasks = []
+        if task.kind == "analyze_run":
+            next_tasks.append(
+                build_child_task(
+                    task,
+                    kind="review_build",
+                    goal=f"Review analyzed run outputs for {task.input_payload.get('run_id', ctx.run_id)}",
+                    input_payload={
+                        "run_id": task.input_payload.get("run_id", ctx.run_id),
+                        "artifact_ids": [*task.input_payload.get("artifact_ids", []), artifact.artifact_id],
+                        "metrics": output.get("metrics", task.input_payload.get("metrics", {})),
+                        "execution_success": output.get(
+                            "execution_success",
+                            task.input_payload.get("returncode", 1) == 0,
+                        ),
+                    },
+                    assigned_agent="reviewer_agent",
+                )
+            )
         return AgentResult(
             status="success",
             output={
                 "summary": output.get("summary", ""),
+                "metrics": output.get("metrics", task.input_payload.get("metrics", {})),
+                "execution_success": output.get(
+                    "execution_success",
+                    task.input_payload.get("returncode", 1) == 0,
+                ),
                 "anomalies": output.get("anomalies", []),
                 "recommended_actions": output.get("recommended_actions", []),
                 "result_summary_path": artifact.path,
             },
             artifacts=[artifact.artifact_id],
+            next_tasks=next_tasks,
             audit_notes=output.get("audit_notes", []),
         )

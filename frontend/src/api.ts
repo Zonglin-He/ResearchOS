@@ -317,9 +317,12 @@ export type GapMapDetail = {
       gap_id: string;
       description: string;
       supporting_papers: string[];
+      evidence_summary: string;
       attack_surface: string;
       difficulty: string;
       novelty_type: string;
+      feasibility: string;
+      novelty_score: number;
     }>;
   }>;
 };

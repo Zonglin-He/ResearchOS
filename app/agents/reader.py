@@ -207,12 +207,22 @@ class ReaderAgent(PromptDrivenAgent):
             return None
         if task.input_payload.get("source_summary"):
             return None
-        if self.tool_registry is None:
-            return None
 
-        try:
-            search_tool = self.tool_registry.get("paper_search")
-        except KeyError:
+        seed_papers = task.input_payload.get("seed_papers", [])
+        if isinstance(seed_papers, list) and seed_papers:
+            raw_cards = [self._card_from_arxiv_hit(task, item) for item in seed_papers if isinstance(item, dict)]
+            return {
+                "paper_cards": raw_cards,
+                "artifact_notes": [f"arxiv seed papers preloaded hits={len(raw_cards)}"],
+                "uncertainties": [
+                    "arXiv abstracts may omit benchmark details, so dataset and metric fields can still be sparse"
+                ],
+                "audit_notes": [
+                    f"reader used pre-fetched arXiv candidates ({len(raw_cards)}) from guide/start"
+                ],
+            }
+
+        if self.tool_registry is None:
             return None
 
         query = self._paper_query(task)
@@ -226,6 +236,32 @@ class ReaderAgent(PromptDrivenAgent):
         except (TypeError, ValueError):
             limit = 5
 
+        try:
+            arxiv_tool = self.tool_registry.get("arxiv_fetcher")
+        except KeyError:
+            arxiv_tool = None
+
+        if arxiv_tool is not None:
+            search_result = await arxiv_tool.execute(query=query, max_results=limit)
+            items = search_result.get("items", [])
+            raw_cards = [self._card_from_arxiv_hit(task, item) for item in items if item.get("title")]
+            if raw_cards:
+                return {
+                    "paper_cards": raw_cards,
+                    "artifact_notes": [f"arxiv query={query} hits={len(raw_cards)}"],
+                    "uncertainties": [
+                        "arXiv metadata may miss final venue information or exact benchmark splits"
+                    ],
+                    "audit_notes": [
+                        f"reader arXiv retrieval returned {len(raw_cards)} candidate papers"
+                    ],
+                }
+
+        try:
+            search_tool = self.tool_registry.get("paper_search")
+        except KeyError:
+            return None
+
         search_result = await search_tool.execute(query=query, limit=limit)
         items = search_result.get("items", [])
         raw_cards = [self._card_from_search_hit(task, item) for item in items if item.get("title")]
@@ -238,6 +274,41 @@ class ReaderAgent(PromptDrivenAgent):
             "audit_notes": [
                 f"reader paper_search retrieved {len(raw_cards)} candidate papers from Crossref"
             ],
+        }
+
+    @staticmethod
+    def _card_from_arxiv_hit(task: Task, item: dict[str, Any]) -> dict[str, Any]:
+        topic = str(task.input_payload.get("topic", "")).strip() or "arXiv search"
+        title = str(item.get("title", "")).strip()
+        abstract = str(item.get("abstract", "")).strip()
+        arxiv_id = str(item.get("arxiv_id", "")).strip()
+        published = str(item.get("published", "")).strip()
+        authors = [str(author).strip() for author in item.get("authors", []) if str(author).strip()]
+        paper_id = f"arxiv:{arxiv_id}" if arxiv_id else title.lower().replace(" ", "_")[:64]
+        summary_bits = [
+            f"arXiv candidate for {topic}.",
+            authors and f"Authors: {', '.join(authors[:4])}.",
+            published and f"Published: {published}.",
+            item.get("pdf_url") and f"PDF: {item['pdf_url']}.",
+        ]
+        return {
+            "paper_id": paper_id,
+            "title": title,
+            "problem": abstract or f"Retrieved from arXiv for {topic}.",
+            "setting": topic,
+            "task_type": topic,
+            "core_assumption": [],
+            "method_summary": " ".join(bit for bit in summary_bits if bit),
+            "key_modules": [],
+            "datasets": [],
+            "metrics": [],
+            "strongest_result": "",
+            "claimed_contributions": authors[:4],
+            "hidden_dependencies": [],
+            "likely_failure_modes": [],
+            "repro_risks": [],
+            "idea_seeds": [topic],
+            "evidence_refs": [{"section": "arxiv", "page": 1}],
         }
 
     @staticmethod

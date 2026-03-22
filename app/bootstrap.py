@@ -59,6 +59,7 @@ from app.services.run_service import RunService
 from app.services.task_service import TaskService
 from app.services.verification_service import VerificationService
 from app.tools.experiment_runner import ExperimentRunnerTool
+from app.tools.arxiv_fetcher import ArxivFetcherTool
 from app.tools.filesystem import FilesystemTool
 from app.tools.git_tool import GitTool
 from app.tools.mcp_adapter import MCPAdapterTool
@@ -107,6 +108,7 @@ def build_tool_registry() -> ToolRegistry:
     registry.register(PythonExecTool())
     registry.register(GitTool())
     registry.register(ExperimentRunnerTool())
+    registry.register(ArxivFetcherTool())
     registry.register(PaperSearchTool())
     registry.register(PDFParseTool())
     registry.register(MCPAdapterTool())

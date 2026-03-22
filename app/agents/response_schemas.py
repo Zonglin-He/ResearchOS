@@ -80,9 +80,12 @@ MAPPER_RESPONSE_SCHEMA = {
                                             "type": "array",
                                             "items": {"type": "string"},
                                         },
+                                        "evidence_summary": {"type": "string"},
                                         "attack_surface": {"type": "string"},
                                         "difficulty": {"type": "string"},
                                         "novelty_type": {"type": "string"},
+                                        "feasibility": {"type": "string"},
+                                        "novelty_score": {"type": "number"},
                                     },
                                     "required": ["gap_id", "description"],
                                 },
@@ -102,6 +105,9 @@ MAPPER_RESPONSE_SCHEMA = {
                     "gap_id": {"type": "string"},
                     "score": {"type": "number"},
                     "rationale": {"type": "string"},
+                    "feasibility": {"type": "string"},
+                    "novelty_score": {"type": "number"},
+                    "evidence_summary": {"type": "string"},
                 },
                 "required": ["gap_id", "score", "rationale"],
             },
@@ -115,6 +121,8 @@ BUILDER_RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
         "summary": {"type": "string"},
+        "experiment_script": {"type": "string"},
+        "execution_command": {"type": "string"},
         "artifacts": {
             "type": "array",
             "items": {
@@ -238,6 +246,8 @@ ANALYST_RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
         "summary": {"type": "string"},
+        "metrics": {"type": "object"},
+        "execution_success": {"type": "boolean"},
         "anomalies": {"type": "array", "items": {"type": "string"}},
         "recommended_actions": {"type": "array", "items": {"type": "string"}},
         "audit_notes": {"type": "array", "items": {"type": "string"}},

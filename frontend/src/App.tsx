@@ -371,6 +371,19 @@ export default function App() {
     setActiveTab("create");
   }
 
+  function openProject(projectId: string, tab: TabKey = "overview") {
+    setSelectedProjectId(projectId);
+    if (tab !== "create") {
+      setCreateFocus(null);
+    }
+    setActiveTab(tab);
+    setArtifactDetail(null);
+    setPaperCardDetail(null);
+    setGapMapDetail(null);
+    setRoutingPreview(null);
+    void loadData(false, projectId);
+  }
+
   async function startResearchFlow(payload: { researchGoal: string; projectName: string }) {
     await runAction("guide-start", async () => {
       const response = await postJson<GuideStartResponse>("/guide/start", {
@@ -537,7 +550,9 @@ export default function App() {
 
             {activeTab === "overview" ? (
               <OverviewTab
+                projects={data.projects}
                 selectedProject={data.selectedProject}
+                allTasks={data.tasks}
                 projectTasks={projectTasks}
                 projectDashboard={data.projectDashboard}
                 providers={data.providers}
@@ -565,6 +580,7 @@ export default function App() {
                     `/projects/${encodeURIComponent(selectedProjectId)}/guide/discussions/${encodeURIComponent(humanSelectTaskId)}/${encodeURIComponent(gapId)}`,
                   )
                 }
+                openProject={openProject}
                 isBusy={(key) => busyKeys.includes(key)}
               />
             ) : null}

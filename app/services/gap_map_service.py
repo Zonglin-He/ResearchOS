@@ -100,9 +100,12 @@ class GapMapService:
                                 gap_id=gap["gap_id"],
                                 description=gap["description"],
                                 supporting_papers=gap.get("supporting_papers", []),
+                                evidence_summary=gap.get("evidence_summary", ""),
                                 attack_surface=gap.get("attack_surface", ""),
                                 difficulty=gap.get("difficulty", ""),
                                 novelty_type=gap.get("novelty_type", ""),
+                                feasibility=gap.get("feasibility", ""),
+                                novelty_score=float(gap.get("novelty_score", 0.0)),
                             )
                             for gap in cluster.get("gaps", [])
                         ],
