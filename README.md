@@ -1,5 +1,10 @@
 # ResearchOS
 
+<p align="right">
+  <a href="README.md"><img src="https://img.shields.io/badge/lang-English-blue?style=flat-square" /></a>
+  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/语言-中文-red?style=flat-square" /></a>
+</p>
+
 > A multi-agent research workflow system that takes a research idea from literature retrieval to a reviewable paper draft — with structured human oversight at every critical decision point.
 
 <p align="center">
@@ -370,25 +375,6 @@ The production stack swaps SQLite for PostgreSQL and adds a Celery worker for as
 - [ ] JSONL → SQLite primary storage migration for all registries
 
 ---
-
-<details>
-<summary>中文简介</summary>
-
-## 这是什么
-
-ResearchOS 是一个多 Agent 研究工作流系统，把"有研究想法"到"可投稿草稿"之间的全部流程结构化，同时在每个关键决策点保留人工介入。
-
-**核心设计思路**：研究是人机协作，不是人机替代。Agent 处理高重复性工作（文献筛选、代码生成、引用验证、结果分析）；人类保留对真正重要决策的控制权（研究方向选择、实验设计审批、结论验证）。
-
-**技术亮点**：
-- 10 个专用 Agent，各有三层指令架构（角色约束 + 任务规则 + 技能文件）
-- 16 阶段研究流水线，支持分支探索和自动回退
-- Gap Map 辩论验证机制（每个候选方向被挑战 Agent 质疑后才呈现给人类）
-- 实验沙箱 5 轮自修复（OOM 自动降 batch、NaN 由 LLM 修复优化器）
-- 结构化知识库跨项目复用，经验带时间衰减和命中频率权重
-- React 前端研究控制台 + FastAPI + SQLite/Postgres + Celery 生产部署栈
-
-</details>
 
 ---
 
