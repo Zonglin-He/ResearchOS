@@ -300,10 +300,10 @@ class ResearchGuideService:
         spec_id = self._slugify(f"{topic_id}-spec", fallback="spec-freeze")
         build_task = self.task_service.create_task(
             Task(
-                task_id=self._ensure_unique_task_id(f"{project_id}-branch-plan-{gap_id}"),
+                task_id=self._ensure_unique_task_id(f"{project_id}-hypothesis-draft-{gap_id}"),
                 project_id=project_id,
-                kind="branch_plan",
-                goal=f"Plan and explore experiment branches for the selected direction {gap_id} in {topic}.",
+                kind="hypothesis_draft",
+                goal=f"Draft falsifiable hypotheses for the selected direction {gap_id} in {topic}.",
                 input_payload={
                     "topic": topic,
                     "topic_id": topic_id,
@@ -318,7 +318,7 @@ class ResearchGuideService:
                 owner=owner,
                 depends_on=[human_select_task.task_id],
                 fanout_group=f"{project_id}:{gap_id}:branching",
-                join_key="branch_plan",
+                join_key="hypothesis_draft",
             )
         )
         self.project_service.update_stage(project_id, Stage.IMPLEMENT_IDEA)
@@ -1032,6 +1032,8 @@ class ResearchGuideService:
             return Stage.HUMAN_SELECT if terminal_status == TaskStatus.SUCCEEDED else Stage.MAP_GAPS
         if task_kind == "human_select":
             return Stage.FREEZE_TOPIC
+        if task_kind == "hypothesis_draft":
+            return Stage.IMPLEMENT_IDEA
         if task_kind in {"build_spec", "implement_experiment", "reproduce_baseline"}:
             return Stage.IMPLEMENT_IDEA if terminal_status != TaskStatus.SUCCEEDED else Stage.RUN_EXPERIMENTS
         if task_kind == "branch_plan":

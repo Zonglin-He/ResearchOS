@@ -263,11 +263,14 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
             routing_policy=build_agent_routing_policy(
                 agent_name="branch_manager_agent",
                 default_role_policy=build_role_routing_policy("analyst"),
+                task_kind_role_policies={
+                    "hypothesis_draft": build_role_routing_policy("hypothesist"),
+                },
                 fallback_provider=build_fallback_provider(config),
                 fallback_model_profile=build_fallback_model_profile(config, "branch_manager_agent"),
             ),
         ),
-        handles={"branch_plan", "branch_review"},
+        handles={"hypothesis_draft", "branch_plan", "branch_review"},
     )
     orchestrator.register_agent(
         BuilderAgent(

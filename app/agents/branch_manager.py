@@ -67,6 +67,11 @@ class BranchManagerAgent(PromptDrivenAgent):
                 "mode": "review",
                 "goal": "Choose the strongest surviving branch and justify why the others should be pruned.",
             }
+        elif task.kind == "hypothesis_draft":
+            payload["branch_manager_focus"] = {
+                "mode": "hypothesis",
+                "goal": "Translate the selected gap into 2-3 falsifiable hypotheses with baseline, metric, and failure conditions.",
+            }
         else:
             payload["branch_manager_focus"] = {
                 "mode": "plan",
@@ -77,7 +82,39 @@ class BranchManagerAgent(PromptDrivenAgent):
     def build_result(self, task: Task, ctx: RunContext, output: dict[str, Any]) -> AgentResult:
         if task.kind == "branch_review":
             return self._build_review_result(task, output)
+        if task.kind == "hypothesis_draft":
+            return self._build_hypothesis_result(task, output)
         return self._build_plan_result(task, output)
+
+    def _build_hypothesis_result(self, task: Task, output: dict[str, Any]) -> AgentResult:
+        hypotheses = output.get("branches", [])
+        if not isinstance(hypotheses, list) or not hypotheses:
+            hypotheses = self._fallback_hypotheses(task)
+            output.setdefault("audit_notes", []).append("branch manager fallback synthesized hypotheses")
+
+        next_task = Task(
+            task_id=f"{task.task_id}:branch_plan",
+            project_id=task.project_id,
+            kind="branch_plan",
+            goal="Turn drafted hypotheses into concrete, parallelizable experiment branches.",
+            input_payload={
+                **task.input_payload,
+                "drafted_hypotheses": hypotheses,
+            },
+            owner=task.owner,
+            assigned_agent="branch_manager_agent",
+            parent_task_id=task.task_id,
+            depends_on=[task.task_id],
+            fanout_group=task.fanout_group,
+            join_key="branch_plan",
+        )
+
+        return AgentResult(
+            status="success",
+            output={"summary": output.get("summary", ""), "branches": hypotheses},
+            next_tasks=[next_task],
+            audit_notes=output.get("audit_notes", []),
+        )
 
     def _build_plan_result(self, task: Task, output: dict[str, Any]) -> AgentResult:
         branches = output.get("branches", [])
@@ -288,5 +325,54 @@ class BranchManagerAgent(PromptDrivenAgent):
                 "feasibility": "high",
                 "expected_gain": "Validate robustness under limited compute.",
                 "constraints": ["reduced training budget", "report trade-offs explicitly"],
+            },
+        ]
+
+    @staticmethod
+    def _fallback_hypotheses(task: Task) -> list[dict[str, Any]]:
+        datasets = task.input_payload.get("datasets", []) or ["default-dataset"]
+        metrics = task.input_payload.get("metrics", []) or ["accuracy"]
+        selected_gap = str(task.input_payload.get("selected_gap_id", "selected-gap"))
+        dataset = datasets[0]
+        metric = metrics[0]
+        return [
+            {
+                "branch_id": "hypothesis-baseline",
+                "title": "Baseline replication hypothesis",
+                "hypothesis": (
+                    f"On {dataset}, a strong published baseline for {selected_gap} should reproduce within a small margin on {metric}. "
+                    f"Falsification: if the baseline cannot match the reported range or training is unstable, the reproduction hypothesis fails."
+                ),
+                "datasets": [dataset],
+                "metrics": [metric],
+                "feasibility": "high",
+                "expected_gain": "Establish a trustworthy comparison anchor.",
+                "constraints": ["match reported protocol", "record any deviations explicitly"],
+            },
+            {
+                "branch_id": "hypothesis-main",
+                "title": "Main extension hypothesis",
+                "hypothesis": (
+                    f"On {dataset}, a targeted variant motivated by {selected_gap} should outperform the baseline on {metric}. "
+                    f"Falsification: if the gain is negligible or disappears under the matched protocol, the mechanism claim fails."
+                ),
+                "datasets": [dataset],
+                "metrics": [metric],
+                "feasibility": "medium",
+                "expected_gain": "Primary novelty claim.",
+                "constraints": ["change one factor at a time", "keep fairness controls intact"],
+            },
+            {
+                "branch_id": "hypothesis-boundary",
+                "title": "Boundary condition hypothesis",
+                "hypothesis": (
+                    f"Under a cheaper or stress-tested setting on {dataset}, the proposed effect for {selected_gap} should weaken in a measurable way on {metric}. "
+                    f"Falsification: if performance remains unchanged, the supposed boundary condition is not supported."
+                ),
+                "datasets": [dataset],
+                "metrics": [metric],
+                "feasibility": "high",
+                "expected_gain": "Clarify where the idea breaks or remains robust.",
+                "constraints": ["reduce one resource dimension", "report trade-offs explicitly"],
             },
         ]

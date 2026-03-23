@@ -21,7 +21,6 @@ class GapMapService:
         self.database = database
 
     def register_gap_map(self, gap_map: GapMap) -> GapMap:
-        append_jsonl(self.registry_path, to_record(gap_map))
         if self.database is not None:
             with self.database.connect() as connection:
                 connection.execute(
@@ -35,6 +34,8 @@ class GapMapService:
                         datetime.now(timezone.utc).isoformat(),
                     ),
                 )
+            return gap_map
+        append_jsonl(self.registry_path, to_record(gap_map))
         return gap_map
 
     def get_gap_map(self, topic: str) -> GapMap | None:

@@ -260,7 +260,7 @@ class Orchestrator:
             for task in self.task_service.list_tasks()
             if task.project_id == project_id and task.status == TaskStatus.SUCCEEDED
         ]
-        key_kinds = {"paper_ingest", "gap_mapping", "human_select", "build_spec", "implement_experiment", "analyze_run"}
+        key_kinds = {"paper_ingest", "gap_mapping", "human_select", "hypothesis_draft", "build_spec", "implement_experiment", "analyze_run"}
         lines: list[str] = []
         for task in sorted(tasks, key=lambda item: item.created_at):
             if task.kind not in key_kinds:
@@ -441,6 +441,8 @@ class Orchestrator:
             return Stage.MAP_GAPS
         if task.kind == "human_select":
             return Stage.FREEZE_TOPIC
+        if task.kind == "hypothesis_draft":
+            return Stage.IMPLEMENT_IDEA
         if task.kind == "branch_plan":
             return Stage.RUN_EXPERIMENTS if task.status == TaskStatus.SUCCEEDED else Stage.IMPLEMENT_IDEA
         if task.kind == "branch_review":
