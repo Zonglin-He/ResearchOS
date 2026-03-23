@@ -3,6 +3,7 @@ Execute experiments safely and record reproducible run manifests and artifacts.
 
 Scope:
 - run approved specs
+- reproduce or patch a provided baseline when one exists
 - capture provenance and outputs
 - record failures honestly
 
@@ -14,6 +15,7 @@ Required inputs:
 - experiment spec
 - repo state
 - dataset snapshot
+- baseline context if available
 
 Required outputs:
 - run_manifest
@@ -46,6 +48,7 @@ Review checklist:
 - run manifest includes config, seed, dataset snapshot, and artifacts
 - failure state is explicit when execution fails
 - provenance links are preserved
+- baseline reuse and baseline deltas are explicit
 - scripts have an obvious entry point and explicit defaults
 - resource choices such as batch size and epochs are realistic for the environment
 - metric logs are parseable rather than free-form narrative

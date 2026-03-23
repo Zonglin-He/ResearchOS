@@ -59,6 +59,24 @@ def test_provider_health_service_classifies_rate_limit_and_exhaustion() -> None:
     assert exhausted.failure_class == "quota_exhaustion"
 
 
+def test_provider_health_service_summarizes_large_provider_errors() -> None:
+    registry = ProviderRegistry()
+    registry.register("codex", lambda: StaticProvider({}))
+    health = ProviderHealthService(cooldown_seconds=60)
+
+    error = RuntimeError(
+        "codex provider failed: OpenAI Codex v0.111.0 (research preview) workdir: C:\\Anti Project\\ResearchOS "
+        "<role_contract> huge hidden payload that should not leak to provider health cards"
+    )
+
+    snapshot = health.classify_failure("codex", error, registry)
+
+    assert snapshot.failure_class == "process_failure"
+    assert snapshot.detail.startswith("codex provider failed: OpenAI Codex v0.111.0")
+    assert "workdir:" not in snapshot.detail
+    assert "<role_contract>" not in snapshot.detail
+
+
 def test_routing_resolver_uses_role_defaults_for_librarian_and_executor() -> None:
     resolver = RoutingResolver(
         DispatchProfile(

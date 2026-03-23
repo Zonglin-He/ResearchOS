@@ -321,6 +321,8 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
         WriterAgent(
             default_provider,
             artifact_service=services.artifact_service,
+            run_service=services.run_service,
+            freeze_service=services.freeze_service,
             model=config.provider_model or None,
             tool_registry=tool_registry,
             provider_registry=services.provider_registry,

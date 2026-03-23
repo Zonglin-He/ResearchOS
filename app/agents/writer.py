@@ -7,9 +7,13 @@ from app.agents.llm_agent import PromptDrivenAgent
 from app.agents.response_schemas import WRITER_RESPONSE_SCHEMA
 from app.agents.utils import build_child_task, write_artifact
 from app.roles import writer_role_binding
+from app.schemas.freeze import ResultsFreeze
+from app.schemas.run_manifest import RunManifest
 from app.schemas.result import AgentResult
 from app.schemas.task import Task
 from app.services.artifact_service import ArtifactService
+from app.services.freeze_service import FreezeService
+from app.services.run_service import RunService
 from app.tools.citation_verifier import verify_citations
 
 FALSE_POSITIVE_PREFIXES = {
@@ -35,6 +39,8 @@ class WriterAgent(PromptDrivenAgent):
         provider,
         *,
         artifact_service: ArtifactService | None = None,
+        run_service: RunService | None = None,
+        freeze_service: FreezeService | None = None,
         model: str | None = None,
         tool_registry=None,
         provider_registry=None,
@@ -56,21 +62,32 @@ class WriterAgent(PromptDrivenAgent):
             role_skill_registry=role_skill_registry,
         )
         self.artifact_service = artifact_service
+        self.run_service = run_service
+        self.freeze_service = freeze_service
 
     def build_user_payload(self, task, ctx) -> dict[str, Any]:
         payload = super().build_user_payload(task, ctx)
         target_venue = str(task.input_payload.get("target_venue", "")).strip()
         output_format = self._desired_output_format(target_venue)
+        results_freeze = self._resolve_results_freeze(task)
+        evidence_runs = self._resolve_evidence_runs(task, results_freeze)
         payload["writer_focus"] = {
             "required_outputs": ["title", "sections", "audit_notes", "citations"],
             "hard_constraints": [
                 "write only from frozen evidence",
                 "do not invent new results",
                 "keep claim-evidence alignment explicit",
+                "use imported or external runs only when they are explicitly present in evidence_sources",
             ],
             "output_format": output_format,
             "target_venue": target_venue,
             "venue_checklist": self._venue_checklist(target_venue),
+            "evidence_sources": {
+                "registered_runs": [self._run_record(run) for run in evidence_runs],
+                "results_freeze": None if results_freeze is None else self._results_freeze_record(results_freeze),
+                "imported_runs": task.input_payload.get("imported_runs", []),
+                "external_results": task.input_payload.get("external_results", []),
+            },
         }
         return payload
 
@@ -301,3 +318,60 @@ class WriterAgent(PromptDrivenAgent):
         for source, target in replacements.items():
             escaped = escaped.replace(source, target)
         return escaped
+
+    def _resolve_results_freeze(self, task: Task) -> ResultsFreeze | None:
+        if self.freeze_service is None:
+            return None
+        requested_results_id = str(task.input_payload.get("results_id", "")).strip()
+        freeze = self.freeze_service.load_results_freeze()
+        if freeze is None:
+            return None
+        if requested_results_id and freeze.results_id != requested_results_id:
+            return None
+        return freeze
+
+    def _resolve_evidence_runs(self, task: Task, results_freeze: ResultsFreeze | None) -> list[RunManifest]:
+        if self.run_service is None:
+            return []
+        run_ids: list[str] = []
+        for value in (
+            task.input_payload.get("run_id"),
+            *(task.input_payload.get("supporting_run_ids", []) or []),
+            *(task.input_payload.get("imported_run_ids", []) or []),
+        ):
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                run_ids.append(text)
+        if results_freeze is not None:
+            run_ids.extend(str(item).strip() for item in results_freeze.supporting_run_ids if str(item).strip())
+        unique_ids = list(dict.fromkeys(run_ids))
+        return [run for run_id in unique_ids if (run := self.run_service.get_run(run_id)) is not None]
+
+    @staticmethod
+    def _run_record(run: RunManifest) -> dict[str, Any]:
+        return {
+            "run_id": run.run_id,
+            "spec_id": run.spec_id,
+            "status": run.status,
+            "metrics": run.metrics,
+            "artifacts": run.artifacts,
+            "source_type": run.source_type,
+            "source_label": run.source_label,
+            "source_metadata": run.source_metadata,
+            "notes": run.notes,
+        }
+
+    @staticmethod
+    def _results_freeze_record(freeze: ResultsFreeze) -> dict[str, Any]:
+        return {
+            "results_id": freeze.results_id,
+            "spec_id": freeze.spec_id,
+            "main_claims": freeze.main_claims,
+            "tables": freeze.tables,
+            "figures": freeze.figures,
+            "supporting_run_ids": freeze.supporting_run_ids,
+            "external_sources": freeze.external_sources,
+            "notes": freeze.notes,
+        }

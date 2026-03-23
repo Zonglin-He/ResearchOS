@@ -108,6 +108,51 @@ def test_api_can_create_claim_and_run(tmp_path: Path) -> None:
     assert run_response.json()["run_id"] == "run_001"
 
 
+def test_api_can_create_imported_run_and_results_freeze_metadata(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+
+    run_response = client.post(
+        "/runs",
+        json={
+            "run_id": "run_imported",
+            "spec_id": "spec_001",
+            "git_commit": "external",
+            "config_hash": "sha256:external",
+            "dataset_snapshot": "dataset_v1",
+            "seed": 11,
+            "gpu": "external",
+            "status": "completed",
+            "metrics": {"accuracy": 0.88},
+            "artifacts": ["artifact_table"],
+            "source_type": "imported",
+            "source_label": "baseline-paper",
+            "source_metadata": {"repo": "https://github.com/example/baseline"},
+            "notes": ["Imported from external experiment logs."],
+        },
+    )
+    results_response = client.post(
+        "/freezes/results",
+        json={
+            "results_id": "results_imported",
+            "spec_id": "spec_001",
+            "main_claims": ["claim_001"],
+            "supporting_run_ids": ["run_imported"],
+            "external_sources": ["table:paper-main"],
+            "notes": ["Imported evidence package."],
+        },
+    )
+
+    assert run_response.status_code == 200
+    assert results_response.status_code == 200
+    run = client.get("/runs").json()[0]
+    results = client.get("/freezes/results").json()
+    assert run["source_type"] == "imported"
+    assert run["source_label"] == "baseline-paper"
+    assert run["source_metadata"]["repo"] == "https://github.com/example/baseline"
+    assert results["supporting_run_ids"] == ["run_imported"]
+    assert results["external_sources"] == ["table:paper-main"]
+
+
 def test_api_can_create_and_list_pending_approvals(tmp_path: Path) -> None:
     client = TestClient(create_app(str(tmp_path / "researchos.db")))
 

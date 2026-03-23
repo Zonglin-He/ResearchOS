@@ -36,5 +36,8 @@ class ResultsFreeze:
     main_claims: list[str] = field(default_factory=list)
     tables: list[str] = field(default_factory=list)
     figures: list[str] = field(default_factory=list)
+    supporting_run_ids: list[str] = field(default_factory=list)
+    external_sources: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
     approved_by: str = ""
     status: str = "approved"

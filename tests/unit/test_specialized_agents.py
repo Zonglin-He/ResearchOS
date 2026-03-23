@@ -12,6 +12,7 @@ from app.agents.writer import WriterAgent
 from app.providers.base import BaseProvider
 from app.schemas.claim import Claim
 from app.schemas.context import RunContext
+from app.schemas.freeze import ResultsFreeze
 from app.schemas.run_manifest import RunManifest
 from app.schemas.task import Task
 from app.services.artifact_service import ArtifactService
@@ -146,6 +147,38 @@ def test_builder_agent_registers_run_claims_and_review_task(tmp_path: Path) -> N
     assert result.next_tasks[0].kind == "review_build"
 
 
+def test_builder_agent_surfaces_baseline_first_context() -> None:
+    agent = BuilderAgent(StaticProvider({"summary": "unused", "run_manifest": {
+        "run_id": "run-builder",
+        "spec_id": "spec-1",
+        "git_commit": "deadbeef",
+        "config_hash": "cfg123",
+        "dataset_snapshot": "data-v1",
+        "seed": 7,
+        "gpu": "cpu",
+    }}))
+    task = Task(
+        task_id="t-builder-baseline",
+        project_id="proj",
+        kind="implement_experiment",
+        goal="Patch a baseline implementation",
+        input_payload={
+            "baseline_repo": "https://github.com/example/baseline",
+            "baseline_run_id": "run-baseline",
+            "baseline_delta": "replace loss with robust variant",
+            "refine_patch": {"target": "loss_fn", "change_description": "swap in robust loss"},
+        },
+        owner="gabriel",
+    )
+    ctx = RunContext(run_id="run-builder-baseline", project_id="proj", task_id="t-builder-baseline")
+
+    payload = agent.build_user_payload(task, ctx)
+
+    assert payload["builder_focus"]["execution_mode"] == "baseline_adaptation"
+    assert payload["builder_focus"]["baseline_context"]["baseline_repo"] == "https://github.com/example/baseline"
+    assert "prefer reusing or patching an existing baseline" in payload["builder_focus"]["hard_constraints"][3]
+
+
 def test_reviewer_agent_marks_approval_requests() -> None:
     agent = ReviewerAgent(
         StaticProvider(
@@ -211,6 +244,68 @@ def test_writer_agent_writes_artifact_and_spawns_style_task(tmp_path: Path) -> N
     draft_path = tmp_path / result.output["draft_artifact_path"]
     assert draft_path.exists()
     assert result.next_tasks[0].kind == "style_pass"
+
+
+def test_writer_agent_loads_registered_imported_runs_and_results_freeze(tmp_path: Path) -> None:
+    artifacts = ArtifactService(tmp_path / "artifacts.jsonl")
+    runs = RunService(tmp_path / "runs.jsonl")
+    freezes = FreezeService(tmp_path / "freezes")
+    runs.register_run(
+        RunManifest(
+            run_id="run-imported",
+            spec_id="spec-1",
+            git_commit="external",
+            config_hash="cfg-imported",
+            dataset_snapshot="dataset-v1",
+            seed=3,
+            gpu="external",
+            status="completed",
+            metrics={"accuracy": 0.87},
+            source_type="imported",
+            source_label="baseline-paper",
+            source_metadata={"repo": "https://github.com/example/baseline"},
+            notes=["Imported from an external baseline reproduction."],
+        )
+    )
+    freezes.save_results_freeze(
+        ResultsFreeze(
+            results_id="results-imported",
+            spec_id="spec-1",
+            main_claims=["claim-1"],
+            supporting_run_ids=["run-imported"],
+            external_sources=["table:paper-main"],
+            notes=["Imported evidence package."],
+        )
+    )
+    agent = WriterAgent(
+        StaticProvider(
+            {
+                "title": "Imported Draft",
+                "sections": [{"heading": "Results", "markdown": "Imported run evidence.", "supporting_claim_ids": ["claim-1"]}],
+                "citations": [],
+            }
+        ),
+        artifact_service=artifacts,
+        run_service=runs,
+        freeze_service=freezes,
+    )
+    task = Task(
+        task_id="t-writer-imported",
+        project_id="proj",
+        kind="write_draft",
+        goal="Write from imported evidence",
+        input_payload={"results_id": "results-imported", "imported_run_ids": ["run-imported"]},
+        owner="gabriel",
+    )
+    ctx = RunContext(run_id="run-writer-imported", project_id="proj", task_id="t-writer-imported")
+
+    payload = agent.build_user_payload(task, ctx)
+
+    evidence_sources = payload["writer_focus"]["evidence_sources"]
+    assert evidence_sources["registered_runs"][0]["source_type"] == "imported"
+    assert evidence_sources["registered_runs"][0]["source_label"] == "baseline-paper"
+    assert evidence_sources["results_freeze"]["supporting_run_ids"] == ["run-imported"]
+    assert evidence_sources["results_freeze"]["external_sources"] == ["table:paper-main"]
 
 
 def test_analyst_agent_writes_result_summary_artifact(tmp_path: Path) -> None:

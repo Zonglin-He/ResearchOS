@@ -120,10 +120,12 @@ export function parseEvidenceRefs(raw: string) {
 }
 
 export function normalizeError(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  return summarizeText(message, 360);
+}
+
+export function summarizeProviderDetail(detail: string) {
+  return summarizeText(detail, 220);
 }
 
 export function renderCountMap(map: Record<string, number>) {
@@ -135,4 +137,40 @@ export function renderCountMap(map: Record<string, number>) {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, count]) => `${key}: ${count}`)
     .join(" | ");
+}
+
+function summarizeText(raw: string, maxLength: number) {
+  let text = String(raw || "").trim();
+  if (!text) {
+    return "";
+  }
+  const markers = [
+    "<role_contract>",
+    "<task_input>",
+    '"input_payload"',
+    '"resume_from_checkpoint"',
+    '"shared_state"',
+    "resume_from_checkpoint",
+    "shared_state",
+    "checkpoint_path",
+    "workdir:",
+  ];
+  for (const marker of markers) {
+    const index = text.indexOf(marker);
+    if (index > 0) {
+      text = text.slice(0, index).trim();
+      break;
+    }
+  }
+  text =
+    text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)[0] ?? text;
+  text = text.replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+  const shortened = text.slice(0, maxLength - 1).replace(/\s+\S*$/, "").trim();
+  return `${shortened || text.slice(0, maxLength - 1).trim()}…`;
 }

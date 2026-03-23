@@ -62,13 +62,20 @@ class BuilderAgent(PromptDrivenAgent):
 
     def build_user_payload(self, task, ctx) -> dict[str, Any]:
         payload = super().build_user_payload(task, ctx)
+        baseline_context = self._baseline_context(task)
         payload["builder_focus"] = {
             "required_outputs": ["summary", "run_manifest", "artifacts", "claims"],
             "hard_constraints": [
                 "do not change baseline fairness constraints",
                 "do not redefine metrics without explicit approval",
                 "surface every executable artifact explicitly",
+                "prefer reusing or patching an existing baseline implementation when baseline context is provided",
+                "make baseline reuse, deltas, and imported evidence explicit instead of implying them",
             ],
+            "execution_mode": self._execution_mode(task, baseline_context),
+            "baseline_strategy": self._baseline_strategy(baseline_context),
+            "baseline_context": baseline_context,
+            "imported_results_context": self._imported_results_context(task),
         }
         payload["context"]["hardware"] = self._hardware_context()
         return payload
@@ -284,3 +291,60 @@ def _save_checkpoint(epoch, metrics):
         json.dump(metrics, _f, ensure_ascii=False, indent=2)
 """
         return prelude.strip() + "\n\n" + script
+
+    @staticmethod
+    def _execution_mode(task: Task, baseline_context: dict[str, Any]) -> str:
+        if task.kind == "reproduce_baseline" or bool(task.input_payload.get("baseline_only")):
+            return "baseline_reproduction"
+        if baseline_context and (
+            task.input_payload.get("refine_patch")
+            or task.input_payload.get("baseline_delta")
+            or task.input_payload.get("implementation_patch")
+        ):
+            return "baseline_adaptation"
+        if baseline_context:
+            return "baseline_extension"
+        if task.input_payload.get("refine_patch"):
+            return "patch_existing_plan"
+        return "from_scratch"
+
+    @staticmethod
+    def _baseline_strategy(baseline_context: dict[str, Any]) -> str:
+        if not baseline_context:
+            return "No baseline artifact was provided; only build from scratch if no reusable baseline is available."
+        return (
+            "Start from the provided baseline code, repo, or run artifacts. "
+            "Reproduce that anchor first, then make the minimal justified change needed for the current branch."
+        )
+
+    @staticmethod
+    def _baseline_context(task: Task) -> dict[str, Any]:
+        fields = (
+            "baseline_name",
+            "baseline_description",
+            "baseline_repo",
+            "baseline_path",
+            "baseline_branch",
+            "baseline_commit",
+            "baseline_run_id",
+            "baseline_artifacts",
+            "baseline_notes",
+            "baseline_delta",
+        )
+        context = {
+            key: value
+            for key, value in ((field, task.input_payload.get(field)) for field in fields)
+            if value not in (None, "", [], {})
+        }
+        if task.input_payload.get("branch_plan"):
+            context["branch_plan"] = task.input_payload.get("branch_plan")
+        return context
+
+    @staticmethod
+    def _imported_results_context(task: Task) -> dict[str, Any]:
+        context = {
+            key: value
+            for key in ("imported_runs", "external_results", "supporting_run_ids")
+            if (value := task.input_payload.get(key)) not in (None, "", [], {})
+        }
+        return context

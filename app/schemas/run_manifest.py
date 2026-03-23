@@ -21,4 +21,8 @@ class RunManifest:
     status: str = "pending"
     metrics: dict[str, Any] = field(default_factory=dict)
     artifacts: list[str] = field(default_factory=list)
+    source_type: str = "internal"
+    source_label: str | None = None
+    source_metadata: dict[str, Any] = field(default_factory=dict)
+    notes: list[str] = field(default_factory=list)
     dispatch_routing: ResolvedDispatch | None = None

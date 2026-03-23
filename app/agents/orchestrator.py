@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.agents.base import BaseAgent
+from app.core.error_summary import summarize_error_detail
 from app.core.enums import Stage
 from app.routing.models import ResolvedDispatch
 from app.routing.resolver import RoutingResolver
@@ -136,21 +137,22 @@ class Orchestrator:
         try:
             result = await agent.run(task, context)
         except Exception as error:
+            error_detail = summarize_error_detail(str(error), max_length=360)
             task = self.task_service.mark_task_failed(
                 task.task_id,
-                error_detail=str(error),
+                error_detail=error_detail,
                 retryable=True,
             )
             task.checkpoint_path = self._save_checkpoint(
                 task,
                 stage="dispatch_failed",
-                payload={"error": str(error), "agent_name": agent_name},
+                payload={"error": error_detail, "agent_name": agent_name},
             )
             task = self.task_service.save_task(task)
             result = AgentResult(
                 status="fail",
-                output={"error": str(error)},
-                audit_notes=[f"dispatch failed: {error}"],
+                output={"error": error_detail},
+                audit_notes=[f"dispatch failed: {error_detail}"],
             )
             return OrchestratorDispatch(task=task, result=result)
 

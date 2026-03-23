@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.core.error_summary import summarize_error_detail
 from app.providers.health import ProviderHealthService
 from app.providers.registry import ProviderRegistry
 from app.routing.models import (
@@ -104,7 +105,7 @@ class ProviderInvocationService:
             raise RuntimeError(
                 "No provider family was available for invocation based on current routing and health state."
             )
-        detail = str(last_error).strip()
+        detail = summarize_error_detail(str(last_error))
         if not detail:
             detail = "; ".join(
                 f"{snapshot.provider_family}: {snapshot.detail or snapshot.state}"

@@ -51,6 +51,9 @@ class ResultsFreezeSave(BaseModel):
     main_claims: list[str] = Field(default_factory=list)
     tables: list[str] = Field(default_factory=list)
     figures: list[str] = Field(default_factory=list)
+    supporting_run_ids: list[str] = Field(default_factory=list)
+    external_sources: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
     approved_by: str = ""
     status: str = "approved"
 

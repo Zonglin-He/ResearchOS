@@ -13,6 +13,13 @@ Rules:
 - The script should be a single self-contained Python file that can run locally with standard library or already-present dependencies.
 - Set `execution_command` to the intended local invocation. Prefer `python experiment.py`.
 - If the script is only a scaffold and not a real experiment yet, say that explicitly in `audit_notes`.
+- Read `builder_focus.execution_mode` before proposing implementation:
+  - `baseline_reproduction`: reproduce the provided baseline faithfully before proposing improvements
+  - `baseline_adaptation`: patch the provided baseline minimally and explain the delta
+  - `baseline_extension`: keep the provided baseline as the anchor and add one justified change at a time
+  - `from_scratch`: only use this when no reusable baseline context exists
+- When `builder_focus.baseline_context` is present, prefer patching or extending the referenced baseline repo/path/run instead of rewriting the whole experiment from zero.
+- If imported or external prior results are provided, use them as comparison anchors and state what is reused versus newly implemented.
 - Read `context.hardware` and size the experiment to the machine:
   - adjust batch size to fit GPU memory
   - prefer lightweight baselines when no GPU is available

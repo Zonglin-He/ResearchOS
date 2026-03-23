@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import shutil
 
+from app.core.error_summary import summarize_error_detail
 from app.providers.command_provider import CommandProvider
 from app.providers.local_provider import LocalProvider
 from app.providers.registry import ProviderRegistry
@@ -154,7 +155,8 @@ class ProviderHealthService:
         registry: ProviderRegistry,
     ) -> ProviderHealthSnapshot:
         family = provider_name.lower()
-        message = str(error).lower()
+        detail = summarize_error_detail(str(error))
+        message = detail.lower()
         installed = self._is_cli_installed(family, registry)
 
         if any(signature in message for signature in self.RATE_LIMIT_SIGNATURES):
@@ -163,7 +165,7 @@ class ProviderHealthService:
                 state=ProviderAvailabilityState.RATE_LIMITED.value,
                 cli_installed=installed,
                 failure_class=ProviderFailureClass.RATE_LIMIT.value,
-                detail=str(error),
+                detail=detail,
             )
         if any(signature in message for signature in self.EXHAUSTION_SIGNATURES):
             return ProviderHealthSnapshot(
@@ -171,7 +173,7 @@ class ProviderHealthService:
                 state=ProviderAvailabilityState.EXHAUSTED.value,
                 cli_installed=installed,
                 failure_class=ProviderFailureClass.QUOTA_EXHAUSTION.value,
-                detail=str(error),
+                detail=detail,
             )
         if any(signature in message for signature in self.AUTH_SIGNATURES):
             return ProviderHealthSnapshot(
@@ -179,7 +181,7 @@ class ProviderHealthService:
                 state=ProviderAvailabilityState.UNHEALTHY.value,
                 cli_installed=installed,
                 failure_class=ProviderFailureClass.AUTH_CONFIG.value,
-                detail=str(error),
+                detail=detail,
             )
         if not installed or any(signature in message for signature in self.PROCESS_SIGNATURES):
             return ProviderHealthSnapshot(
@@ -187,14 +189,14 @@ class ProviderHealthService:
                 state=ProviderAvailabilityState.UNHEALTHY.value,
                 cli_installed=installed,
                 failure_class=ProviderFailureClass.PROCESS_FAILURE.value,
-                detail=str(error),
+                detail=detail,
             )
         return ProviderHealthSnapshot(
             provider_family=family,
             state=ProviderAvailabilityState.DEGRADED.value,
             cli_installed=installed,
             failure_class=ProviderFailureClass.UNKNOWN_TRANSIENT.value,
-            detail=str(error),
+            detail=detail,
         )
 
     def disable_family(self, provider_name: str) -> None:

@@ -587,6 +587,13 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
                 dataset_snapshot=payload.dataset_snapshot,
                 seed=payload.seed,
                 gpu=payload.gpu,
+                status=payload.status,
+                metrics=payload.metrics,
+                artifacts=payload.artifacts,
+                source_type=payload.source_type,
+                source_label=payload.source_label,
+                source_metadata=payload.source_metadata,
+                notes=payload.notes,
             )
         )
         return _to_run_read(run)
@@ -985,6 +992,9 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
                 main_claims=payload.main_claims,
                 tables=payload.tables,
                 figures=payload.figures,
+                supporting_run_ids=payload.supporting_run_ids,
+                external_sources=payload.external_sources,
+                notes=payload.notes,
                 approved_by=payload.approved_by,
                 status=payload.status,
             )
@@ -1002,6 +1012,9 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             main_claims=freeze.main_claims,
             tables=freeze.tables,
             figures=freeze.figures,
+            supporting_run_ids=freeze.supporting_run_ids,
+            external_sources=freeze.external_sources,
+            notes=freeze.notes,
             approved_by=freeze.approved_by,
             status=freeze.status,
         )
@@ -1121,6 +1134,10 @@ def _to_run_read(run: RunManifest) -> RunManifestRead:
         status=run.status,
         metrics=run.metrics,
         artifacts=run.artifacts,
+        source_type=run.source_type,
+        source_label=run.source_label,
+        source_metadata=run.source_metadata,
+        notes=run.notes,
         dispatch_routing=to_record(run.dispatch_routing),
     )
 

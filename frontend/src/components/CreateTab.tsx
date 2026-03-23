@@ -69,6 +69,13 @@ export function CreateTab(props: Props) {
     dataset_snapshot: "",
     seed: "42",
     gpu: "cpu",
+    status: "completed",
+    metrics_json: "{}",
+    artifacts: "",
+    source_type: "internal",
+    source_label: "",
+    source_metadata_json: "{}",
+    notes: "",
   });
   const [paperCardForm, setPaperCardForm] = useState({
     paper_id: "",
@@ -145,6 +152,9 @@ export function CreateTab(props: Props) {
     main_claims: "",
     tables: "",
     figures: "",
+    supporting_run_ids: "",
+    external_sources: "",
+    notes: "",
     approved_by: "operator",
     status: "approved",
   });
@@ -458,6 +468,13 @@ export function CreateTab(props: Props) {
                 await props.createRun({
                   ...runForm,
                   seed: Number(runForm.seed),
+                  status: runForm.status,
+                  metrics: parseOptionalJson(runForm.metrics_json) ?? {},
+                  artifacts: parseLines(runForm.artifacts),
+                  source_type: runForm.source_type,
+                  source_label: runForm.source_label || null,
+                  source_metadata: parseOptionalJson(runForm.source_metadata_json) ?? {},
+                  notes: parseLines(runForm.notes),
                 });
                 props.setNotice(`已创建 run ${runForm.run_id}`);
               });
@@ -472,6 +489,13 @@ export function CreateTab(props: Props) {
             <InputPair label="数据快照" value={runForm.dataset_snapshot} onChange={(value) => setRunForm({ ...runForm, dataset_snapshot: value })} required />
             <InputPair label="Seed" value={runForm.seed} onChange={(value) => setRunForm({ ...runForm, seed: value })} required />
             <InputPair label="GPU" value={runForm.gpu} onChange={(value) => setRunForm({ ...runForm, gpu: value })} required />
+            <InputPair label="Run status" value={runForm.status} onChange={(value) => setRunForm({ ...runForm, status: value })} />
+            <InputPair label="Source type" value={runForm.source_type} onChange={(value) => setRunForm({ ...runForm, source_type: value })} />
+            <InputPair label="Source label" value={runForm.source_label} onChange={(value) => setRunForm({ ...runForm, source_label: value })} />
+            <TextPair label="Metrics JSON" value={runForm.metrics_json} onChange={(value) => setRunForm({ ...runForm, metrics_json: value })} span />
+            <TextPair label="Artifact ids" value={runForm.artifacts} onChange={(value) => setRunForm({ ...runForm, artifacts: value })} span />
+            <TextPair label="Source metadata JSON" value={runForm.source_metadata_json} onChange={(value) => setRunForm({ ...runForm, source_metadata_json: value })} span />
+            <TextPair label="Run notes" value={runForm.notes} onChange={(value) => setRunForm({ ...runForm, notes: value })} span />
             <button className="button" type="submit">
               创建 run
             </button>
@@ -518,6 +542,9 @@ export function CreateTab(props: Props) {
                   main_claims: parseLines(resultsFreezeForm.main_claims),
                   tables: parseLines(resultsFreezeForm.tables),
                   figures: parseLines(resultsFreezeForm.figures),
+                  supporting_run_ids: parseLines(resultsFreezeForm.supporting_run_ids),
+                  external_sources: parseLines(resultsFreezeForm.external_sources),
+                  notes: parseLines(resultsFreezeForm.notes),
                   approved_by: resultsFreezeForm.approved_by,
                   status: resultsFreezeForm.status,
                 });
@@ -528,6 +555,9 @@ export function CreateTab(props: Props) {
             <FormHint title="Results freeze" body="当表格和主结论稳定下来后，把版本钉住，后续写作才不乱。" />
             <InputPair label="Results id" value={resultsFreezeForm.results_id} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, results_id: value })} required />
             <InputPair label="Spec id" value={resultsFreezeForm.spec_id} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, spec_id: value })} required />
+            <TextPair label="Supporting run ids" value={resultsFreezeForm.supporting_run_ids} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, supporting_run_ids: value })} span />
+            <TextPair label="External sources" value={resultsFreezeForm.external_sources} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, external_sources: value })} span />
+            <TextPair label="Results notes" value={resultsFreezeForm.notes} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, notes: value })} span />
             <TextPair label="主 claims" value={resultsFreezeForm.main_claims} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, main_claims: value })} span />
             <TextPair label="表格" value={resultsFreezeForm.tables} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, tables: value })} span />
             <TextPair label="图" value={resultsFreezeForm.figures} onChange={(value) => setResultsFreezeForm({ ...resultsFreezeForm, figures: value })} span />

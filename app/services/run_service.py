@@ -46,6 +46,10 @@ class RunService:
                 status=row.get("status", "pending"),
                 metrics=row.get("metrics", {}),
                 artifacts=row.get("artifacts", []),
+                source_type=row.get("source_type", "internal"),
+                source_label=row.get("source_label"),
+                source_metadata=row.get("source_metadata", {}),
+                notes=row.get("notes", []),
                 dispatch_routing=resolved_dispatch_from_dict(row.get("dispatch_routing")),
             )
             for row in rows

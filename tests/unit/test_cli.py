@@ -229,6 +229,67 @@ def test_cli_can_create_lessons_and_verify_runs(capsys, tmp_path: Path) -> None:
     assert "run:run-1\trun_manifest_sanity\tverified" in output
 
 
+def test_cli_can_create_imported_runs_and_results_freeze_metadata(capsys, tmp_path: Path) -> None:
+    db_path = tmp_path / "researchos.db"
+
+    assert main(
+        [
+            "--db-path",
+            str(db_path),
+            "create-run",
+            "--run-id",
+            "run-imported",
+            "--spec-id",
+            "spec-1",
+            "--git-commit",
+            "external",
+            "--config-hash",
+            "cfg-imported",
+            "--dataset-snapshot",
+            "dataset-v1",
+            "--seed",
+            "5",
+            "--gpu",
+            "external",
+            "--status",
+            "completed",
+            "--metric",
+            "accuracy=0.91",
+            "--artifact-id",
+            "artifact-main",
+            "--source-type",
+            "imported",
+            "--source-label",
+            "baseline-paper",
+            "--source-metadata",
+            "{\"repo\":\"https://github.com/example/baseline\"}",
+            "--note",
+            "Imported from external logs",
+        ]
+    ) == 0
+    assert main(
+        [
+            "--db-path",
+            str(db_path),
+            "save-results-freeze",
+            "--results-id",
+            "results-imported",
+            "--spec-id",
+            "spec-1",
+            "--run-id",
+            "run-imported",
+            "--external-source",
+            "table:paper-main",
+            "--note",
+            "Imported evidence package",
+        ]
+    ) == 0
+
+    output = capsys.readouterr().out
+    assert "Created run run-imported" in output
+    assert "Saved results freeze results-imported" in output
+
+
 def test_cli_no_subcommand_launches_console(monkeypatch, tmp_path: Path) -> None:
     db_path = tmp_path / "researchos.db"
     launched: dict[str, bool] = {"value": False}

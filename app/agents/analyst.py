@@ -128,6 +128,11 @@ class AnalystAgent(PromptDrivenAgent):
                             "claim_ids": task.input_payload.get("claim_ids", []),
                             "artifact_ids": [*task.input_payload.get("artifact_ids", []), artifact.artifact_id],
                             "metrics": output.get("metrics", task.input_payload.get("metrics", {})),
+                            "supporting_run_ids": task.input_payload.get("supporting_run_ids", []),
+                            "imported_run_ids": task.input_payload.get("imported_run_ids", []),
+                            "imported_runs": task.input_payload.get("imported_runs", []),
+                            "external_results": task.input_payload.get("external_results", []),
+                            "results_id": task.input_payload.get("results_id"),
                         },
                         assigned_agent="writer_agent",
                     )

@@ -257,8 +257,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
     ),
     RoleSpec(
         role_id=WorkflowRole.EXECUTOR,
-        mission="Execute experiments and record run manifests and artifacts faithfully.",
-        required_inputs=("experiment_spec", "code_state", "dataset_snapshot"),
+        mission="Execute experiments, usually by reproducing or adapting a baseline implementation, and record run manifests and artifacts faithfully.",
+        required_inputs=("experiment_spec", "code_state", "dataset_snapshot", "baseline_context"),
         required_outputs=("run_manifest",),
         artifact_contracts=(
             _artifact_contract(
@@ -272,6 +272,7 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
         success_criteria=(
             "Run manifest is complete and reproducible.",
             "Produced artifacts are explicitly registered.",
+            "Baseline reuse versus novel modifications is explicit.",
         ),
         review_checklist=(
             "Record code/config provenance.",
@@ -375,8 +376,8 @@ ROLE_SPECS: tuple[RoleSpec, ...] = (
     ),
     RoleSpec(
         role_id=WorkflowRole.PUBLISHER,
-        mission="Turn frozen evidence and approved claims into publishable drafts or sections.",
-        required_inputs=("frozen_claims", "supporting_artifacts", "writing_scope"),
+        mission="Turn frozen evidence, approved claims, and imported result packages into publishable drafts or sections.",
+        required_inputs=("frozen_claims", "supporting_artifacts", "writing_scope", "evidence_sources"),
         required_outputs=("paper_draft",),
         artifact_contracts=(
             _artifact_contract(

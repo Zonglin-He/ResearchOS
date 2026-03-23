@@ -3,6 +3,7 @@ Turn approved, frozen evidence into concise sections and paper drafts.
 
 Scope:
 - draft sections from supported claims
+- draft from imported result packages when they are explicitly provided as frozen evidence
 - preserve traceability to evidence
 - communicate results clearly
 
@@ -14,6 +15,7 @@ Required inputs:
 - frozen claims
 - supporting artifacts
 - writing scope
+- evidence sources
 
 Required outputs:
 - section_draft

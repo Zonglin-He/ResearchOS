@@ -196,6 +196,13 @@ def build_parser() -> argparse.ArgumentParser:
     create_run.add_argument("--dataset-snapshot", required=True)
     create_run.add_argument("--seed", type=int, required=True)
     create_run.add_argument("--gpu", required=True)
+    create_run.add_argument("--status", default="pending")
+    create_run.add_argument("--metric", action="append", dest="metrics", default=[])
+    create_run.add_argument("--artifact-id", action="append", dest="artifacts", default=[])
+    create_run.add_argument("--source-type", default="internal")
+    create_run.add_argument("--source-label")
+    create_run.add_argument("--source-metadata", default="{}")
+    create_run.add_argument("--note", action="append", dest="notes", default=[])
     create_run.set_defaults(handler=_handle_create_run)
 
     list_runs = subparsers.add_parser("list-runs")
@@ -247,6 +254,9 @@ def build_parser() -> argparse.ArgumentParser:
     save_results_freeze.add_argument("--claim-id", action="append", dest="main_claims", default=[])
     save_results_freeze.add_argument("--table", action="append", dest="tables", default=[])
     save_results_freeze.add_argument("--figure", action="append", dest="figures", default=[])
+    save_results_freeze.add_argument("--run-id", action="append", dest="supporting_run_ids", default=[])
+    save_results_freeze.add_argument("--external-source", action="append", dest="external_sources", default=[])
+    save_results_freeze.add_argument("--note", action="append", dest="notes", default=[])
     save_results_freeze.set_defaults(handler=_handle_save_results_freeze)
 
     create_paper_card = subparsers.add_parser("create-paper-card")
@@ -764,6 +774,33 @@ def _load_dispatch_profile_arg(raw_value: str | None):
     return dispatch_profile_from_dict(json.loads(raw_value))
 
 
+def _load_json_object_arg(raw_value: str | None) -> dict[str, object]:
+    if raw_value is None:
+        return {}
+    parsed = json.loads(raw_value)
+    if not isinstance(parsed, dict):
+        raise ValueError("Expected a JSON object payload.")
+    return parsed
+
+
+def _load_metric_args(values: list[str]) -> dict[str, object]:
+    metrics: dict[str, object] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"Invalid metric '{value}'. Expected key=value.")
+        key, raw_metric = value.split("=", 1)
+        key = key.strip()
+        raw_metric = raw_metric.strip()
+        if not key:
+            raise ValueError(f"Invalid metric '{value}'. Expected a non-empty key.")
+        try:
+            metric_value: object = float(raw_metric)
+        except ValueError:
+            metric_value = raw_metric
+        metrics[key] = metric_value
+    return metrics
+
+
 def _handle_create_claim(
     args: argparse.Namespace,
     project_service: ProjectService,
@@ -889,6 +926,13 @@ def _handle_create_run(
         dataset_snapshot=args.dataset_snapshot,
         seed=args.seed,
         gpu=args.gpu,
+        status=args.status,
+        metrics=_load_metric_args(args.metrics),
+        artifacts=args.artifacts,
+        source_type=args.source_type,
+        source_label=args.source_label,
+        source_metadata=_load_json_object_arg(args.source_metadata),
+        notes=args.notes,
     )
     run_service.register_run(run)
     print(f"Created run {run.run_id}")
@@ -1097,6 +1141,9 @@ def _handle_save_results_freeze(
             main_claims=args.main_claims,
             tables=args.tables,
             figures=args.figures,
+            supporting_run_ids=args.supporting_run_ids,
+            external_sources=args.external_sources,
+            notes=args.notes,
         )
     )
     print(f"Saved results freeze {args.results_id}")
