@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.db.sqlite import SQLiteDatabase
@@ -20,6 +20,8 @@ class ApprovalService:
         self.database = database
 
     def record_approval(self, approval: Approval) -> Approval:
+        if approval.decision == "pending" and approval.due_at is None:
+            approval.due_at = datetime.now(timezone.utc) + timedelta(days=7)
         upsert_jsonl(self.registry_path, "approval_id", to_record(approval))
         if self.database is not None:
             with self.database.connect() as connection:
@@ -101,24 +103,40 @@ class ApprovalService:
 
     @staticmethod
     def _row_to_approval(row: dict[str, object]) -> Approval:
-        return [
-            Approval(
-                approval_id=row["approval_id"],
-                project_id=row["project_id"],
-                target_type=row["target_type"],
-                target_id=row["target_id"],
-                approved_by=row["approved_by"],
-                decision=row["decision"],
-                comment=row.get("comment", ""),
-                condition_text=row.get("condition_text", ""),
-                context_summary=row.get("context_summary", ""),
-                recommended_action=row.get("recommended_action", ""),
-                due_at=None
-                if row.get("due_at") in {None, ""}
-                else datetime.fromisoformat(row["due_at"]),
-                created_at=datetime.fromisoformat(row["created_at"]),
-            )
-        ][0]
+        return Approval(
+            approval_id=row["approval_id"],
+            project_id=row["project_id"],
+            target_type=row["target_type"],
+            target_id=row["target_id"],
+            approved_by=row["approved_by"],
+            decision=row["decision"],
+            comment=row.get("comment", ""),
+            condition_text=row.get("condition_text", ""),
+            context_summary=row.get("context_summary", ""),
+            recommended_action=row.get("recommended_action", ""),
+            due_at=None
+            if row.get("due_at") in {None, ""}
+            else datetime.fromisoformat(row["due_at"]),
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    def latest_target_approval(
+        self,
+        *,
+        project_id: str,
+        target_type: str,
+        target_id: str,
+    ) -> Approval | None:
+        matches = [
+            approval
+            for approval in self.list_approvals()
+            if approval.project_id == project_id
+            and approval.target_type == target_type
+            and approval.target_id == target_id
+        ]
+        if not matches:
+            return None
+        return max(matches, key=lambda approval: approval.created_at)
 
     def list_pending(self) -> list[Approval]:
         return [approval for approval in self.list_approvals() if approval.decision == "pending"]

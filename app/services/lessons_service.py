@@ -20,7 +20,6 @@ class LessonsService:
         self.database = database
 
     def record_lesson(self, lesson: LessonRecord) -> LessonRecord:
-        upsert_jsonl(self.registry_path, "lesson_id", to_record(lesson))
         if self.database is not None:
             with self.database.connect() as connection:
                 connection.execute(
@@ -49,6 +48,8 @@ class LessonsService:
                         json.dumps(to_record(lesson), ensure_ascii=False),
                     ),
                 )
+            return lesson
+        upsert_jsonl(self.registry_path, "lesson_id", to_record(lesson))
         return lesson
 
     def list_lessons(
@@ -214,9 +215,13 @@ class LessonsService:
                 rows = connection.execute(
                     "SELECT record_json FROM lessons ORDER BY created_at, lesson_id"
                 ).fetchall()
-            return [self._row_to_lesson(json.loads(row["record_json"])) for row in rows]
+            return [
+                lesson
+                for lesson in (self._row_to_lesson(json.loads(row["record_json"])) for row in rows)
+                if lesson is not None
+            ]
         rows = read_jsonl(self.registry_path)
-        return [self._row_to_lesson(row) for row in rows]
+        return [lesson for lesson in (self._row_to_lesson(row) for row in rows) if lesson is not None]
 
     @staticmethod
     def _filter_active_lessons(lessons: list[LessonRecord]) -> list[LessonRecord]:
@@ -277,9 +282,9 @@ class LessonsService:
                 )
 
     @staticmethod
-    def _row_to_lesson(row: dict[str, object]) -> LessonRecord:
-        return [
-            LessonRecord(
+    def _row_to_lesson(row: dict[str, object]) -> LessonRecord | None:
+        try:
+            return LessonRecord(
                 lesson_id=row["lesson_id"],
                 lesson_kind=LessonKind(row["lesson_kind"]),
                 title=row["title"],
@@ -310,4 +315,5 @@ class LessonsService:
                 is_valid=bool(row.get("is_valid", True)),
                 created_at=datetime.fromisoformat(row["created_at"]),
             )
-        ][0]
+        except (KeyError, TypeError, ValueError):
+            return None

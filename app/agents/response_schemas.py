@@ -207,6 +207,18 @@ REVIEWER_RESPONSE_SCHEMA = {
         },
         "debate_weaknesses": {"type": "array", "items": {"type": "string"}},
         "recommended_constraints": {"type": "array", "items": {"type": "string"}},
+        "candidate_debates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "gap_id": {"type": "string"},
+                    "weakness": {"type": "string"},
+                    "recommended_constraints": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["gap_id", "weakness"],
+            },
+        },
     },
     "required": ["decision", "summary"],
 }
@@ -235,7 +247,7 @@ WRITER_RESPONSE_SCHEMA = {
         "citations": {"type": "array", "items": {"type": "string"}},
         "audit_notes": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["title", "sections"],
+    "required": ["title", "sections", "citations"],
 }
 
 STYLE_RESPONSE_SCHEMA = {

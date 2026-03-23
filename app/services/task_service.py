@@ -20,6 +20,8 @@ class TaskService:
         self.activity_service = activity_service
 
     def create_task(self, task: Task) -> Task:
+        if self._would_create_cycle(task.task_id, task.depends_on):
+            raise ValueError(f"Task dependency cycle detected for {task.task_id}")
         created = self.repository.create(task)
         self._record_event(
             created.project_id,
@@ -177,7 +179,26 @@ class TaskService:
         return updated
 
     def save_task(self, task: Task) -> Task:
+        if self._would_create_cycle(task.task_id, task.depends_on):
+            raise ValueError(f"Task dependency cycle detected for {task.task_id}")
         return self.repository.update(task)
+
+    def _would_create_cycle(self, task_id: str, depends_on: list[str]) -> bool:
+        visited = set(depends_on)
+        queue = list(depends_on)
+        while queue:
+            dependency_id = queue.pop(0)
+            if dependency_id == task_id:
+                return True
+            dependency = self.repository.get_by_id(dependency_id)
+            if dependency is None:
+                continue
+            for upstream_id in dependency.depends_on:
+                if upstream_id in visited:
+                    continue
+                visited.add(upstream_id)
+                queue.append(upstream_id)
+        return False
 
     def _record_event(
         self,

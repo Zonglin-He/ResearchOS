@@ -12,6 +12,7 @@ class Gap:
     novelty_type: str = ""
     feasibility: str = ""
     novelty_score: float = 0.0
+    debate_weaknesses: list[str] = field(default_factory=list)
 
 
 @dataclass

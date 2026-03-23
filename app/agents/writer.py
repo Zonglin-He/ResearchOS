@@ -12,6 +12,17 @@ from app.schemas.task import Task
 from app.services.artifact_service import ArtifactService
 from app.tools.citation_verifier import verify_citations
 
+FALSE_POSITIVE_PREFIXES = {
+    "[Figure",
+    "[Table",
+    "[Note",
+    "[Eq",
+    "[Equation",
+    "[Section",
+    "[Algorithm",
+    "[Appendix",
+}
+
 
 class WriterAgent(PromptDrivenAgent):
     name = "writer_agent"
@@ -68,9 +79,12 @@ class WriterAgent(PromptDrivenAgent):
         sections = output.get("sections", [])
         target_venue = str(task.input_payload.get("target_venue", "")).strip()
         output_format = str(output.get("output_format", "")).strip().lower() or self._desired_output_format(target_venue)
-        citations = self._collect_citations(output, task)
+        repair_round = max(0, int(task.input_payload.get("citation_repair_round", 0) or 0))
+        citations, used_fallback_citations = self._collect_citations(output, task)
         verification = verify_citations(citations) if citations else {"valid": [], "hallucinated": []}
         audit_notes = list(output.get("audit_notes", []))
+        if used_fallback_citations:
+            audit_notes.append("writer used fallback citation extraction because output.citations was empty or invalid")
         if verification["hallucinated"]:
             audit_notes.append(
                 "citation verification flagged unresolved citations: "
@@ -102,7 +116,7 @@ class WriterAgent(PromptDrivenAgent):
         if self.artifact_service is not None:
             self.artifact_service.register_artifact(artifact)
 
-        if verification["hallucinated"] and not task.input_payload.get("citation_repair_attempted"):
+        if verification["hallucinated"] and repair_round < 3:
             return AgentResult(
                 status="handoff",
                 output={
@@ -116,16 +130,32 @@ class WriterAgent(PromptDrivenAgent):
                     build_child_task(
                         task,
                         kind="write_draft",
-                        goal="Repair unresolved citations and regenerate the draft",
+                        goal=f"Repair unresolved citations and regenerate the draft (round {repair_round + 1}/3)",
                         input_payload={
                             **task.input_payload,
-                            "citation_repair_attempted": True,
+                            "citation_repair_round": repair_round + 1,
                             "citation_feedback": verification["hallucinated"],
                             "draft_artifact_path": artifact.path,
                         },
                         assigned_agent="writer_agent",
                     )
                 ],
+                audit_notes=audit_notes,
+            )
+        if verification["hallucinated"]:
+            audit_notes.append(
+                "citation_repair_failed: " + ", ".join(verification["hallucinated"][:5])
+            )
+            return AgentResult(
+                status="needs_approval",
+                output={
+                    "title": title,
+                    "sections": sections,
+                    "draft_artifact_path": artifact.path,
+                    "output_format": output_format,
+                    "citation_verification": verification,
+                },
+                artifacts=[artifact.artifact_id],
                 audit_notes=audit_notes,
             )
 
@@ -173,21 +203,37 @@ class WriterAgent(PromptDrivenAgent):
         return []
 
     @staticmethod
-    def _collect_citations(output: dict[str, Any], task: Task) -> list[str]:
+    def _collect_citations(output: dict[str, Any], task: Task) -> tuple[list[str], bool]:
         raw = output.get("citations")
         if isinstance(raw, list):
             citations = [str(item).strip() for item in raw if str(item).strip()]
             if citations:
-                return citations
+                return citations, False
         fallback: list[str] = []
+        patterns = [
+            r"(?:arXiv:\s*\d{4}\.\d{4,5}(?:v\d+)?)",
+            r"(?:DOI:\s*10\.\d{4,9}/[-._;()/:A-Z0-9]+)",
+            r"(?:10\.\d{4,9}/[-._;()/:A-Z0-9]+)",
+            r"(?:\[[A-Z][A-Za-z]+(?:\s+et\s+al\.)?\s+\d{4}[a-z]?\])",
+            r"(?:\([A-Z][A-Za-z]+(?:\s+et\s+al\.)?,\s*\d{4}[a-z]?\))",
+        ]
         for section in output.get("sections", []):
             if not isinstance(section, dict):
                 continue
             markdown = str(section.get("markdown", ""))
-            fallback.extend(re.findall(r"(?:arXiv:\s*\d{4}\.\d{4,5}(?:v\d+)?)", markdown, flags=re.IGNORECASE))
+            for pattern in patterns:
+                fallback.extend(re.findall(pattern, markdown, flags=re.IGNORECASE))
         if fallback:
-            return fallback
-        return [str(item).strip() for item in task.input_payload.get("paper_ids", []) if str(item).strip()]
+            filtered = [
+                citation
+                for citation in list(dict.fromkeys(fallback))
+                if not any(citation.startswith(prefix) for prefix in FALSE_POSITIVE_PREFIXES)
+            ]
+            return filtered, True
+        return (
+            [str(item).strip() for item in task.input_payload.get("paper_ids", []) if str(item).strip()],
+            True,
+        )
 
     @classmethod
     def _render_document(

@@ -38,11 +38,33 @@ class KnowledgeBaseService:
         self._append("open_questions.jsonl", record)
         return record
 
-    def search_findings(self, query: str, limit: int = 5) -> list[dict[str, object]]:
-        return self._search("findings.jsonl", query, limit)
+    def search_findings(
+        self,
+        query: str,
+        limit: int = 5,
+        *,
+        current_project_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        return self._search("findings.jsonl", query, limit, current_project_id=current_project_id)
 
-    def search_decisions(self, query: str, limit: int = 3) -> list[dict[str, object]]:
-        return self._search("decisions.jsonl", query, limit)
+    def search_decisions(
+        self,
+        query: str,
+        limit: int = 3,
+        *,
+        current_project_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        return self._search("decisions.jsonl", query, limit, current_project_id=current_project_id)
+
+    def search_bucket(
+        self,
+        bucket: str,
+        query: str,
+        limit: int = 5,
+        *,
+        current_project_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        return self._search(f"{bucket}.jsonl", query, limit, current_project_id=current_project_id)
 
     def list_bucket(self, bucket: str, limit: int = 20) -> list[KnowledgeRecord]:
         rows = read_jsonl(self.root / f"{bucket}.jsonl")
@@ -62,10 +84,17 @@ class KnowledgeBaseService:
             },
         )
 
-    def _search(self, filename: str, query: str, limit: int) -> list[dict[str, object]]:
+    def _search(
+        self,
+        filename: str,
+        query: str,
+        limit: int,
+        *,
+        current_project_id: str | None = None,
+    ) -> list[dict[str, object]]:
         terms = [term.lower() for term in query.split() if term.strip()]
         rows = read_jsonl(self.root / filename)
-        scored: list[tuple[int, dict[str, object]]] = []
+        scored: list[tuple[float, dict[str, object]]] = []
         for row in rows:
             haystack = " ".join(
                 [
@@ -76,7 +105,12 @@ class KnowledgeBaseService:
             ).lower()
             score = sum(1 for term in terms if term in haystack)
             if score:
-                scored.append((score, row))
+                weighted_score = float(score)
+                if current_project_id and str(row.get("project_id", "")) == current_project_id:
+                    weighted_score *= 1.5
+                enriched = dict(row)
+                enriched["_score"] = weighted_score
+                scored.append((weighted_score, enriched))
         scored.sort(key=lambda item: item[0], reverse=True)
         return [row for _, row in scored[:limit]]
 

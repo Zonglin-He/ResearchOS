@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,11 +12,13 @@ from app.agents.orchestrator import Orchestrator
 from app.core.enums import Stage
 from app.providers.registry import ProviderRegistry
 from app.schemas.activity import ConversationMessage, RunEvent
+from app.schemas.approval import Approval
 from app.schemas.freeze import TopicFreeze
 from app.schemas.gap_map import Gap, GapMap
 from app.schemas.paper_card import PaperCard
 from app.schemas.project import Project
 from app.schemas.task import Task, TaskStatus
+from app.services.approval_service import ApprovalService
 from app.services.activity_service import ActivityService
 from app.services.freeze_service import FreezeService
 from app.services.gap_map_service import GapMapService
@@ -24,8 +27,8 @@ from app.services.kb_service import KnowledgeBaseService, KnowledgeRecord
 from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
 from app.tools.arxiv_fetcher import search_arxiv
-from app.tools.semantic_scholar import search_semantic_scholar
-from app.tools.query_decomposer import fallback_decompose_research_goal
+from app.tools.semantic_scholar import search_semantic_scholar, semantic_scholar_score
+from app.tools.query_decomposer import fallback_decompose_research_goal, broaden_query, query_hit_count
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DISCUSSION_PROMPT_PATH = _REPO_ROOT / "prompts" / "guide" / "discussion_advisor.md"
@@ -91,6 +94,7 @@ class ResearchGuideService:
         paper_card_service: PaperCardService,
         provider_registry: ProviderRegistry,
         kb_service: KnowledgeBaseService,
+        approval_service: ApprovalService,
         tool_registry,
         orchestrator: Orchestrator,
         activity_service: ActivityService,
@@ -102,6 +106,7 @@ class ResearchGuideService:
         self.paper_card_service = paper_card_service
         self.provider_registry = provider_registry
         self.kb_service = kb_service
+        self.approval_service = approval_service
         self.tool_registry = tool_registry
         self.orchestrator = orchestrator
         self.activity_service = activity_service
@@ -144,8 +149,11 @@ class ResearchGuideService:
         seed_papers = self._collect_seed_papers(queries, max_papers=max_papers)
         arxiv_query = queries[0] if queries else (" ".join(derived_keywords[:6]) if derived_keywords else goal)
         bootstrap_context = {
-            "prior_findings": self.kb_service.search_findings(goal, limit=5),
-            "prior_decisions": self.kb_service.search_decisions(goal, limit=3),
+            "prior_findings": self.kb_service.search_findings(goal, limit=5, current_project_id=resolved_project_id),
+            "prior_decisions": self.kb_service.search_decisions(goal, limit=3, current_project_id=resolved_project_id),
+            "prior_literature": self.kb_service.search_bucket("literature", goal, limit=5, current_project_id=resolved_project_id),
+            "prior_open_questions": self.kb_service.search_bucket("open_questions", goal, limit=3, current_project_id=resolved_project_id),
+            "bootstrap_note": "Use cross-project findings, decisions, literature notes, and open questions as starting context.",
         }
         ingest_tasks: list[Task] = []
         gap_task: Task | None = None
@@ -506,9 +514,18 @@ class ResearchGuideService:
 
     async def autopilot_project(self, project_id: str, *, max_dispatches: int = 8) -> AutopilotResult:
         dispatched: list[str] = []
+        project = self.project_service.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
 
         while len(dispatched) < max_dispatches:
             tasks = self._project_tasks(project_id)
+            checkpoint_stop = self._pending_required_checkpoint(project)
+            if checkpoint_stop is not None:
+                return AutopilotResult(
+                    dispatched_task_ids=tuple(dispatched),
+                    stop_reason="waiting_approval",
+                )
             human_select_task = self._first_active_human_select(tasks)
             if human_select_task is not None:
                 self.project_service.update_stage(project_id, Stage.HUMAN_SELECT)
@@ -546,6 +563,12 @@ class ResearchGuideService:
                         stop_reason=dispatch.task.status.value,
                     )
                 self._sync_stage_after_dispatch(dispatch.task)
+                project = self.project_service.get_project(project_id) or project
+                if self._maybe_create_required_checkpoint(project, dispatch.task):
+                    return AutopilotResult(
+                        dispatched_task_ids=tuple(dispatched),
+                        stop_reason="waiting_approval",
+                    )
 
         return AutopilotResult(
             dispatched_task_ids=tuple(dispatched),
@@ -574,11 +597,25 @@ class ResearchGuideService:
         except KeyError:
             return fallback_decompose_research_goal(goal)
         try:
-            result = await decomposer.execute(goal=goal)
+            result = await decomposer.execute(goal=goal, min_papers_per_query=3)
             queries = [str(item).strip() for item in result.get("queries", []) if str(item).strip()]
         except Exception:
             queries = fallback_decompose_research_goal(goal)
-        return queries[:6] or fallback_decompose_research_goal(goal)
+        validated: list[str] = []
+        for query in queries[:6]:
+            candidate = query.strip()
+            if not candidate:
+                continue
+            attempts = 0
+            while attempts < 3 and query_hit_count(candidate) < 3:
+                broadened = broaden_query(candidate)
+                if not broadened or broadened == candidate:
+                    break
+                candidate = broadened
+                attempts += 1
+            if candidate not in validated:
+                validated.append(candidate)
+        return validated[:6] or fallback_decompose_research_goal(goal)
 
     @staticmethod
     def _paper_seed_key(item: dict[str, Any]) -> str:
@@ -598,6 +635,14 @@ class ResearchGuideService:
                 candidates.extend(search_arxiv(query, max_results=per_query))
             except Exception:
                 pass
+            candidates.sort(
+                key=lambda item: (
+                    semantic_scholar_score(item),
+                    str(item.get("year") or item.get("published") or ""),
+                    str(item.get("title") or ""),
+                ),
+                reverse=True,
+            )
             for item in candidates:
                 key = self._paper_seed_key(item)
                 if not key or key in seen:
@@ -607,6 +652,74 @@ class ResearchGuideService:
                 if len(merged) >= max_papers:
                     return merged
         return merged[:max_papers]
+
+    def _pending_required_checkpoint(self, project: Project) -> Approval | None:
+        checkpoints = self._human_checkpoints(project)
+        if not checkpoints:
+            return None
+        pending = [
+            approval
+            for approval in self.approval_service.list_pending()
+            if approval.project_id == project.project_id and approval.target_type == "stage_checkpoint"
+        ]
+        if not pending:
+            return None
+        active_targets = {f"{project.project_id}:{stage}" for stage, mode in checkpoints.items() if mode == "required"}
+        for approval in pending:
+            if approval.target_id in active_targets:
+                return approval
+        return None
+
+    def _maybe_create_required_checkpoint(self, project: Project, task: Task) -> bool:
+        checkpoints = self._human_checkpoints(project)
+        if not checkpoints:
+            return False
+        stage = self._stage_for_task_kind(task.kind, terminal_status=task.status)
+        if stage is None or stage == Stage.HUMAN_SELECT:
+            return False
+        mode = checkpoints.get(stage.value, "")
+        if mode != "required":
+            return False
+        target_id = f"{project.project_id}:{stage.value}"
+        latest = self.approval_service.latest_target_approval(
+            project_id=project.project_id,
+            target_type="stage_checkpoint",
+            target_id=target_id,
+        )
+        if latest is not None and latest.decision != "expired":
+            return latest.decision == "pending"
+        approval = Approval(
+            approval_id=f"approval:{target_id}",
+            project_id=project.project_id,
+            target_type="stage_checkpoint",
+            target_id=target_id,
+            approved_by="system",
+            decision="pending",
+            comment=f"Human checkpoint required before leaving stage {stage.value}.",
+            context_summary=task.goal,
+            recommended_action=f"Review outputs from {task.kind} before continuing autopilot.",
+            due_at=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+        self.approval_service.record_approval(approval)
+        return True
+
+    @staticmethod
+    def _human_checkpoints(project: Project) -> dict[str, str]:
+        dispatch_profile = project.dispatch_profile
+        if dispatch_profile is None:
+            return {}
+        metadata = dispatch_profile.metadata if isinstance(dispatch_profile.metadata, dict) else {}
+        checkpoints = metadata.get("human_checkpoints", {})
+        if not isinstance(checkpoints, dict):
+            return {}
+        normalized: dict[str, str] = {}
+        for stage, mode in checkpoints.items():
+            stage_name = str(stage).strip().upper()
+            checkpoint_mode = str(mode).strip().lower()
+            if not stage_name or checkpoint_mode not in {"required", "optional"}:
+                continue
+            normalized[stage_name] = checkpoint_mode
+        return normalized
 
     def _require_human_select_task(self, project_id: str, human_select_task_id: str) -> Task:
         human_select_task = self.task_service.get_task(human_select_task_id)

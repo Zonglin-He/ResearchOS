@@ -5,12 +5,14 @@ from typing import Any
 
 from app.providers.base import BaseProvider
 from app.tools.base import BaseTool
+from app.tools.arxiv_fetcher import search_arxiv
+from app.tools.semantic_scholar import search_semantic_scholar
 
 
 def fallback_decompose_research_goal(goal: str) -> list[str]:
     cleaned = goal.strip()
     if not cleaned:
-      return []
+        return []
     fragments = [cleaned]
     lower = cleaned.lower()
     if "robust" in lower or "adversarial" in lower:
@@ -48,6 +50,74 @@ def fallback_decompose_research_goal(goal: str) -> list[str]:
     return ordered[:6]
 
 
+def broaden_query(query: str) -> str:
+    noise_terms = {
+        "survey",
+        "benchmark",
+        "reproducibility",
+        "baseline",
+        "low",
+        "compute",
+        "efficient",
+        "training",
+        "2024",
+        "2025",
+        "2026",
+    }
+    tokens = [token for token in query.replace("-", " ").split() if token]
+    reduced = [token for token in tokens if token.lower() not in noise_terms]
+    if len(reduced) >= 3:
+        return " ".join(reduced[:5])
+    if len(tokens) >= 3:
+        return " ".join(tokens[:4])
+    return query.strip()
+
+
+def query_hit_count(query: str, *, probe_limit: int = 3) -> int:
+    total = 0
+    try:
+        total += len(search_semantic_scholar(query, limit=probe_limit))
+    except Exception:
+        pass
+    try:
+        total += len(search_arxiv(query, max_results=probe_limit))
+    except Exception:
+        pass
+    return total
+
+
+def validate_queries(
+    queries: list[str],
+    *,
+    min_papers_per_query: int = 3,
+) -> list[str]:
+    validated: list[str] = []
+    for query in queries:
+        candidate = query.strip()
+        if not candidate:
+            continue
+        chosen = _broaden_until_hit(
+            candidate,
+            min_papers=min_papers_per_query,
+            max_rounds=3,
+        )
+        if chosen not in validated:
+            validated.append(chosen)
+    return validated[:6]
+
+
+def _broaden_until_hit(query: str, *, min_papers: int, max_rounds: int = 3) -> str:
+    current = query.strip()
+    for _ in range(max_rounds):
+        if not current or query_hit_count(current) >= min_papers:
+            return current
+        broader = broaden_query(current)
+        if not broader or broader == current:
+            break
+        current = broader
+    return current
+
+
 class QueryDecomposerTool(BaseTool):
     name = "query_decomposer"
     description = "Decompose a research goal into complementary literature search queries."
@@ -55,6 +125,7 @@ class QueryDecomposerTool(BaseTool):
         "type": "object",
         "properties": {
             "goal": {"type": "string"},
+            "min_papers_per_query": {"type": "integer"},
         },
         "required": ["goal"],
     }
@@ -67,8 +138,14 @@ class QueryDecomposerTool(BaseTool):
         goal = str(kwargs["goal"]).strip()
         if not goal:
             return {"queries": []}
+        min_papers_per_query = max(1, int(kwargs.get("min_papers_per_query", 3)))
         if self.provider is None:
-            return {"queries": fallback_decompose_research_goal(goal)}
+            return {
+                "queries": validate_queries(
+                    fallback_decompose_research_goal(goal),
+                    min_papers_per_query=min_papers_per_query,
+                )
+            }
 
         system_prompt = (
             "Break the research goal into 4-6 complementary literature search queries. "
@@ -97,4 +174,9 @@ class QueryDecomposerTool(BaseTool):
                 ordered.append(text)
         if not ordered:
             ordered = fallback_decompose_research_goal(goal)
-        return {"queries": ordered[:6]}
+        return {
+            "queries": validate_queries(
+                ordered[:6],
+                min_papers_per_query=min_papers_per_query,
+            )
+        }

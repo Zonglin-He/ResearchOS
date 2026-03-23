@@ -873,9 +873,13 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
                                 gap_id=gap.gap_id,
                                 description=gap.description,
                                 supporting_papers=gap.supporting_papers,
+                                evidence_summary=gap.evidence_summary,
                                 attack_surface=gap.attack_surface,
                                 difficulty=gap.difficulty,
                                 novelty_type=gap.novelty_type,
+                                feasibility=gap.feasibility,
+                                novelty_score=gap.novelty_score,
+                                debate_weaknesses=gap.debate_weaknesses,
                             )
                             for gap in cluster.gaps
                         ],

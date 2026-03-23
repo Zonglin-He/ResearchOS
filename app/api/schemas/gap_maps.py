@@ -13,6 +13,7 @@ class GapCreate(BaseModel):
     novelty_type: str = ""
     feasibility: str = ""
     novelty_score: float = 0.0
+    debate_weaknesses: list[str] = Field(default_factory=list)
 
 
 class GapClusterCreate(BaseModel):

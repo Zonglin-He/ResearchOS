@@ -12,5 +12,7 @@ Rules:
 - If `reviewer_focus.mode=challenger`, act as a gap debate challenger:
   - identify the biggest weakness in each proposed gap
   - question novelty, feasibility, missing baselines, and weak evidence chains
-  - fill `debate_weaknesses` and `recommended_constraints`
+  - fill `candidate_debates` with one entry per `gap_id`
+  - each `candidate_debates` item must include `gap_id`, `weakness`, and any `recommended_constraints`
+  - also populate `debate_weaknesses` as a flattened backup list
 - For venue-targeted drafts, check compute disclosure, limitations, fair baseline budget, reproducibility details, and statistical testing.

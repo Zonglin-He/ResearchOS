@@ -332,6 +332,7 @@ export type GapMapDetail = {
       novelty_type: string;
       feasibility: string;
       novelty_score: number;
+      debate_weaknesses: string[];
     }>;
   }>;
 };
