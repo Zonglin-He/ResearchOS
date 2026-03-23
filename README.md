@@ -1,497 +1,395 @@
 # ResearchOS
 
-Language: [English](#english) | [中文](#zh-cn)
+> A multi-agent research workflow system that takes a research idea from literature retrieval to a reviewable paper draft — with structured human oversight at every critical decision point.
 
-<a id="english"></a>
-<details open>
-<summary><strong>English</strong></summary>
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black" />
+  <img src="https://img.shields.io/badge/FastAPI-0.135-009688?style=flat-square&logo=fastapi&logoColor=white" />
+  <img src="https://img.shields.io/badge/LLM_Providers-Claude_·_Codex_·_Gemini-blueviolet?style=flat-square" />
+  <img src="https://img.shields.io/badge/Agents-10_Specialized-orange?style=flat-square" />
+  <img src="https://img.shields.io/badge/Pipeline-16_Stages-green?style=flat-square" />
+</p>
 
-## What It Is
+---
 
-ResearchOS is a research workflow runtime for structured, multi-step work. It keeps projects, tasks, paper cards, gap maps, freezes, runs, claims, lessons, and verification records as first-class objects instead of burying them in chat logs.
+## What problem does this solve?
 
-It has three operator surfaces:
+Existing automated research systems (AI Scientist, AgentLaboratory, GPT-Researcher) are either:
+- **Fully autonomous** with no structured human oversight — making decisions researchers can't audit or trust
+- **Retrieval-only** — they find papers but can't design, run, or analyze experiments
 
-- CLI for direct control
-- FastAPI for automation and inspection
-- React web UI for the same control-plane workflow in a visual interface
+ResearchOS is built around a different premise: **research is a human-AI collaboration, not a replacement**. Agents handle the high-volume mechanical work (literature screening, code generation, citation verification, result analysis). Humans stay in control at decisions that actually matter (research direction selection, experiment design approval, claim validation).
 
-The current web UI supports guided research intake, automated `paper_ingest -> gap_mapping`, human idea selection, and a real LLM-backed discussion sidebar for idea feasibility review.
+The result is a system where every artifact — every paper card, gap map, experiment spec, claim, and lesson — is traceable, verifiable, and reproducible.
 
-## Core Capabilities
+---
 
-- Typed task lifecycle and dispatch state
-- Specialized agents with role contracts
-- Provider routing across `codex`, `claude`, `gemini`, and `local`
-- Durable registries for research objects
-- Verification, audit, provenance, and approval surfaces
-- One-command local web startup
+## Architecture Overview
+
+```
+Research Goal (natural language)
+         │
+         ▼
+  QueryDecomposer ──► arXiv API + Semantic Scholar
+  (sub-question                 (citation-weighted retrieval)
+   decomposition)
+         │
+         ▼
+  ┌─ ReaderAgent ──────────────────────────────────────────────┐
+  │  Extracts structured paper cards with evidence references  │
+  │  Rejects: table entries, figure refs, encoding failures    │
+  └────────────────────────────────────────────┬───────────────┘
+                                               │
+                                               ▼
+  ┌─ MapperAgent + ReviewerAgent (debate) ─────────────────────┐
+  │  Clusters gaps across 4 dimensions:                        │
+  │  method gaps / data gaps / evaluation gaps / compute gaps  │
+  │  Each gap challenged by a debate agent before surfacing    │
+  └────────────────────────────────────────────┬───────────────┘
+                                               │
+                                    ┌──────────▼──────────┐
+                                    │  ★ Human Select     │
+                                    │  Direction Workbench│
+                                    │  + LLM Advisor Chat │
+                                    └──────────┬──────────┘
+                                               │
+                                               ▼
+  ┌─ HypothetistAgent ─────────────────────────────────────────┐
+  │  Translates selected gap into falsifiable hypotheses       │
+  │  Each hypothesis must include falsification conditions     │
+  └────────────────────────────────────────────┬───────────────┘
+                                               │
+                                               ▼
+  ┌─ BuilderAgent ─────────────────────────────────────────────┐
+  │  Generates self-contained Python experiment scripts        │
+  │  Hardware-aware: adapts to GPU memory and CPU constraints  │
+  └────────────────────────────────────────────┬───────────────┘
+                                               │
+                                               ▼
+  ┌─ ExperimentRunner (5-round self-repair) ───────────────────┐
+  │  OOM        → auto batch_size reduction                    │
+  │  NaN loss   → LLM-assisted optimizer repair                │
+  │  ImportError→ auto dependency install                      │
+  └────────────────────────────────────────────┬───────────────┘
+                                               │
+                                               ▼
+  ┌─ AnalystAgent ─────────────────────────────────────────────┐
+  │  PROCEED (confidence > 0.7) ──► WriterAgent                │
+  │  REFINE + patch             ──► back to BuilderAgent       │
+  │  PIVOT                      ──► back to MapperAgent        │
+  └────────────────────────────────────────────┬───────────────┘
+                                               │
+                      ┌────────────────────────┼──────────────────┐
+                      ▼                        ▼                  ▼
+               ReviewerAgent            VerifierAgent      ArchivistAgent
+            (ML fairness checks)     (evidence chains)   (lessons + KB)
+                      │
+                      ▼
+                WriterAgent
+          (LaTeX / Markdown draft,
+           3-round citation repair,
+           venue-specific checklist)
+```
+
+---
+
+## Key Design Decisions
+
+### 1. Three-layer skill architecture
+Each agent is governed by three stacked layers:
+- **Role prompt** (`prompts/roles/`) — defines what the role *is* and its professional responsibilities
+- **Agent prompt** (`prompts/`) — specific behavioral rules for each task kind, including anti-patterns and hard rejection criteria
+- **Skill file** (`skills/`) — concrete output templates, negative examples, and self-check criteria the LLM runs before returning output
+
+This separation means skill quality can be improved independently from agent wiring, and skills can be reused across different underlying LLMs.
+
+### 2. Database-mediated agent communication
+Agents do not call each other directly. All inter-agent state flows through typed registries:
+
+```
+TaskRegistry → PaperCardRegistry → GapMapRegistry → FreezeRegistry → ArtifactRegistry
+```
+
+This makes the system fully inspectable (every intermediate artifact is readable at any time), recoverable (tasks can be retried from any checkpoint), and auditable (full provenance chain from raw input to published claim).
+
+### 3. Structured human checkpoints
+`human_select` is a first-class task kind — not a UI affordance or a fallback state. The pipeline *pauses* and will not continue until a human makes a verified decision. Additional checkpoints (`FREEZE_SPEC`, `AUDIT_RESULTS`) can be configured per-project as `required` or `optional`, and human approvals support conditional acceptance: a constraint entered in the UI is injected directly into the downstream task's context.
+
+### 4. Self-evolving knowledge base
+Lessons are not logs. After every task, `ArchivistAgent` evaluates whether the outcome contains a durable insight — one that is generalizable, evidence-backed, and reusable in a different context. Lessons are stored in a structured KB (4 categories: findings, decisions, literature, open questions) and decay after 30 days unless they keep getting retrieved. Each new task receives the top-5 most relevant prior lessons before executing, making the system measurably better on familiar research domains over time.
+
+### 5. Experiment integrity gates
+`ReviewerAgent` runs a domain-specific ML fairness checklist as blocking criteria before any result propagates to a paper draft:
+- Same dataset split for method and all baselines?
+- If data augmentation used — did the baseline receive identical augmentation budget?
+- No test-set leakage into hyperparameter selection?
+- Is the reported accuracy a cherry-picked epoch, or from a pre-declared stopping rule?
+- For imbalanced datasets: is plain accuracy supplemented with a class-aware metric?
+
+Claims failing these checks are blocked and returned with a concrete remediation note.
+
+---
+
+## Agent Catalog
+
+| Agent | Role | Key responsibility |
+|-------|------|--------------------|
+| **ReaderAgent** | Librarian | Literature screening → structured paper cards with evidence refs |
+| **MapperAgent** | Synthesizer | Paper cards → gap clusters with novelty/feasibility scoring |
+| **HypothetistAgent** | Hypothesist | Gap → falsifiable, bounded, testable hypotheses |
+| **BuilderAgent** | Executor | Spec → runnable, hardware-aware Python experiment code |
+| **AnalystAgent** | Analyst | Run results → PROCEED / REFINE / PIVOT with numeric justification |
+| **ReviewerAgent** | Reviewer | Artifacts → blocking/warning review with ML fairness checklist |
+| **VerifierAgent** | Verifier | Claims → evidence chain verification with scope declaration |
+| **WriterAgent** | Publisher | Frozen evidence → paper sections / full draft with citation repair |
+| **ArchivistAgent** | Archivist | Runs → durable lessons + structured knowledge base entries |
+| **BranchManagerAgent** | — | Multi-branch experiment coordination, scoring, and pruning |
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend runtime | Python 3.11, FastAPI, SQLAlchemy |
+| Storage | SQLite (local) / PostgreSQL (production) |
+| Task queue | Celery + Redis |
+| Frontend | React 18, TypeScript, Vite, Lucide |
+| LLM integration | Claude CLI, Codex CLI, Gemini CLI (subprocess, no direct API) |
+| Paper retrieval | arXiv API, Semantic Scholar API |
+| Containerization | Docker Compose |
+| CI | GitHub Actions |
+| Package manager | uv |
+
+---
 
 ## Quick Start
 
-### Requirements
+**Requirements:** Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 18+
 
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/)
-- Node.js 18+ for the frontend
-- Optional provider CLIs if you want live external model execution
-
-### Install
-
-```powershell
+```bash
+# Install dependencies
 uv sync --dev
-cd frontend
-npm install
-cd ..
-```
+cd frontend && npm install && cd ..
 
-### Recommended Local Setup
+# Initialize local database
+uv run researchos --db-path data/researchos.db init-db
 
-Use the deterministic local provider if you want a safe first run:
-
-```powershell
-$env:RESEARCHOS_PROVIDER = "local"
-$env:RESEARCHOS_PROVIDER_MODEL = "deterministic-reader"
-$env:RESEARCHOS_WORKSPACE_ROOT = (Resolve-Path ".").Path
-```
-
-Initialize the database:
-
-```powershell
-uv run researchos --db-path data\researchos.db init-db
-```
-
-### Start the Web UI
-
-```powershell
+# Launch (starts both API on :8000 and frontend on :5173)
 uv run researchos web
 ```
 
-Default local ports:
+Open `http://127.0.0.1:5173` — the UI will guide you through starting your first research project from a plain-language goal.
 
-- Frontend: `http://127.0.0.1:5173`
-- API: `http://127.0.0.1:8000`
+**With a real LLM provider** (requires the corresponding CLI installed and authenticated):
+
+```bash
+export RESEARCHOS_PROVIDER=claude          # or codex / gemini
+export RESEARCHOS_PROVIDER_MODEL=sonnet
+export RESEARCHOS_WORKSPACE_ROOT=$(pwd)
+```
+
+**For demos and CI** (deterministic, zero API keys):
+
+```bash
+export RESEARCHOS_PROVIDER=local
+export RESEARCHOS_PROVIDER_MODEL=deterministic-reader
+```
 
 Override ports if needed:
 
-```powershell
+```bash
 uv run researchos web --port 8010 --frontend-port 5180
 ```
 
-### Start Only the API
+---
 
-```powershell
-uv run uvicorn app.api.app:create_app --factory --reload
+## Guided Research Workflow
+
+The web UI is built around the research pipeline itself, not the underlying data model.
+
+```
+1. Enter a research goal in plain language
+   ─────────────────────────────────────────────────────────────────
+   System decomposes the goal into complementary search sub-queries,
+   fetches papers from arXiv + Semantic Scholar (citation-weighted),
+   and generates structured paper cards automatically.
+
+2. Gap analysis with adversarial debate
+   ─────────────────────────────────────────────────────────────────
+   MapperAgent clusters the evidence into research gaps.
+   A challenger ReviewerAgent debates each candidate gap before it
+   surfaces — the weaknesses are displayed alongside each gap so the
+   human decision is better informed.
+
+3. ★ Human Decision: Direction Workbench
+   ─────────────────────────────────────────────────────────────────
+   - Novelty × Feasibility scatter matrix
+   - Per-gap debate weaknesses shown inline
+   - LLM advisor chat for deep feasibility discussion
+   - Optional: attach constraints to approval ("use FGSM not PGD")
+
+4. Autopilot continues to the next checkpoint
+   ─────────────────────────────────────────────────────────────────
+   hypothesis generation → spec freeze → experiment → analysis
+   Each stage can be configured as required (always pause) or
+   optional (auto-advance if confidence is high).
+
+5. Writer produces a draft
+   ─────────────────────────────────────────────────────────────────
+   LaTeX or Markdown, with 3-round citation verification,
+   venue-specific checklist (NeurIPS/ICLR), and explicit
+   limitation sections.
 ```
 
-Health check:
+---
 
-```powershell
-curl http://127.0.0.1:8000/health
+## Project Structure
+
+```
+ResearchOS/
+├── app/
+│   ├── agents/          # 10 specialized agents (reader, mapper, builder, …)
+│   ├── api/             # FastAPI routers and schemas
+│   ├── cli.py           # CLI entrypoint (uv run researchos)
+│   ├── core/            # Enums, config, pipeline stage definitions
+│   ├── db/              # SQLAlchemy models, Alembic migrations
+│   ├── providers/       # Claude / Codex / Gemini / Local CLI wrappers
+│   ├── routing/         # Provider health, routing policy, fallback chains
+│   ├── roles/           # Role contracts, bindings, registry
+│   ├── services/        # All domain services (gap maps, lessons, KB, …)
+│   ├── skills/          # Skill specs and registry
+│   └── tools/           # arXiv, Semantic Scholar, experiment runner, …
+├── frontend/
+│   └── src/
+│       ├── components/  # OverviewTab, OperationsTab, RegistryTab, CreateTab
+│       └── App.tsx
+├── prompts/             # Agent prompts + role prompts + advisor prompts
+├── skills/              # SKILL.md files per role (templates, anti-patterns)
+├── registry/            # Durable JSONL state (paper cards, gaps, lessons, …)
+├── tests/
+│   ├── unit/
+│   └── integration/
+└── docker-compose.yml
 ```
 
-## Common Workflows
+---
 
-### CLI
+## Data Model
 
-Create a project:
+ResearchOS treats research artifacts as typed, versioned, first-class objects — not as chat history or flat files.
 
-```powershell
-uv run researchos --db-path data\researchos.db create-project `
-  --project-id p1 `
-  --name "ResearchOS Demo" `
-  --description "Minimal local demo"
+| Object | What it captures |
+|--------|-----------------|
+| `PaperCard` | Problem, method, strongest result, datasets, metrics, evidence refs |
+| `GapMap` | Clustered gaps with novelty/feasibility scores and per-gap debate weaknesses |
+| `TopicFreeze` | Immutable snapshot of the selected research direction and rationale |
+| `SpecFreeze` | Immutable experiment spec: hypothesis, baselines, datasets, metrics, success/failure criteria |
+| `RunManifest` | Full execution record: config, seed, dataset snapshot, artifacts, metrics |
+| `Claim` | Empirical assertion tied to a specific run with risk level and human approval state |
+| `Lesson` | Durable insight from past tasks — evidence-backed, with hit count and 30-day decay |
+| `KnowledgeBase` | Cross-project structured knowledge: findings, decisions, literature, open questions |
+
+---
+
+## Selected API Endpoints
+
+```
+POST  /guide/start                    Start a project from a plain-language research goal
+POST  /guide/discuss-direction        LLM advisor discussion about a gap candidate
+POST  /guide/adopt-direction          Lock in a research direction and create topic freeze
+POST  /projects/{id}/autopilot        Advance project to the next human checkpoint
+
+GET   /projects/{id}/dashboard        Full project state snapshot
+GET   /projects/{id}/events/stream    SSE stream for real-time task status updates
+GET   /routing/system                 Current provider health and routing policy
+GET   /providers/health               Per-provider status, cooldowns, and failure counts
+
+POST  /tasks/{id}/dispatch            Manually dispatch a queued task
+GET   /artifacts/{id}/inspect         Inspect artifact content and metadata
+GET   /audit/summary                  Audit findings across all claims and runs
+GET   /verifications/summary          Evidence verification status across all projects
 ```
 
-Create a task:
+---
 
-```powershell
-uv run researchos --db-path data\researchos.db create-task `
-  --task-id t1 `
-  --project-id p1 `
-  --kind paper_ingest `
-  --goal "Read one paper summary" `
-  --owner demo `
-  --input-payload "{\"topic\":\"robustness\",\"source_summary\":{\"title\":\"Example Paper\",\"abstract\":\"A compact summary.\",\"setting\":\"classification\"}}"
+## Running Tests
+
+```bash
+# Unit tests
+uv run pytest tests/unit -v
+
+# Integration tests (deterministic local provider, no API keys needed)
+uv run pytest tests/integration -v
+
+# Compile check + frontend build (mirrors CI)
+uv run python -m compileall app
+cd frontend && npm run build
 ```
 
-Dispatch and inspect:
+---
 
-```powershell
-uv run researchos --db-path data\researchos.db dispatch-task --task-id t1
-uv run researchos --db-path data\researchos.db list-tasks --project-id p1
-uv run researchos --db-path data\researchos.db project-dashboard --project-id p1
-uv run researchos --db-path data\researchos.db inspect-routing-system
-uv run researchos --db-path data\researchos.db provider-health
-```
+## Production Deployment
 
-Open the terminal control plane:
-
-```powershell
-uv run researchos
-uv run researchos console
-uv run ros
-```
-
-### Web UI
-
-The web UI is built around the same workflow as the CLI, but with guided entry points:
-
-- Start a project from a plain-language research goal
-- Auto-run `paper_ingest` and `gap_mapping`
-- Pause at `human_select`
-- Discuss candidate directions with the LLM sidebar
-- Adopt one direction and continue into spec/build/review/writing
-
-## Provider Setup
-
-Minimum environment example:
-
-```powershell
-$env:RESEARCHOS_PROVIDER = "claude"
-$env:RESEARCHOS_PROVIDER_MODEL = "sonnet"
-$env:RESEARCHOS_MAX_STEPS = "12"
-```
-
-Supported provider families:
-
-- `codex`
-- `claude`
-- `gemini`
-- `local`
-
-Use `local` for demos, CI, and deterministic tests. Use `codex`, `claude`, or `gemini` only if the matching CLI is already installed and authenticated.
-
-## Project Layout
-
-Main directories:
-
-- [`app/`](app/) — runtime, agents, services, API, CLI
-- [`frontend/`](frontend/) — React web UI
-- [`prompts/`](prompts/) — repo-owned prompts
-- [`skills/`](skills/) — repo-owned skills
-- [`examples/`](examples/) — copy-pastable demos
-- [`docs/`](docs/) — setup and release notes
-
-## Durable State
-
-ResearchOS stores durable workflow state in two places:
-
-- Database: projects and tasks
-- Registry files under `registry/`: paper cards, gap maps, runs, claims, lessons, verifications, freezes, artifacts
-
-Important paths:
-
-- `registry/paper_cards.jsonl`
-- `registry/gap_maps.jsonl`
-- `registry/claims.jsonl`
-- `registry/runs.jsonl`
-- `registry/lessons.jsonl`
-- `registry/verifications.jsonl`
-- `registry/artifacts.jsonl`
-- `registry/freezes/`
-- `artifacts/`
-- `state/provider_health.yaml`
-
-## API Surfaces
-
-Useful operator endpoints:
-
-- `GET /projects/{project_id}/dashboard`
-- `GET /routing/system`
-- `GET /routing/tasks/{task_id}`
-- `GET /providers/health`
-- `GET /artifacts`
-- `GET /artifacts/{artifact_id}`
-- `GET /artifacts/{artifact_id}/inspect`
-- `GET /verifications/summary`
-- `GET /audit/summary`
-- `POST /guide/start`
-- `POST /guide/discuss-direction`
-- `POST /guide/adopt-direction`
-- `POST /projects/{project_id}/autopilot`
-
-## Production Stack
-
-The production-oriented stack uses:
-
-- FastAPI
-- Postgres
-- Redis
-- Celery worker
-
-Start it with:
-
-```powershell
+```bash
+# Full stack: FastAPI + PostgreSQL + Redis + Celery worker
 docker compose up -d --build
+
+# Health check
+curl http://localhost:8000/health
 ```
 
-## Examples and Notes
+The production stack swaps SQLite for PostgreSQL and adds a Celery worker for async task dispatch. The API surface is identical to the local dev setup.
 
-- [`examples/README.md`](examples/README.md)
-- [`docs/operator_setup.md`](docs/operator_setup.md)
-- [`docs/release_checklist.md`](docs/release_checklist.md)
-- [`CHANGELOG.md`](CHANGELOG.md)
+---
 
-## CI
+## Comparison with Related Systems
 
-GitHub Actions currently runs:
+| Feature | ResearchOS | AI Scientist v2 | GPT-Researcher | AgentLaboratory |
+|---------|:---:|:---:|:---:|:---:|
+| Structured human checkpoints | ✅ | ❌ | ❌ | ⚠️ |
+| Experiment self-repair loop | ✅ | ⚠️ | ❌ | ✅ |
+| Cross-project knowledge accumulation | ✅ | ❌ | ❌ | ❌ |
+| Citation verification + repair | ✅ | ⚠️ | ❌ | ❌ |
+| ML fairness review gates | ✅ | ❌ | ❌ | ⚠️ |
+| Gap debate / adversarial validation | ✅ | ❌ | ❌ | ❌ |
+| Web UI for operators | ✅ | ❌ | ❌ | ❌ |
+| Multi-provider routing + fallback | ✅ | ✅ | ✅ | ⚠️ |
+| Full artifact provenance chain | ✅ | ⚠️ | ❌ | ⚠️ |
 
-- dependency install with `uv`
-- Python import sanity
-- unit tests
-- API dispatch smoke with the local provider
-- a small CLI smoke path
+---
 
-Workflow file:
+## Roadmap
 
-- [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+- [ ] Hypothesist wired into main dispatch flow (currently designed, not dispatched)
+- [ ] Branch-tree experiment exploration (tree-search style, multiple parallel branches)
+- [ ] LaTeX compilation to PDF
+- [ ] Cross-project knowledge graph visualization
+- [ ] Experiment result comparison dashboard
+- [ ] JSONL → SQLite primary storage migration for all registries
 
-</details>
+---
 
-<a id="zh-cn"></a>
 <details>
-<summary><strong>中文</strong></summary>
+<summary>中文简介</summary>
 
 ## 这是什么
 
-ResearchOS 是一个面向研究流程的运行时系统。它把项目、任务、论文卡片、gap map、freeze、run、claim、lesson、verification 这些对象都当成正式状态来管理，而不是散落在聊天记录里。
-
-它现在有三个主要入口：
-
-- CLI，适合直接控制
-- FastAPI，适合自动化和检查
-- React Web UI，适合同样的控制流程但更直观
-
-当前 Web UI 已经支持从研究方向出发，自动推进 `paper_ingest -> gap_mapping`，在 `human_select` 停下，并用真实 LLM 讨论侧栏辅助选题。
-
-## 核心能力
-
-- 强类型任务生命周期和调度状态
-- 带角色约束的专用 agent
-- `codex`、`claude`、`gemini`、`local` 多 provider 路由
-- 持久化研究登记表
-- verification、audit、provenance、approval 一整套检查面
-- 一条命令同时拉起前后端
-
-## 快速开始
-
-### 环境要求
-
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/)
-- Node.js 18+（前端需要）
-- 如果要调用外部模型，需要对应 provider 的 CLI
-
-### 安装依赖
-
-```powershell
-uv sync --dev
-cd frontend
-npm install
-cd ..
-```
-
-### 推荐的本地起步方式
-
-第一次跑建议先用确定性的本地 provider：
-
-```powershell
-$env:RESEARCHOS_PROVIDER = "local"
-$env:RESEARCHOS_PROVIDER_MODEL = "deterministic-reader"
-$env:RESEARCHOS_WORKSPACE_ROOT = (Resolve-Path ".").Path
-```
-
-初始化数据库：
-
-```powershell
-uv run researchos --db-path data\researchos.db init-db
-```
-
-### 启动 Web UI
-
-```powershell
-uv run researchos web
-```
-
-默认本地地址：
-
-- 前端：`http://127.0.0.1:5173`
-- API：`http://127.0.0.1:8000`
-
-如果端口冲突，可以改：
-
-```powershell
-uv run researchos web --port 8010 --frontend-port 5180
-```
-
-### 只启动 API
-
-```powershell
-uv run uvicorn app.api.app:create_app --factory --reload
-```
-
-健康检查：
-
-```powershell
-curl http://127.0.0.1:8000/health
-```
-
-## 常见工作流
-
-### CLI
-
-创建项目：
-
-```powershell
-uv run researchos --db-path data\researchos.db create-project `
-  --project-id p1 `
-  --name "ResearchOS Demo" `
-  --description "Minimal local demo"
-```
-
-创建任务：
-
-```powershell
-uv run researchos --db-path data\researchos.db create-task `
-  --task-id t1 `
-  --project-id p1 `
-  --kind paper_ingest `
-  --goal "Read one paper summary" `
-  --owner demo `
-  --input-payload "{\"topic\":\"robustness\",\"source_summary\":{\"title\":\"Example Paper\",\"abstract\":\"A compact summary.\",\"setting\":\"classification\"}}"
-```
-
-调度和检查：
-
-```powershell
-uv run researchos --db-path data\researchos.db dispatch-task --task-id t1
-uv run researchos --db-path data\researchos.db list-tasks --project-id p1
-uv run researchos --db-path data\researchos.db project-dashboard --project-id p1
-uv run researchos --db-path data\researchos.db inspect-routing-system
-uv run researchos --db-path data\researchos.db provider-health
-```
-
-打开终端控制台：
-
-```powershell
-uv run researchos
-uv run researchos console
-uv run ros
-```
-
-### Web UI
-
-Web UI 和 CLI 是同一套控制流程，只是入口更引导化：
-
-- 用自然语言输入研究方向
-- 自动跑 `paper_ingest` 和 `gap_mapping`
-- 在 `human_select` 停下
-- 用右侧 LLM 对话栏讨论候选方向
-- 选定方向后继续推进 spec、build、review、draft
-
-## Provider 配置
-
-最小环境变量示例：
-
-```powershell
-$env:RESEARCHOS_PROVIDER = "claude"
-$env:RESEARCHOS_PROVIDER_MODEL = "sonnet"
-$env:RESEARCHOS_MAX_STEPS = "12"
-```
-
-当前支持的 provider family：
-
-- `codex`
-- `claude`
-- `gemini`
-- `local`
-
-`local` 适合演示、CI 和确定性测试。只有在对应 CLI 已安装并且登录可用时，才建议切到 `codex`、`claude` 或 `gemini`。
-
-## 目录结构
-
-主要目录：
-
-- [`app/`](app/)：运行时、agent、service、API、CLI
-- [`frontend/`](frontend/)：React 前端
-- [`prompts/`](prompts/)：仓库内维护的 prompt
-- [`skills/`](skills/)：仓库内维护的 skill
-- [`examples/`](examples/)：可直接复制的示例
-- [`docs/`](docs/)：配置和发布说明
-
-## 持久化状态放在哪
-
-ResearchOS 把持久化状态分成两层：
-
-- 数据库：项目和任务
-- `registry/` 下的文件：paper card、gap map、run、claim、lesson、verification、freeze、artifact
-
-关键路径：
-
-- `registry/paper_cards.jsonl`
-- `registry/gap_maps.jsonl`
-- `registry/claims.jsonl`
-- `registry/runs.jsonl`
-- `registry/lessons.jsonl`
-- `registry/verifications.jsonl`
-- `registry/artifacts.jsonl`
-- `registry/freezes/`
-- `artifacts/`
-- `state/provider_health.yaml`
-
-## 常用 API
-
-常用操作面接口：
-
-- `GET /projects/{project_id}/dashboard`
-- `GET /routing/system`
-- `GET /routing/tasks/{task_id}`
-- `GET /providers/health`
-- `GET /artifacts`
-- `GET /artifacts/{artifact_id}`
-- `GET /artifacts/{artifact_id}/inspect`
-- `GET /verifications/summary`
-- `GET /audit/summary`
-- `POST /guide/start`
-- `POST /guide/discuss-direction`
-- `POST /guide/adopt-direction`
-- `POST /projects/{project_id}/autopilot`
-
-## 生产栈
-
-生产部署目前围绕这些组件：
-
-- FastAPI
-- Postgres
-- Redis
-- Celery worker
-
-启动：
-
-```powershell
-docker compose up -d --build
-```
-
-## 示例与文档
-
-- [`examples/README.md`](examples/README.md)
-- [`docs/operator_setup.md`](docs/operator_setup.md)
-- [`docs/release_checklist.md`](docs/release_checklist.md)
-- [`CHANGELOG.md`](CHANGELOG.md)
-
-## CI
-
-GitHub Actions 当前会跑：
-
-- `uv` 安装依赖
-- Python 导入检查
-- 单元测试
-- local provider 的 API smoke
-- 一条小型 CLI smoke path
-
-工作流文件：
-
-- [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+ResearchOS 是一个多 Agent 研究工作流系统，把"有研究想法"到"可投稿草稿"之间的全部流程结构化，同时在每个关键决策点保留人工介入。
+
+**核心设计思路**：研究是人机协作，不是人机替代。Agent 处理高重复性工作（文献筛选、代码生成、引用验证、结果分析）；人类保留对真正重要决策的控制权（研究方向选择、实验设计审批、结论验证）。
+
+**技术亮点**：
+- 10 个专用 Agent，各有三层指令架构（角色约束 + 任务规则 + 技能文件）
+- 16 阶段研究流水线，支持分支探索和自动回退
+- Gap Map 辩论验证机制（每个候选方向被挑战 Agent 质疑后才呈现给人类）
+- 实验沙箱 5 轮自修复（OOM 自动降 batch、NaN 由 LLM 修复优化器）
+- 结构化知识库跨项目复用，经验带时间衰减和命中频率权重
+- React 前端研究控制台 + FastAPI + SQLite/Postgres + Celery 生产部署栈
 
 </details>
+
+---
+
+*Python 3.11 · FastAPI · React 18 · SQLAlchemy · Multi-provider LLM routing*
