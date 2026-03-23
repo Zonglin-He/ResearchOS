@@ -123,6 +123,21 @@ TaskRegistry → PaperCardRegistry → GapMapRegistry → FreezeRegistry → Art
 
 不满足以上条件的结论会被阻断，并附带具体的整改说明。
 
+### 6. 基线优先的实验执行语义
+`BuilderAgent` 不会默认从零开始写实验代码。在生成任何代码前，它会从任务 payload 中解析出以下四种执行模式之一，并注入到 `builder_focus.execution_mode`：
+
+| 模式 | 触发条件 | 行为 |
+|------|---------|------|
+| `baseline_reproduction` | `kind=reproduce_baseline` 或 `baseline_only=true` | 先忠实复现提供的 baseline，再提出改进 |
+| `baseline_adaptation` | 存在 baseline 上下文 + `refine_patch` 或 `baseline_delta` | 最小化地 patch baseline，delta 必须显式说明 |
+| `baseline_extension` | 存在 baseline 上下文，无 patch | 以 baseline 为锚点，每次只做一个有依据的改动 |
+| `from_scratch` | 完全没有 baseline 上下文 | 仅在无可复用 baseline 时才使用 |
+
+这意味着所有实验默认以已有工作为起点。prompt 明确禁止在有 baseline 的情况下重写整个实验。
+
+### 7. 外部实验结果导入
+`WriterAgent` 可以消费不由系统自身 `ExperimentRunner` 产生的结果。`RunManifest` 带有 `source_type`（`internal` / `imported` / `external`）和 `source_label` 字段，`ResultsFreeze` 带有 `supporting_run_ids` 和 `external_sources`。这些在调度时被解析进 `writer_focus.evidence_sources`，Writer 将导入结果与内部结果同等对待——但对任何溯源不完整的情况，必须在论文中标注为局限性，而不是静默跳过。
+
 ---
 
 ## Agent 目录
@@ -132,11 +147,11 @@ TaskRegistry → PaperCardRegistry → GapMapRegistry → FreezeRegistry → Art
 | **ReaderAgent** | 文献馆员 | 文献筛选 → 带证据引用的结构化论文卡片 |
 | **MapperAgent** | 综合分析师 | 论文卡片 → 研究空白聚类 + 带评分的候选方向 |
 | **HypothetistAgent** | 假设生成者 | 研究空白 → 可证伪、可操作的研究假设 |
-| **BuilderAgent** | 实验执行者 | 实验规格 → 可运行的硬件感知 Python 代码 |
+| **BuilderAgent** | 实验执行者 | 实验规格 → 基线优先实验代码（复现 / 适配 / 扩展 / 从零）|
 | **AnalystAgent** | 结果分析师 | 运行结果 → PROCEED / REFINE / PIVOT 决策（附数字依据）|
 | **ReviewerAgent** | 质量审查员 | 产物 → 阻断/警告级别审查报告（含 ML 公平性清单）|
 | **VerifierAgent** | 证据验证员 | 结论 → 证据链验证报告（明确声明验证范围）|
-| **WriterAgent** | 论文写作者 | 冻结证据 → 论文章节 / 完整草稿（含引用修复）|
+| **WriterAgent** | 论文写作者 | 冻结证据 + 导入结果 → 论文章节 / 完整草稿（含 3 轮引用修复）|
 | **ArchivistAgent** | 档案管理员 | 运行结果 → 可复用经验 + 知识库条目 |
 | **BranchManagerAgent** | — | 多分支实验协调、评分与剪枝 |
 
@@ -279,7 +294,8 @@ ResearchOS 将研究产物视为有类型、有版本的一等对象，而不是
 | `GapMap` | 聚类研究空白，含新颖度/可行性评分和每个方向的辩论弱点 |
 | `TopicFreeze` | 所选研究方向及决策依据的不可变快照 |
 | `SpecFreeze` | 不可变实验规格：假设、baseline、数据集、指标、成功/失败标准 |
-| `RunManifest` | 完整执行记录：配置、随机种子、数据集快照、产物、指标 |
+| `RunManifest` | 执行记录：配置、种子、数据集快照、产物、指标；`source_type` 标记 internal / imported / external 溯源 |
+| `ResultsFreeze` | 最终结果快照：主要结论、表格、图表；`supporting_run_ids` + `external_sources` 支持外部结果导入 |
 | `Claim` | 与具体 run 绑定的经验断言，含风险等级和人工审批状态 |
 | `Lesson` | 来自过往任务的可复用洞见——有证据支撑、命中计数、30 天衰减 |
 | `KnowledgeBase` | 跨项目结构化知识：发现、决策、文献摘要、开放问题 |

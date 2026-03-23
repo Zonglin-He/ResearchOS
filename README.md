@@ -123,6 +123,21 @@ Lessons are not logs. After every task, `ArchivistAgent` evaluates whether the o
 
 Claims failing these checks are blocked and returned with a concrete remediation note.
 
+### 6. Baseline-first execution semantics
+`BuilderAgent` does not default to writing experiments from scratch. Before generating any code, it resolves one of four execution modes from the task payload and injects it into `builder_focus.execution_mode`:
+
+| Mode | Trigger | Behavior |
+|------|---------|----------|
+| `baseline_reproduction` | `kind=reproduce_baseline` or `baseline_only=true` | Reproduce the referenced baseline faithfully before proposing any change |
+| `baseline_adaptation` | Baseline context + `refine_patch` or `baseline_delta` present | Patch the baseline minimally; delta must be explicit and justified |
+| `baseline_extension` | Baseline context present, no patch | Keep the baseline as anchor; add one justified change at a time |
+| `from_scratch` | No baseline context at all | Only used when no reusable baseline exists |
+
+This means every experiment is grounded in a prior anchor by default. The prompt explicitly forbids rewriting the whole experiment when a baseline is available.
+
+### 7. External results ingestion
+`WriterAgent` can consume results that were not produced by the system's own `ExperimentRunner`. `RunManifest` carries `source_type` (`internal` / `imported` / `external`) and `source_label`, and `ResultsFreeze` carries `supporting_run_ids` and `external_sources`. These are resolved into `writer_focus.evidence_sources` at dispatch time, so the writer treats imported results the same as internal ones — but is required to call out any gap in provenance as a limitation rather than silently omitting it.
+
 ---
 
 ## Agent Catalog
@@ -132,11 +147,11 @@ Claims failing these checks are blocked and returned with a concrete remediation
 | **ReaderAgent** | Librarian | Literature screening → structured paper cards with evidence refs |
 | **MapperAgent** | Synthesizer | Paper cards → gap clusters with novelty/feasibility scoring |
 | **HypothetistAgent** | Hypothesist | Gap → falsifiable, bounded, testable hypotheses |
-| **BuilderAgent** | Executor | Spec → runnable, hardware-aware Python experiment code |
+| **BuilderAgent** | Executor | Spec → runnable code with baseline-first semantics (reproduction / adaptation / extension / from-scratch) |
 | **AnalystAgent** | Analyst | Run results → PROCEED / REFINE / PIVOT with numeric justification |
 | **ReviewerAgent** | Reviewer | Artifacts → blocking/warning review with ML fairness checklist |
 | **VerifierAgent** | Verifier | Claims → evidence chain verification with scope declaration |
-| **WriterAgent** | Publisher | Frozen evidence → paper sections / full draft with citation repair |
+| **WriterAgent** | Publisher | Frozen + imported evidence → paper sections / full draft with 3-round citation repair |
 | **ArchivistAgent** | Archivist | Runs → durable lessons + structured knowledge base entries |
 | **BranchManagerAgent** | — | Multi-branch experiment coordination, scoring, and pruning |
 
@@ -280,7 +295,8 @@ ResearchOS treats research artifacts as typed, versioned, first-class objects �
 | `GapMap` | Clustered gaps with novelty/feasibility scores and per-gap debate weaknesses |
 | `TopicFreeze` | Immutable snapshot of the selected research direction and rationale |
 | `SpecFreeze` | Immutable experiment spec: hypothesis, baselines, datasets, metrics, success/failure criteria |
-| `RunManifest` | Full execution record: config, seed, dataset snapshot, artifacts, metrics |
+| `RunManifest` | Execution record: config, seed, dataset snapshot, artifacts, metrics; `source_type` tracks internal / imported / external provenance |
+| `ResultsFreeze` | Final results snapshot: main claims, tables, figures; `supporting_run_ids` + `external_sources` enable external result ingestion |
 | `Claim` | Empirical assertion tied to a specific run with risk level and human approval state |
 | `Lesson` | Durable insight from past tasks — evidence-backed, with hit count and 30-day decay |
 | `KnowledgeBase` | Cross-project structured knowledge: findings, decisions, literature, open questions |
