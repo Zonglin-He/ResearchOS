@@ -462,6 +462,7 @@ export default function App() {
         {notice ? <div className="notice-banner">{notice}</div> : null}
         {error ? <div className="error-banner">{error}</div> : null}
         {loading && !data ? <div className="loading-panel">正在加载 ResearchOS…</div> : null}
+        {busyKeys.length > 0 ? <div className="pixel-loading-bar">操作处理中，请稍候...</div> : null}
 
         {data ? (
           <div className={systemOpen ? "workspace-layout system-open" : "workspace-layout"}>

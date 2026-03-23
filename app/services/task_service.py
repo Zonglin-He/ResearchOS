@@ -96,6 +96,31 @@ class TaskService:
     def cancel_task(self, task_id: str) -> Task:
         return self.update_status(task_id, TaskStatus.CANCELLED)
 
+    def recover_stale_running_task(self, task_id: str, *, reason: str) -> Task:
+        task = self.repository.get_by_id(task_id)
+        if task is None:
+            raise KeyError(f"Task not found: {task_id}")
+        if task.status != TaskStatus.RUNNING:
+            raise ValueError(f"Cannot recover task {task_id} from status {task.status.value}")
+
+        task.status = TaskStatus.QUEUED
+        task.assigned_agent = None
+        task.next_retry_at = None
+        task.last_error = reason.strip() or "Recovered stale running task"
+        updated = self.repository.update(task)
+        self._record_event(
+            updated.project_id,
+            event_type="task.recovered",
+            message=f"Recovered stale running task: {updated.task_id}",
+            task_id=updated.task_id,
+            payload={
+                "previous_status": TaskStatus.RUNNING.value,
+                "status": updated.status.value,
+                "reason": updated.last_error,
+            },
+        )
+        return updated
+
     def attach_experiment_proposal(self, task_id: str, proposal_id: str) -> Task:
         task = self.repository.get_by_id(task_id)
         if task is None:

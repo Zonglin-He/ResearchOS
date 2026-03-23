@@ -1,0 +1,323 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+:root {
+    /* Fresh UI Palette - High Contrast */
+    --bg-elevated: #fdf1ca;
+    /* Bright parchment for main panels */
+    --panel-soft: #fff9e6;
+    /* Lighter parchment for inner cards */
+    --line: #5c3516;
+    /* Dark thick brown border */
+    --line-strong: #965a2a;
+    /* Mid brown */
+    --text: #2f1704;
+    /* Very dark brown, highly readable */
+    --muted: #7d5231;
+    /* Legible muted brown */
+    --accent: #d86236;
+    /* Warm orange */
+    --good: #44aa3b;
+    /* Fresh leaf green */
+    --warn: #e58d11;
+    /* Golden honey */
+    --bad: #d14231;
+    /* Crisp red */
+    --shadow: 4px 4px 0px rgba(0, 0, 0, 0.15);
+    font-family: 'VT323', monospace;
+    font-size: 18px;
+}
+
+body {
+    background: #aadd77;
+    /* Fresh pastel grass green */
+    color: var(--text);
+    image-rendering: pixelated;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.2) 2px, transparent 2px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.2) 2px, transparent 2px);
+    background-size: 32px 32px;
+}
+
+/* General Override existing glass themes and radiuses */
+.sidebar,
+.brand-card,
+.panel,
+.topbar,
+.loading-panel,
+.notice-banner,
+.error-banner,
+.stat-card,
+.freeze-card,
+.inspect-card,
+.registry-list,
+.empty-state,
+.mono-block,
+.workflow-step,
+.guide-card,
+.form-hint,
+.task-output-card,
+.record-card {
+    border-radius: 0 !important;
+    border: 4px solid var(--line) !important;
+    background: var(--bg-elevated) !important;
+    box-shadow:
+        inset -3px -3px 0px rgba(220, 190, 140, 0.4),
+        inset 3px 3px 0px rgba(255, 255, 255, 0.8),
+        6px 6px 0px rgba(0, 0, 0, 0.15) !important;
+    /* Softer drop shadow */
+    backdrop-filter: none !important;
+    color: var(--text) !important;
+}
+
+/* Inner cards use soft background for contrast */
+.stat-card,
+.freeze-card,
+.inspect-card,
+.registry-list,
+.empty-state,
+.mono-block,
+.workflow-step,
+.guide-card,
+.form-hint,
+.task-output-card,
+.record-card {
+    background: var(--panel-soft) !important;
+    box-shadow: inset 2px 2px 0px rgba(0, 0, 0, 0.05) !important;
+    border-width: 2px !important;
+}
+
+/* Text overrides for readability */
+h1,
+h2,
+h3,
+h4,
+strong,
+span,
+p,
+.eyebrow,
+label,
+small,
+.nav-button,
+.chain-flow-button,
+td,
+th {
+    color: var(--text) !important;
+    font-family: 'VT323', monospace !important;
+}
+
+.muted {
+    color: var(--muted) !important;
+}
+
+h1 {
+    font-size: 2.6rem;
+    text-shadow: 2px 2px 0px rgba(255, 255, 255, 0.6);
+}
+
+h2 {
+    font-size: 2rem;
+}
+
+h3 {
+    font-size: 1.6rem;
+}
+
+/* Reset Sidebar text */
+.sidebar {
+    background: #db9c5e !important;
+    /* Fresh light wood */
+    border-right: 4px solid var(--line) !important;
+}
+
+.sidebar .nav-button {
+    background: #f1b374 !important;
+    border: 4px solid var(--line) !important;
+    border-radius: 0 !important;
+    margin-bottom: 4px;
+}
+
+.sidebar .nav-button:hover,
+.sidebar .nav-button.active {
+    background: #ffce99 !important;
+    box-shadow:
+        inset -3px -3px 0px rgba(0, 0, 0, 0.1),
+        inset 3px 3px 0px rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Buttons */
+.button,
+.chain-flow-button,
+button {
+    border-radius: 0 !important;
+    border: 4px solid var(--line) !important;
+    background: #f1b374 !important;
+    color: var(--text) !important;
+    box-shadow:
+        inset -3px -3px 0px rgba(0, 0, 0, 0.15),
+        inset 3px 3px 0px rgba(255, 255, 255, 0.6),
+        3px 3px 0px rgba(0, 0, 0, 0.2) !important;
+    transition: none !important;
+    font-family: 'VT323', monospace !important;
+    font-size: 1.2rem;
+}
+
+.button.secondary,
+.button.ghost {
+    background: #e2a05d !important;
+}
+
+.button:active,
+.chain-flow-button:active,
+.sidebar .nav-button:active,
+button:active {
+    box-shadow:
+        inset 3px 3px 0px rgba(0, 0, 0, 0.2),
+        inset -3px -3px 0px rgba(255, 255, 255, 0.1) !important;
+    transform: translate(3px, 3px);
+}
+
+.button:hover,
+.chain-flow-button:hover,
+button:hover {
+    background: #ffce99 !important;
+}
+
+/* Input Fields - White for supreme readability */
+input,
+textarea,
+select {
+    font-family: 'VT323', monospace !important;
+    font-size: 1.2rem !important;
+    border-radius: 0 !important;
+    border: 4px solid var(--line) !important;
+    background: #ffffff !important;
+    box-shadow: inset 4px 4px 0px rgba(0, 0, 0, 0.06) !important;
+    color: var(--text) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: #a4826b !important;
+}
+
+/* Status Pills & Tags */
+.next-tag,
+.freeze,
+.status-pill,
+.brand-icon,
+.workflow-icon {
+    border-radius: 0 !important;
+    border: 2px solid var(--line) !important;
+    text-transform: uppercase;
+    font-weight: bold;
+    box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.1);
+    background: #fdf1ca !important;
+}
+
+.brand-icon,
+.workflow-icon {
+    background: #f1b374 !important;
+}
+
+.status-good {
+    background: var(--good) !important;
+    color: white !important;
+}
+
+.status-warn {
+    background: var(--warn) !important;
+    color: white !important;
+}
+
+.status-bad {
+    background: var(--bad) !important;
+    color: white !important;
+}
+
+.freeze.active {
+    background: var(--good) !important;
+    color: white !important;
+    border-color: var(--line) !important;
+}
+
+/* Tables */
+table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+th,
+td {
+    border-bottom: 2px solid rgba(92, 53, 22, 0.2) !important;
+}
+
+th {
+    background: rgba(0, 0, 0, 0.03);
+    font-weight: bold;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+    width: 18px;
+    height: 18px;
+}
+
+::-webkit-scrollbar-track {
+    background: #db9c5e;
+    border-left: 3px solid var(--line);
+}
+
+::-webkit-scrollbar-thumb {
+    background: #f1b374;
+    border: 3px solid var(--line);
+    box-shadow: inset -2px -2px 0px rgba(0, 0, 0, 0.15), inset 2px 2px 0px rgba(255, 255, 255, 0.5);
+}
+
+::-webkit-scrollbar-corner {
+    background: var(--line);
+}
+
+/* Providers lists */
+.provider-row {
+    border-radius: 0 !important;
+    border: 4px solid var(--line) !important;
+    background: #ffebaf !important;
+    box-shadow: inset -2px -2px 0px rgba(0, 0, 0, 0.05), inset 2px 2px 0px rgba(255, 255, 255, 0.5) !important;
+}
+
+.kv-row {
+    border-radius: 0 !important;
+    border: 2px dashed rgba(92, 53, 22, 0.4) !important;
+    background: transparent !important;
+}
+
+/* Progress Bar */
+@keyframes pixel-pulse {
+    0% {
+        transform: scale(0.99);
+        opacity: 0.9;
+    }
+
+    50% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(0.99);
+        opacity: 0.9;
+    }
+}
+
+.pixel-loading-bar {
+    background: var(--good) !important;
+    color: white !important;
+    border: 4px solid var(--line) !important;
+    padding: 10px;
+    font-family: 'VT323', monospace !important;
+    font-size: 1.4rem;
+    text-align: center;
+    box-shadow: inset 4px 4px 0px rgba(255, 255, 255, 0.4), 4px 4px 0px rgba(0, 0, 0, 0.15) !important;
+    margin-bottom: 1rem;
+    animation: pixel-pulse 1s infinite;
+}

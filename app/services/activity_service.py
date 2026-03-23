@@ -180,6 +180,48 @@ class ActivityService:
             max_id = max(max_id, int(row.get("event_id", 0)))
         return max_id
 
+    def latest_task_event_times(
+        self,
+        project_id: str,
+        *,
+        task_ids: list[str],
+    ) -> dict[str, datetime]:
+        normalized_ids = [task_id for task_id in task_ids if task_id]
+        if not normalized_ids:
+            return {}
+
+        if self.database is not None:
+            placeholders = ", ".join("?" for _ in normalized_ids)
+            with self.database.connect() as connection:
+                rows = connection.execute(
+                    f"""
+                    SELECT task_id, MAX(created_at) AS last_created_at
+                    FROM run_events
+                    WHERE project_id = ? AND task_id IN ({placeholders})
+                    GROUP BY task_id
+                    """,
+                    (project_id, *normalized_ids),
+                ).fetchall()
+            return {
+                str(row["task_id"]): datetime.fromisoformat(row["last_created_at"])
+                for row in rows
+                if row["task_id"] and row["last_created_at"]
+            }
+
+        latest: dict[str, datetime] = {}
+        allowed = set(normalized_ids)
+        for row in read_jsonl(self.events_path):
+            if row.get("project_id") != project_id:
+                continue
+            task_id = str(row.get("task_id") or "")
+            if task_id not in allowed:
+                continue
+            created_at = datetime.fromisoformat(str(row.get("created_at")))
+            previous = latest.get(task_id)
+            if previous is None or created_at > previous:
+                latest[task_id] = created_at
+        return latest
+
     def _next_jsonl_event_id(self) -> int:
         ensure_parent(self.events_path)
         rows = read_jsonl(self.events_path)

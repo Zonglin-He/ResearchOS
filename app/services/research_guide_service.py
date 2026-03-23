@@ -41,6 +41,8 @@ _DISCUSSION_REASONING_EFFORT = "high"
 _DISCUSSION_VERBOSITY = "medium"
 _DISCUSSION_ROLE = "选题顾问"
 _DISCUSSION_SKILL = "research-direction-advisor"
+_STALE_RUNNING_SHORT_TIMEOUT = timedelta(minutes=30)
+_STALE_RUNNING_LONG_TIMEOUT = timedelta(hours=12)
 
 
 @dataclass(frozen=True)
@@ -519,6 +521,7 @@ class ResearchGuideService:
             raise ValueError(f"Project not found: {project_id}")
 
         while len(dispatched) < max_dispatches:
+            self._recover_stale_running_tasks(project_id)
             tasks = self._project_tasks(project_id)
             checkpoint_stop = self._pending_required_checkpoint(project)
             if checkpoint_stop is not None:
@@ -840,6 +843,44 @@ class ResearchGuideService:
 
     def _project_tasks(self, project_id: str) -> list[Task]:
         return [task for task in self.task_service.list_tasks() if task.project_id == project_id]
+
+    def _recover_stale_running_tasks(self, project_id: str) -> None:
+        tasks = self._project_tasks(project_id)
+        running_tasks = [task for task in tasks if task.status == TaskStatus.RUNNING]
+        if not running_tasks:
+            return
+
+        latest_event_times = self.activity_service.latest_task_event_times(
+            project_id,
+            task_ids=[task.task_id for task in running_tasks],
+        )
+        now = datetime.now(timezone.utc)
+        for task in running_tasks:
+            last_seen_at = latest_event_times.get(task.task_id, task.created_at)
+            stale_timeout = self._stale_running_timeout(task)
+            if now - last_seen_at < stale_timeout:
+                continue
+            elapsed = now - last_seen_at
+            reason = (
+                f"Recovered stale running task after {self._format_duration(elapsed)} without new events."
+            )
+            self.task_service.recover_stale_running_task(task.task_id, reason=reason)
+
+    @staticmethod
+    def _stale_running_timeout(task: Task) -> timedelta:
+        long_running_markers = ("run", "experiment", "train", "eval")
+        if any(marker in task.kind.lower() for marker in long_running_markers):
+            return _STALE_RUNNING_LONG_TIMEOUT
+        return _STALE_RUNNING_SHORT_TIMEOUT
+
+    @staticmethod
+    def _format_duration(delta: timedelta) -> str:
+        total_seconds = max(0, int(delta.total_seconds()))
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
 
     def list_discussion_messages(
         self,
