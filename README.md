@@ -32,69 +32,58 @@ The result is a system where every artifact — every paper card, gap map, exper
 
 ## Architecture Overview
 
-```
-Research Goal (natural language)
-         │
-         ▼
-  QueryDecomposer ──► arXiv API + Semantic Scholar
-  (sub-question                 (citation-weighted retrieval)
-   decomposition)
-         │
-         ▼
-  ┌─ ReaderAgent ──────────────────────────────────────────────┐
-  │  Extracts structured paper cards with evidence references  │
-  │  Rejects: table entries, figure refs, encoding failures    │
-  └────────────────────────────────────────────┬───────────────┘
-                                               │
-                                               ▼
-  ┌─ MapperAgent + ReviewerAgent (debate) ─────────────────────┐
-  │  Clusters gaps across 4 dimensions:                        │
-  │  method gaps / data gaps / evaluation gaps / compute gaps  │
-  │  Each gap challenged by a debate agent before surfacing    │
-  └────────────────────────────────────────────┬───────────────┘
-                                               │
-                                    ┌──────────▼──────────┐
-                                    │  ★ Human Select     │
-                                    │  Direction Workbench│
-                                    │  + LLM Advisor Chat │
-                                    └──────────┬──────────┘
-                                               │
-                                               ▼
-  ┌─ HypothetistAgent ─────────────────────────────────────────┐
-  │  Translates selected gap into falsifiable hypotheses       │
-  │  Each hypothesis must include falsification conditions     │
-  └────────────────────────────────────────────┬───────────────┘
-                                               │
-                                               ▼
-  ┌─ BuilderAgent ─────────────────────────────────────────────┐
-  │  Generates self-contained Python experiment scripts        │
-  │  Hardware-aware: adapts to GPU memory and CPU constraints  │
-  └────────────────────────────────────────────┬───────────────┘
-                                               │
-                                               ▼
-  ┌─ ExperimentRunner (5-round self-repair) ───────────────────┐
-  │  OOM        → auto batch_size reduction                    │
-  │  NaN loss   → LLM-assisted optimizer repair                │
-  │  ImportError→ auto dependency install                      │
-  └────────────────────────────────────────────┬───────────────┘
-                                               │
-                                               ▼
-  ┌─ AnalystAgent ─────────────────────────────────────────────┐
-  │  PROCEED (confidence > 0.7) ──► WriterAgent                │
-  │  REFINE + patch             ──► back to BuilderAgent       │
-  │  PIVOT                      ──► back to MapperAgent        │
-  └────────────────────────────────────────────┬───────────────┘
-                                               │
-                      ┌────────────────────────┼──────────────────┐
-                      ▼                        ▼                  ▼
-               ReviewerAgent            VerifierAgent      ArchivistAgent
-            (ML fairness checks)     (evidence chains)   (lessons + KB)
-                      │
-                      ▼
-                WriterAgent
-          (LaTeX / Markdown draft,
-           3-round citation repair,
-           venue-specific checklist)
+```mermaid
+flowchart TD
+    GOAL(["🎯 Research Goal"])
+    style GOAL fill:#4A90D9,color:#fff,stroke:#2171B5
+
+    subgraph INTAKE["📥  Literature Intake"]
+        QD["QueryDecomposer\nsub-question decomposition"]
+        SRC["arXiv API + Semantic Scholar\ncitation-weighted retrieval"]
+        RA["ReaderAgent\npaper cards · evidence refs\nrejects tables, figures, junk"]
+        QD --> SRC --> RA
+    end
+
+    subgraph SYNTHESIS["🗺️  Gap Synthesis"]
+        MA["MapperAgent\nmethod / data / eval / compute gaps"]
+        DB["Debate Validation\nchallenger agent · per-gap weaknesses"]
+        MA --> DB
+    end
+
+    HS(["★  Human Decision\nDirection Workbench\nNovelty × Feasibility · LLM Advisor"])
+    style HS fill:#E8A838,color:#fff,stroke:#C88020
+
+    subgraph EXEC["⚗️  Hypothesis & Execution"]
+        HY["HypothetistAgent\nfalsifiable hypotheses"]
+        BA["BuilderAgent\nhardware-aware code"]
+        ER["ExperimentRunner\n5-round self-repair\nOOM · NaN · ImportError"]
+        HY --> BA --> ER
+    end
+
+    AN{{"AnalystAgent\nPROCEED / REFINE / PIVOT"}}
+    style AN fill:#7B68EE,color:#fff,stroke:#5A4FCF
+
+    subgraph REVIEW["🔍  Quality Gates & Archive"]
+        RV["ReviewerAgent\nML fairness checklist"]
+        VF["VerifierAgent\nevidence chain"]
+        AC["ArchivistAgent\nlessons · KB · 30-day decay"]
+        RV --> VF
+        RV --> AC
+    end
+
+    WR["WriterAgent\nLaTeX · Markdown · 3-round citation repair\nvenue-specific checklist"]
+    style WR fill:#52C41A,color:#fff,stroke:#389E0D
+
+    GOAL --> INTAKE
+    INTAKE --> SYNTHESIS
+    SYNTHESIS --> HS
+    HS --> EXEC
+    EXEC --> AN
+    AN -->|PROCEED| REVIEW
+    AN -->|"REFINE + patch"| BA
+    AN -->|PIVOT| MA
+    VF --> WR
+    AC --> WR
 ```
 
 ---
@@ -373,8 +362,6 @@ The production stack swaps SQLite for PostgreSQL and adds a Celery worker for as
 - [ ] Cross-project knowledge graph visualization
 - [ ] Experiment result comparison dashboard
 - [ ] JSONL → SQLite primary storage migration for all registries
-
----
 
 ---
 
