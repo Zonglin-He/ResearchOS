@@ -449,6 +449,93 @@ export type DiscussionHistory = {
   messages: GuideDiscussionMessage[];
 };
 
+export type DiscussionEntityRef = {
+  entity_type: string;
+  entity_id: string;
+  label: string;
+};
+
+export type DiscussionCoverageCheck = {
+  ref: string;
+  ref_type: string;
+  status: string;
+  note: string;
+  linked_entity_id: string | null;
+};
+
+export type DiscussionCoverage = {
+  checks: DiscussionCoverageCheck[];
+  summary: string;
+};
+
+export type DiscussionDistillation = {
+  summary: string;
+  findings: string[];
+  decisions: string[];
+  literature_notes: string[];
+  open_questions: string[];
+  risks: string[];
+  counterarguments: string[];
+  suggested_next_actions: string[];
+  cited_dois: string[];
+  referenced_claim_ids: string[];
+};
+
+export type DiscussionImportRecord = {
+  source_mode: string;
+  provider_label: string;
+  verbatim_text: string;
+  transcript_title: string;
+  cited_dois: string[];
+  referenced_claim_ids: string[];
+  imported_at: string;
+};
+
+export type DiscussionContextBundle = {
+  bundle_id: string;
+  project_id: string;
+  stage: string;
+  branch_kind: string;
+  target_kind: string;
+  target_id: string;
+  target_label: string;
+  research_goal: string;
+  focus_question: string;
+  operator_prompt: string;
+  current_state: Record<string, unknown>;
+  controversies: string[];
+  questions_to_answer: string[];
+  attached_entities: DiscussionEntityRef[];
+  handoff_packet: string;
+  created_at: string;
+};
+
+export type DiscussionSession = {
+  session_id: string;
+  project_id: string;
+  title: string;
+  source_type: string;
+  source_label: string;
+  status: string;
+  stage: string;
+  branch_kind: string;
+  target_kind: string;
+  target_id: string;
+  target_label: string;
+  focus_question: string;
+  operator_prompt: string;
+  attached_entities: DiscussionEntityRef[];
+  context_bundle: DiscussionContextBundle | null;
+  latest_import: DiscussionImportRecord | null;
+  machine_distilled: DiscussionDistillation | null;
+  adopted_decision: DiscussionDistillation | null;
+  coverage_report: DiscussionCoverage | null;
+  promoted_record_ids: Record<string, string[]>;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
 export type RunEvent = {
   event_id: number;
   project_id: string;

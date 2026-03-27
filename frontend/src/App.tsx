@@ -10,6 +10,7 @@ import {
   type AuditReport,
   type AuditSummary,
   type DiscussionHistory,
+  type DiscussionSession,
   type Claim,
   type GapMap,
   type GapMapDetail,
@@ -37,13 +38,14 @@ import {
   type VerificationSummary,
 } from "./api";
 import { CreateTab, type TopicFreezePrefill } from "./components/CreateTab";
+import { DiscussTab } from "./components/DiscussTab";
 import { OperationsTab } from "./components/OperationsTab";
 import { OverviewTab } from "./components/OverviewTab";
 import { RegistryTab } from "./components/RegistryTab";
 import { Panel } from "./components/ui";
 import { normalizeError } from "./utils";
 
-type MainTab = "workspace" | "registry";
+type MainTab = "workspace" | "discuss" | "registry";
 type SystemSection = "operations" | "advanced";
 type AdvancedFocus = "project" | "topic_freeze" | null;
 
@@ -70,10 +72,12 @@ type DashboardData = {
   resultsFreeze: ResultsFreeze | null;
   auditSummary: AuditSummary;
   auditClaims: AuditReport;
+  discussions: DiscussionSession[];
 };
 
 const tabs: Array<{ id: MainTab; label: string; icon: typeof FlaskConical }> = [
   { id: "workspace", label: "研究台", icon: FlaskConical },
+  { id: "discuss", label: "Discuss", icon: Wrench },
   { id: "registry", label: "数据库", icon: Database },
 ];
 
@@ -176,6 +180,7 @@ export default function App() {
         resultsFreeze,
         auditSummary,
         auditClaims,
+        discussions,
         projectDashboard,
       ] = await Promise.all([
         getJson<Task[]>("/tasks"),
@@ -197,6 +202,7 @@ export default function App() {
         getJson<ResultsFreeze | null>("/freezes/results"),
         getJson<AuditSummary>("/audit/summary"),
         getJson<AuditReport>("/audit/claims"),
+        getJson<DiscussionSession[]>(nextProjectId ? `/discussions?project_id=${encodeURIComponent(nextProjectId)}` : "/discussions"),
         nextProjectId ? getJson<ProjectDashboard>(`/projects/${nextProjectId}/dashboard`) : Promise.resolve(null),
       ]);
 
@@ -223,6 +229,7 @@ export default function App() {
         resultsFreeze,
         auditSummary,
         auditClaims,
+        discussions,
       });
     } catch (loadError) {
       setError(normalizeError(loadError));
@@ -504,6 +511,28 @@ export default function App() {
                   openProject={openProject}
                   openSystem={openSystem}
                   isBusy={(key) => busyKeys.includes(key)}
+                />
+              ) : null}
+
+              {activeTab === "discuss" ? (
+                <DiscussTab
+                  selectedProject={data.selectedProject}
+                  projectTasks={projectTasks}
+                  projectRuns={projectRuns}
+                  claims={data.claims}
+                  paperCards={data.paperCards}
+                  topicFreeze={data.topicFreeze}
+                  specFreeze={data.specFreeze}
+                  resultsFreeze={data.resultsFreeze}
+                  discussions={data.discussions}
+                  runAction={runAction}
+                  isBusy={(key) => busyKeys.includes(key)}
+                  createDiscussion={(payload) => postJson<DiscussionSession>("/discussions", payload)}
+                  importDiscussion={(sessionId, payload) => postJson<DiscussionSession>(`/discussions/${sessionId}/import`, payload)}
+                  adoptDiscussion={(sessionId, payload) => postJson<DiscussionSession>(`/discussions/${sessionId}/adopt`, payload)}
+                  promoteDiscussionKb={(sessionId) => postJson(`/discussions/${sessionId}/promote/kb`)}
+                  promoteDiscussionApproval={(sessionId, payload) => postJson(`/discussions/${sessionId}/promote/approval`, payload)}
+                  promoteDiscussionTask={(sessionId, payload) => postJson(`/discussions/${sessionId}/promote/task`, payload)}
                 />
               ) : null}
 

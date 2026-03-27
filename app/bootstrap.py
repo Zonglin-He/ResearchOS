@@ -46,6 +46,7 @@ from app.services.artifact_service import ArtifactService
 from app.services.audit_service import AuditService
 from app.services.claim_service import ClaimService
 from app.services.checkpoint_service import CheckpointService
+from app.services.discussion_service import DiscussionService
 from app.services.experiment_manager import ExperimentManager
 from app.services.experiment_registry import ExperimentRegistry
 from app.services.freeze_service import FreezeService
@@ -79,6 +80,7 @@ from app.tools.shell_tool import ShellTool
 class RuntimeServices:
     activity_service: ActivityService
     checkpoint_service: CheckpointService
+    discussion_service: DiscussionService
     project_service: ProjectService
     task_service: TaskService
     claim_service: ClaimService
@@ -475,6 +477,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
     )
     project_service = ProjectService(project_repository)
     task_service = TaskService(task_repository, activity_service=activity_service)
+    kb_service = KnowledgeBaseService(workspace_paths.registry_dir / "kb")
     provider_registry = build_provider_registry()
     default_provider = provider_registry.get(config.provider_name.lower())
     tool_registry = build_tool_registry()
@@ -516,6 +519,19 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
     services = RuntimeServices(
         activity_service=activity_service,
         checkpoint_service=checkpoint_service,
+        discussion_service=DiscussionService(
+            workspace_paths.registry_file("discussions.jsonl"),
+            project_service=project_service,
+            task_service=task_service,
+            paper_card_service=paper_card_service,
+            gap_map_service=gap_map_service,
+            freeze_service=freeze_service,
+            run_service=run_service,
+            claim_service=claim_service,
+            kb_service=kb_service,
+            approval_service=approval_service,
+            activity_service=activity_service,
+        ),
         project_service=project_service,
         task_service=task_service,
         claim_service=claim_service,
@@ -536,7 +552,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         ),
         lessons_service=lessons_service,
         verification_service=verification_service,
-        kb_service=KnowledgeBaseService(workspace_paths.registry_dir / "kb"),
+        kb_service=kb_service,
         provenance_service=provenance_service,
         operator_inspection_service=OperatorInspectionService(
             project_service=project_service,
@@ -568,7 +584,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
             gap_map_service=gap_map_service,
             paper_card_service=paper_card_service,
             provider_registry=provider_registry,
-            kb_service=KnowledgeBaseService(workspace_paths.registry_dir / "kb"),
+            kb_service=kb_service,
             approval_service=approval_service,
             tool_registry=tool_registry,
             orchestrator=placeholder_orchestrator,

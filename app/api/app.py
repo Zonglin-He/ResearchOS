@@ -28,7 +28,14 @@ from app.api.schemas import (
     ClaimCreate,
     ClaimSupportRefRead,
     ClaimRead,
+    DiscussionAdoptCreate,
     DiscussionHistoryRead,
+    DiscussionImportCreate,
+    DiscussionPromotionRead,
+    DiscussionPromoteApprovalCreate,
+    DiscussionPromoteTaskCreate,
+    DiscussionSessionCreate,
+    DiscussionSessionRead,
     DiscussDirectionRequest,
     DiscussDirectionResponse,
     EvidenceRefModel,
@@ -137,6 +144,7 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
     app.state.approval_service = services.approval_service
     app.state.artifact_service = services.artifact_service
     app.state.artifact_annotation_service = services.artifact_annotation_service
+    app.state.discussion_service = services.discussion_service
     app.state.lessons_service = services.lessons_service
     app.state.verification_service = services.verification_service
     app.state.audit_service = services.audit_service
@@ -272,6 +280,125 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
                 for message in messages
             ],
         )
+
+    @app.post("/discussions", response_model=DiscussionSessionRead)
+    def create_discussion_session(payload: DiscussionSessionCreate) -> DiscussionSessionRead:
+        try:
+            session = app.state.discussion_service.create_session(
+                session_id=payload.session_id,
+                project_id=payload.project_id,
+                title=payload.title,
+                source_type=payload.source_type,
+                source_label=payload.source_label,
+                branch_kind=payload.branch_kind,
+                target_kind=payload.target_kind,
+                target_id=payload.target_id,
+                target_label=payload.target_label,
+                focus_question=payload.focus_question,
+                operator_prompt=payload.operator_prompt,
+                questions_to_answer=payload.questions_to_answer,
+                attached_entities=[
+                    {
+                        "entity_type": item.entity_type,
+                        "entity_id": item.entity_id,
+                        "label": item.label,
+                    }
+                    for item in payload.attached_entities
+                ],
+                metadata=payload.metadata,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return _to_discussion_session_read(session)
+
+    @app.get("/discussions", response_model=list[DiscussionSessionRead])
+    def list_discussion_sessions(project_id: str | None = Query(default=None)) -> list[DiscussionSessionRead]:
+        return [
+            _to_discussion_session_read(session)
+            for session in app.state.discussion_service.list_sessions(project_id=project_id)
+        ]
+
+    @app.get("/discussions/{session_id}", response_model=DiscussionSessionRead)
+    def get_discussion_session(session_id: str) -> DiscussionSessionRead:
+        session = app.state.discussion_service.get_session(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Discussion session not found")
+        return _to_discussion_session_read(session)
+
+    @app.post("/discussions/{session_id}/import", response_model=DiscussionSessionRead)
+    def import_discussion_result(session_id: str, payload: DiscussionImportCreate) -> DiscussionSessionRead:
+        try:
+            session = app.state.discussion_service.import_result(
+                session_id,
+                source_mode=payload.source_mode,
+                provider_label=payload.provider_label,
+                verbatim_text=payload.verbatim_text,
+                transcript_title=payload.transcript_title,
+                cited_dois=payload.cited_dois,
+                referenced_claim_ids=payload.referenced_claim_ids,
+                findings=payload.findings,
+                decisions=payload.decisions,
+                literature_notes=payload.literature_notes,
+                open_questions=payload.open_questions,
+                risks=payload.risks,
+                counterarguments=payload.counterarguments,
+                suggested_next_actions=payload.suggested_next_actions,
+                summary=payload.summary,
+            )
+        except (KeyError, ValueError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return _to_discussion_session_read(session)
+
+    @app.post("/discussions/{session_id}/adopt", response_model=DiscussionSessionRead)
+    def adopt_discussion_session(session_id: str, payload: DiscussionAdoptCreate) -> DiscussionSessionRead:
+        try:
+            session = app.state.discussion_service.adopt_session(
+                session_id,
+                approved_by=payload.approved_by,
+                adopted_summary=payload.adopted_summary,
+                route_to_kb=payload.route_to_kb,
+            )
+        except (KeyError, ValueError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return _to_discussion_session_read(session)
+
+    @app.post("/discussions/{session_id}/promote/kb", response_model=DiscussionPromotionRead)
+    def promote_discussion_to_kb(session_id: str) -> DiscussionPromotionRead:
+        try:
+            record_ids = app.state.discussion_service.promote_to_kb(session_id)
+        except (KeyError, ValueError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return DiscussionPromotionRead(promotion_type="kb", record_ids=record_ids)
+
+    @app.post("/discussions/{session_id}/promote/approval", response_model=DiscussionPromotionRead)
+    def promote_discussion_to_approval(
+        session_id: str,
+        payload: DiscussionPromoteApprovalCreate,
+    ) -> DiscussionPromotionRead:
+        try:
+            approval_id = app.state.discussion_service.promote_to_approval(
+                session_id,
+                approved_by=payload.approved_by,
+            )
+        except (KeyError, ValueError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return DiscussionPromotionRead(promotion_type="approval", record_ids=[approval_id])
+
+    @app.post("/discussions/{session_id}/promote/task", response_model=DiscussionPromotionRead)
+    def promote_discussion_to_task(
+        session_id: str,
+        payload: DiscussionPromoteTaskCreate,
+    ) -> DiscussionPromotionRead:
+        try:
+            task_id = app.state.discussion_service.promote_to_task(
+                session_id,
+                owner=payload.owner,
+                task_kind=payload.task_kind,
+                task_goal=payload.task_goal,
+            )
+        except (KeyError, ValueError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return DiscussionPromotionRead(promotion_type="task", record_ids=[task_id])
 
     @app.post("/projects/{project_id}/autopilot", response_model=AutopilotResponse)
     async def autopilot_project(project_id: str) -> AutopilotResponse:
@@ -1427,6 +1554,117 @@ def _collect_provenance_evidence_refs(provenance: ArtifactProvenance) -> list[st
             for entry in provenance.audit_subject_refs
             for ref in entry.evidence_refs
         }
+    )
+
+
+def _to_discussion_session_read(session) -> DiscussionSessionRead:
+    return DiscussionSessionRead(
+        session_id=session.session_id,
+        project_id=session.project_id,
+        title=session.title,
+        source_type=session.source_type,
+        source_label=session.source_label,
+        status=session.status,
+        stage=session.stage,
+        branch_kind=session.branch_kind,
+        target_kind=session.target_kind,
+        target_id=session.target_id,
+        target_label=session.target_label,
+        focus_question=session.focus_question,
+        operator_prompt=session.operator_prompt,
+        attached_entities=[
+            {
+                "entity_type": ref.entity_type,
+                "entity_id": ref.entity_id,
+                "label": ref.label,
+            }
+            for ref in session.attached_entities
+        ],
+        context_bundle=None
+        if session.context_bundle is None
+        else {
+            "bundle_id": session.context_bundle.bundle_id,
+            "project_id": session.context_bundle.project_id,
+            "stage": session.context_bundle.stage,
+            "branch_kind": session.context_bundle.branch_kind,
+            "target_kind": session.context_bundle.target_kind,
+            "target_id": session.context_bundle.target_id,
+            "target_label": session.context_bundle.target_label,
+            "research_goal": session.context_bundle.research_goal,
+            "focus_question": session.context_bundle.focus_question,
+            "operator_prompt": session.context_bundle.operator_prompt,
+            "current_state": session.context_bundle.current_state,
+            "controversies": session.context_bundle.controversies,
+            "questions_to_answer": session.context_bundle.questions_to_answer,
+            "attached_entities": [
+                {
+                    "entity_type": ref.entity_type,
+                    "entity_id": ref.entity_id,
+                    "label": ref.label,
+                }
+                for ref in session.context_bundle.attached_entities
+            ],
+            "handoff_packet": session.context_bundle.handoff_packet,
+            "created_at": session.context_bundle.created_at,
+        },
+        latest_import=None
+        if session.latest_import is None
+        else {
+            "source_mode": session.latest_import.source_mode,
+            "provider_label": session.latest_import.provider_label,
+            "verbatim_text": session.latest_import.verbatim_text,
+            "transcript_title": session.latest_import.transcript_title,
+            "cited_dois": session.latest_import.cited_dois,
+            "referenced_claim_ids": session.latest_import.referenced_claim_ids,
+            "imported_at": session.latest_import.imported_at,
+        },
+        machine_distilled=None
+        if session.machine_distilled is None
+        else {
+            "summary": session.machine_distilled.summary,
+            "findings": session.machine_distilled.findings,
+            "decisions": session.machine_distilled.decisions,
+            "literature_notes": session.machine_distilled.literature_notes,
+            "open_questions": session.machine_distilled.open_questions,
+            "risks": session.machine_distilled.risks,
+            "counterarguments": session.machine_distilled.counterarguments,
+            "suggested_next_actions": session.machine_distilled.suggested_next_actions,
+            "cited_dois": session.machine_distilled.cited_dois,
+            "referenced_claim_ids": session.machine_distilled.referenced_claim_ids,
+        },
+        adopted_decision=None
+        if session.adopted_decision is None
+        else {
+            "summary": session.adopted_decision.summary,
+            "findings": session.adopted_decision.findings,
+            "decisions": session.adopted_decision.decisions,
+            "literature_notes": session.adopted_decision.literature_notes,
+            "open_questions": session.adopted_decision.open_questions,
+            "risks": session.adopted_decision.risks,
+            "counterarguments": session.adopted_decision.counterarguments,
+            "suggested_next_actions": session.adopted_decision.suggested_next_actions,
+            "cited_dois": session.adopted_decision.cited_dois,
+            "referenced_claim_ids": session.adopted_decision.referenced_claim_ids,
+        },
+        coverage_report=None
+        if session.coverage_report is None
+        else {
+            "checks": [
+                {
+                    "ref": check.ref,
+                    "ref_type": check.ref_type,
+                    "status": check.status,
+                    "note": check.note,
+                    "linked_entity_id": check.linked_entity_id,
+                }
+                for check in session.coverage_report.checks
+            ],
+            "summary": session.coverage_report.summary,
+        },
+        promoted_record_ids=session.promoted_record_ids,
+        metadata=session.metadata,
+        created_at=session.created_at,
+        updated_at=session.updated_at,
     )
 
 

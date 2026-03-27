@@ -4,6 +4,21 @@ from app.api.schemas.artifacts import ArtifactDetailRead, ArtifactRead
 from app.api.schemas.audit import AuditEntryRead, AuditReportRead, AuditSummaryRead
 from app.api.schemas.approvals import ApprovalCreate, ApprovalRead
 from app.api.schemas.claims import ClaimCreate, ClaimRead
+from app.api.schemas.discussions import (
+    DiscussionAdoptCreate,
+    DiscussionContextBundleRead,
+    DiscussionCoverageCheckRead,
+    DiscussionCoverageRead,
+    DiscussionDistillationRead,
+    DiscussionEntityRefModel,
+    DiscussionImportCreate,
+    DiscussionImportRead,
+    DiscussionPromotionRead,
+    DiscussionPromoteApprovalCreate,
+    DiscussionPromoteTaskCreate,
+    DiscussionSessionCreate,
+    DiscussionSessionRead,
+)
 from app.api.schemas.freezes import (
     ResultsFreezeRead,
     ResultsFreezeSave,
@@ -87,6 +102,19 @@ __all__ = [
     "ApprovalRead",
     "ClaimCreate",
     "ClaimRead",
+    "DiscussionAdoptCreate",
+    "DiscussionContextBundleRead",
+    "DiscussionCoverageCheckRead",
+    "DiscussionCoverageRead",
+    "DiscussionDistillationRead",
+    "DiscussionEntityRefModel",
+    "DiscussionImportCreate",
+    "DiscussionImportRead",
+    "DiscussionPromotionRead",
+    "DiscussionPromoteApprovalCreate",
+    "DiscussionPromoteTaskCreate",
+    "DiscussionSessionCreate",
+    "DiscussionSessionRead",
     "DispatchProfileModel",
     "RunEventRead",
     "EvidenceRefModel",

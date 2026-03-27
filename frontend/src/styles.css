@@ -267,6 +267,7 @@ pre,
 
 .stats-grid,
 .content-grid,
+.discuss-layout,
 .pulse-grid,
 .freeze-grid,
 .registry-columns,
@@ -275,7 +276,11 @@ pre,
 .workflow-strip,
 .ops-guide-grid,
 .task-output-grid,
-.record-grid {
+.record-grid,
+.discuss-create-grid,
+.discuss-main-grid,
+.discuss-import-grid,
+.discussion-layer-stack {
   display: grid;
   gap: 1rem;
 }
@@ -288,10 +293,27 @@ pre,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.discuss-main-grid {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+
+.discuss-create-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.discuss-import-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.discussion-layer-stack {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .overview-grid .panel:first-child,
 .create-grid .panel,
 .registry-grid .panel:first-child,
-.operations-grid .panel:first-child {
+.operations-grid .panel:first-child,
+.discuss-layout .panel:first-child {
   grid-column: 1 / -1;
 }
 
@@ -305,7 +327,8 @@ pre,
 .guide-card,
 .form-hint,
 .task-output-card,
-.record-card {
+.record-card,
+.discussion-card {
   border: 1px solid var(--line);
   background: #ffffff;
   border-radius: 12px;
@@ -316,6 +339,72 @@ pre,
   display: grid;
   gap: 0.45rem;
   padding: 1rem;
+}
+
+.discuss-wide {
+  grid-column: 1 / -1;
+}
+
+.discussion-list,
+.discussion-detail-column,
+.ref-picker,
+.flat-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.discussion-card {
+  text-align: left;
+  padding: 0.95rem;
+}
+
+.discussion-card.active {
+  border-color: rgba(0, 122, 255, 0.35);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.08);
+}
+
+.discussion-card-head,
+.ref-chip,
+.flat-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.discussion-card p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+
+.ref-picker {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ref-chip {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.ref-chip input {
+  width: auto;
+}
+
+.flat-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.flat-list li {
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.flat-list li:last-child {
+  border-bottom: 0;
 }
 
 .stat-card span,
@@ -2986,6 +3075,11 @@ td strong {
 }
 
 @media (max-width: 1200px) {
+  .discuss-main-grid,
+  .discussion-layer-stack,
+  .discuss-create-grid,
+  .discuss-import-grid,
+  .ref-picker,
   .workspace-focus-grid,
   .workspace-secondary-grid,
   .stage-pipeline,
