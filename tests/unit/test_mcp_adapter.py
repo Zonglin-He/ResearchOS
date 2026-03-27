@@ -7,7 +7,8 @@ from pathlib import Path
 from app.tools.mcp_adapter import MCPAdapterTool
 
 
-SERVER_PATH = Path("C:/Anti Project/ResearchOS/tests/fixtures/mcp_demo_server.py")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SERVER_PATH = REPO_ROOT / "tests" / "fixtures" / "mcp_demo_server.py"
 
 
 def test_mcp_adapter_stdio_lists_and_calls_protocol_objects() -> None:
@@ -16,7 +17,7 @@ def test_mcp_adapter_stdio_lists_and_calls_protocol_objects() -> None:
         "transport": "stdio",
         "command": "uv",
         "args": ["run", "python", str(SERVER_PATH)],
-        "cwd": str(Path("C:/Anti Project/ResearchOS")),
+        "cwd": str(REPO_ROOT),
     }
 
     tools_result = asyncio.run(tool.execute(operation="list_tools", **common_kwargs))
@@ -65,7 +66,7 @@ def test_mcp_adapter_streamable_http_calls_protocol_objects() -> None:
 
     process = subprocess.Popen(
         ["uv", "run", "python", str(SERVER_PATH), "streamable-http", str(port)],
-        cwd="C:/Anti Project/ResearchOS",
+        cwd=str(REPO_ROOT),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

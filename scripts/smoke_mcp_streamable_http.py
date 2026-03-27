@@ -11,14 +11,17 @@ from pathlib import Path
 from app.tools.mcp_adapter import MCPAdapterTool
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 def main() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
 
     process = subprocess.Popen(
-        ["uv", "run", "python", "tests/fixtures/mcp_demo_server.py", "streamable-http", str(port)],
-        cwd="C:/Anti Project/ResearchOS",
+        ["uv", "run", "python", str(REPO_ROOT / "tests" / "fixtures" / "mcp_demo_server.py"), "streamable-http", str(port)],
+        cwd=str(REPO_ROOT),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

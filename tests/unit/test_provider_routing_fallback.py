@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 from app.agents.llm_agent import PromptDrivenAgent
 from app.providers.base import BaseProvider
@@ -20,6 +21,9 @@ from app.schemas.result import AgentResult
 from app.schemas.task import Task
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
 class FailingProvider(BaseProvider):
     def __init__(self, message: str) -> None:
         self.message = message
@@ -39,7 +43,7 @@ class StaticProvider(BaseProvider):
 class MinimalAgent(PromptDrivenAgent):
     name = "minimal_agent"
     description = "Minimal prompt-driven agent for routing tests."
-    prompt_path = "C:/Anti Project/ResearchOS/prompts/reviewer.md"
+    prompt_path = str(REPO_ROOT / "prompts" / "reviewer.md")
 
     def build_result(self, task: Task, ctx, output: dict) -> AgentResult:
         return AgentResult(status="success", output=output)

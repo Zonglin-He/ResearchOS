@@ -3,11 +3,15 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from app.api.app import create_app
 from app.providers.local_provider import LocalProvider
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_guide_flow_experiment_writer_operator_proof_chain(tmp_path, monkeypatch) -> None:
@@ -254,7 +258,7 @@ def test_operator_benchmark_script_smoke(tmp_path, monkeypatch) -> None:
         raise AssertionError("tmp_path should exist")
 
     process = subprocess.run(
-        [sys.executable, "C:\\Anti Project\\ResearchOS\\scripts\\run_operator_benchmark.py"],
+        [sys.executable, str(REPO_ROOT / "scripts" / "run_operator_benchmark.py")],
         capture_output=True,
         text=True,
         check=False,
