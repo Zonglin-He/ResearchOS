@@ -1,7 +1,7 @@
 [project]
 name = "researchos"
 version = "0.0.1"
-description = "Code-first multi-agent research workflow system"
+description = "Trustworthy research execution system with auditable flow control and grounded metrics"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

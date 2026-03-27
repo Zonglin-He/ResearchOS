@@ -86,6 +86,32 @@ const tabs: Array<{ id: MainTab; label: string; icon: typeof FlaskConical }> = [
   { id: "registry", label: "数据库", icon: Database },
 ];
 
+const marketingFeatures = [
+  {
+    title: "Typed Flow Control",
+    body: "Encode gate, rollback, retry, pause, resume, pivot, and refine as explicit workflow state instead of hidden agent behavior.",
+  },
+  {
+    title: "Grounded Metrics",
+    body: "Bind every reported number to run artifacts and verified metric entries before it reaches a draft.",
+  },
+  {
+    title: "Operator Visibility",
+    body: "Inspect live run events, branch comparisons, checkpoints, approvals, and provider health from one console.",
+  },
+  {
+    title: "Diagnosis-Driven Experiments",
+    body: "Run experiments with structured failure diagnosis, repair actions, and best-result promotion rather than blind retries.",
+  },
+] as const;
+
+const demoMoments = [
+  "Guide: turn a plain-language goal into a bounded research direction.",
+  "Flow: watch checkpoints, approvals, and branch fanout move through the state machine.",
+  "Experiment: compare branches, recover from failures, and preserve the best run.",
+  "Writer: ship a draft whose metrics stay grounded in registered evidence.",
+] as const;
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<MainTab>("workspace");
   const [systemOpen, setSystemOpen] = useState(false);
@@ -459,7 +485,7 @@ export default function App() {
       <main className="main-column">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Research Workspace</p>
+            <p className="eyebrow">Trustworthy Research Execution</p>
             <h1>{data?.selectedProject?.name ?? "尚未选择项目"}</h1>
             <div className="topbar-meta">
               {data?.selectedProject ? <span className="next-tag">当前阶段：{stageLabel(data.selectedProject.stage)}</span> : null}
@@ -479,6 +505,65 @@ export default function App() {
             </button>
           </div>
         </header>
+
+        <section className="marketing-hero panel">
+          <div className="marketing-hero-copy">
+            <p className="eyebrow">ResearchOS</p>
+            <h2>The operating system for trustworthy AI research.</h2>
+            <p className="marketing-lead">
+              ResearchOS turns black-box research automation into an auditable execution loop:
+              guide direction, control flow, run diagnosis-driven experiments, ground every metric,
+              and ship drafts with operator-visible checkpoints.
+            </p>
+            <p className="marketing-sublead">
+              不只是自动跑研究，而是把研究流程变成可追踪、可恢复、可验证的系统。
+            </p>
+            <div className="marketing-actions">
+              <button className="button" type="button" onClick={() => openSystem("advanced", "project")}>
+                Start New Research
+              </button>
+              <button className="button secondary" type="button" onClick={() => openSystem("operations")}>
+                Open Operator Console
+              </button>
+            </div>
+          </div>
+          <div className="marketing-proof">
+            <div className="marketing-proof-card">
+              <span className="marketing-proof-label">Positioning</span>
+              <strong>可信研究执行系统</strong>
+              <p>Not another auto-paper bot. A control plane for research teams.</p>
+            </div>
+            <div className="marketing-proof-card">
+              <span className="marketing-proof-label">Promise</span>
+              <strong>Every claim stays tied to evidence.</strong>
+              <p>Flow state, artifacts, metrics, approvals, and drafts remain inspectable end to end.</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="marketing-grid">
+          <Panel title="Features" subtitle="Hero copy for the product site">
+            <div className="marketing-feature-grid">
+              {marketingFeatures.map((feature) => (
+                <article key={feature.title} className="marketing-feature-card">
+                  <span className="marketing-proof-label">Feature</span>
+                  <h4>{feature.title}</h4>
+                  <p>{feature.body}</p>
+                </article>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="Demo" subtitle="4-scene product walkthrough">
+            <div className="marketing-demo-list">
+              {demoMoments.map((moment, index) => (
+                <div key={moment} className="marketing-demo-step">
+                  <span className="marketing-demo-index">0{index + 1}</span>
+                  <p>{moment}</p>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </section>
 
         {notice ? <div className="notice-banner">{notice}</div> : null}
         {error ? <div className="error-banner">{error}</div> : null}

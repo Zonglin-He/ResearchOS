@@ -180,6 +180,127 @@ pre,
   border-radius: 28px;
 }
 
+.marketing-hero,
+.marketing-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.marketing-hero {
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
+  padding: 1.4rem;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(0, 122, 255, 0.08), transparent 38%),
+    linear-gradient(135deg, #ffffff 0%, #eef5ff 100%);
+}
+
+.marketing-hero-copy,
+.marketing-proof,
+.marketing-feature-grid,
+.marketing-demo-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.marketing-hero-copy h2 {
+  margin: 0;
+  font-size: clamp(2rem, 3.6vw, 3.4rem);
+  line-height: 0.96;
+  max-width: 12ch;
+}
+
+.marketing-lead,
+.marketing-sublead {
+  margin: 0;
+  max-width: 70ch;
+}
+
+.marketing-lead {
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+.marketing-sublead {
+  color: var(--muted);
+}
+
+.marketing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.marketing-proof {
+  align-content: start;
+}
+
+.marketing-proof-card,
+.marketing-feature-card,
+.marketing-demo-step {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.marketing-proof-card strong,
+.marketing-feature-card h4 {
+  display: block;
+  margin: 0.2rem 0 0.45rem;
+  font-size: 1.08rem;
+}
+
+.marketing-proof-card p,
+.marketing-feature-card p,
+.marketing-demo-step p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.marketing-proof-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.24rem 0.58rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 122, 255, 0.2);
+  background: rgba(0, 122, 255, 0.08);
+  color: var(--accent);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.marketing-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.95fr);
+}
+
+.marketing-feature-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.marketing-demo-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.marketing-demo-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 999px;
+  background: var(--text);
+  color: #ffffff;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+}
+
 .topbar h1 {
   margin: 0.35rem 0 0;
   font-size: clamp(1.8rem, 3vw, 2.6rem);
@@ -2605,7 +2726,13 @@ td strong {
   .approval-decision-row,
   .discussion-columns,
   .discussion-insight-grid,
-  .discussion-summary-grid {
+  .discussion-summary-grid,
+  .marketing-grid,
+  .marketing-feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .marketing-hero {
     grid-template-columns: 1fr;
   }
 
@@ -2636,6 +2763,10 @@ td strong {
 
   .topbar {
     flex-direction: column;
+  }
+
+  .marketing-actions {
+    display: grid;
   }
 
   .pixel-scene {

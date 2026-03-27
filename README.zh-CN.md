@@ -1,383 +1,257 @@
 # ResearchOS
 
 <p align="right">
-  <a href="README.md"><img src="https://img.shields.io/badge/lang-English-blue?style=flat-square" /></a>
-  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/语言-中文-red?style=flat-square" /></a>
+  <a href="README.md"><img src="https://img.shields.io/badge/lang-English-blue?style=flat-square" alt="English" /></a>
+  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/lang-中文-red?style=flat-square" alt="中文" /></a>
 </p>
 
-> 一个多 Agent 研究工作流系统，将研究想法从文献检索推进到可投稿草稿，并在每个关键决策节点保留结构化的人工介入。
+> 面向可信 AI 研究的研究执行系统。
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" />
-  <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black" />
-  <img src="https://img.shields.io/badge/FastAPI-0.135-009688?style=flat-square&logo=fastapi&logoColor=white" />
-  <img src="https://img.shields.io/badge/LLM_支持-Claude_·_Codex_·_Gemini-blueviolet?style=flat-square" />
-  <img src="https://img.shields.io/badge/Agent_数量-10_个专用-orange?style=flat-square" />
-  <img src="https://img.shields.io/badge/流水线-16_阶段-green?style=flat-square" />
-</p>
+ResearchOS 要解决的不是“怎么再多自动化几步”，而是“怎么把研究流程变成可追踪、可恢复、可验证的系统”。  
+它不是自动论文机，而是把研究从黑盒 agent workflow，升级成一个 operator 可见、证据可查、状态可控的执行闭环。
 
----
+## 定位
 
-## 这个系统解决什么问题？
+ResearchOS 的核心定位是：
 
-现有的自动化研究系统（AI Scientist、AgentLaboratory、GPT-Researcher）存在两类根本性局限：
-- **完全自主型**：无结构化人工监督，Agent 的决策研究者无法审计和信任
-- **仅检索型**：能找论文，但无法设计、运行或分析实验
+**Trustworthy Research Execution System**
 
-ResearchOS 基于一个不同的前提：**研究是人机协作，而不是人被机器替代**。Agent 承担高重复性的机械工作（文献筛选、代码生成、引用验证、结果分析），人类保留对真正重要决策的控制权（研究方向选择、实验设计审批、结论验证）。
+也就是：
 
-最终结果：系统中的每一个产物——论文卡片、研究空白图谱、实验规格、结论、经验记录——都是可追溯、可验证、可复现的。
+- 从模糊目标出发，逐步引导到可执行研究方向
+- 用显式状态机管理研究流，而不是靠隐式 agent 串联
+- 用诊断式实验修复替代盲目重试
+- 用指标落地和证据绑定约束写作
+- 用 operator console 让人类实时接管关键节点
 
----
+## 为什么要做这个
 
-## 系统架构
+很多 research agent 追求的是“更自动”。  
+但真实研究团队还需要另外四件事：
 
-```mermaid
-flowchart TD
-    GOAL(["🎯 研究目标\n自然语言输入"])
-    style GOAL fill:#4A90D9,color:#fff,stroke:#2171B5
+- 可见性：系统做了什么、什么时候做的、为什么这么做
+- 可恢复性：失败后从哪里继续
+- 可问责性：论文中的数字和结论到底来自哪里
+- 可控性：人类在关键节点如何介入，而不是事后补救
 
-    subgraph INTAKE["📥  文献摄入"]
-        QD["QueryDecomposer\n子问题分解"]
-        SRC["arXiv API + Semantic Scholar\n按引用数加权检索"]
-        RA["ReaderAgent\n论文卡片 · 证据引用\n拒绝：表格、图表、乱码内容"]
-        QD --> SRC --> RA
-    end
+ResearchOS 的答案不是再堆一层 agent，而是把研究流程操作系统化。
 
-    subgraph SYNTHESIS["🗺️  研究空白分析"]
-        MA["MapperAgent\n方法空白 / 数据空白 / 评估空白 / 算力空白"]
-        DB["辩论验证\n挑战 Agent · 每个方向的弱点附注"]
-        MA --> DB
-    end
+一句话概括：
 
-    HS(["★  人工决策\n方向选择工作台\n新颖度 × 可行性 · LLM 顾问对话"])
-    style HS fill:#E8A838,color:#fff,stroke:#C88020
+**不要盲目自动化研究，而要负责任地操作化研究。**
 
-    subgraph EXEC["⚗️  假设生成与实验执行"]
-        HY["HypothetistAgent\n可证伪研究假设"]
-        BA["BuilderAgent\n硬件感知实验代码"]
-        ER["ExperimentRunner\n5 轮自修复\nOOM · NaN · ImportError"]
-        HY --> BA --> ER
-    end
+## 产品故事
 
-    AN{{"AnalystAgent\nPROCEED / REFINE / PIVOT"}}
-    style AN fill:#7B68EE,color:#fff,stroke:#5A4FCF
+ResearchOS 把这条黑盒链路：
 
-    subgraph REVIEW["🔍  质量门控与知识归档"]
-        RV["ReviewerAgent\nML 公平性检查清单"]
-        VF["VerifierAgent\n证据链验证"]
-        AC["ArchivistAgent\n经验 · 知识库 · 30 天衰减"]
-        RV --> VF
-        RV --> AC
-    end
+`idea -> hidden agent steps -> draft`
 
-    WR["WriterAgent\nLaTeX · Markdown · 3 轮引用修复\n会议投稿专项检查清单"]
-    style WR fill:#52C41A,color:#fff,stroke:#389E0D
+改造成这条可验证链路：
 
-    GOAL --> INTAKE
-    INTAKE --> SYNTHESIS
-    SYNTHESIS --> HS
-    HS --> EXEC
-    EXEC --> AN
-    AN -->|PROCEED| REVIEW
-    AN -->|"REFINE + patch"| BA
-    AN -->|PIVOT| MA
-    VF --> WR
-    AC --> WR
-```
+`guide -> flow -> experiment -> writer -> operator console`
 
----
+这五段不是功能列表，而是产品本体。
 
-## 关键设计决策
+### 1. Guide
 
-### 1. 三层技能架构
-每个 Agent 由三层叠加的指令控制：
-- **角色 prompt**（`prompts/roles/`）— 定义该角色的职责边界和专业规范
-- **Agent prompt**（`prompts/`）— 针对具体任务类型的行为规则，包含反例和硬拒绝标准
-- **技能文件**（`skills/`）— 具体的输出模板、负面示例和 LLM 在返回结果前必须执行的自检标准
+从自然语言研究目标开始。系统会分解查询、抓取 seed papers、生成 gap candidates，并在 `human_select` 节点停下，让方向选择保持人类可见。
 
-这种分层意味着技能质量可以独立于 Agent 编排逻辑进行迭代，且技能文件可以跨不同底层 LLM（Claude、Codex、Gemini）复用。
+### 2. Flow
 
-### 2. 数据库中介的 Agent 通信
-Agent 之间不直接调用彼此。所有跨 Agent 状态通过类型化的注册表流转：
+研究流程不是一串松散 task string，而是持久化的 typed state machine。  
+当前 flow 明确支持：
 
-```
-TaskRegistry → PaperCardRegistry → GapMapRegistry → FreezeRegistry → ArtifactRegistry
-```
+- `gate`
+- `rollback`
+- `retry`
+- `pause`
+- `resume`
+- `pivot`
+- `refine`
 
-这使系统完全可观测（任意时刻所有中间产物都可读）、可恢复（任务可从任意检查点重试）、可审计（从原始输入到最终结论的完整溯源链）。
+### 3. Experiment
 
-### 3. 结构化人工检查点
-`human_select` 是一个一等公民的任务类型——不是 UI 功能，也不是降级状态。流水线会**暂停**，直到人类做出经过验证的决策后才继续。其他检查点（`FREEZE_SPEC`、`AUDIT_RESULTS`）可按项目配置为 `required`（必须等待人工）或 `optional`（置信度足够时自动推进）。人工审批支持附带条件——在 UI 中输入的约束会直接注入到下游任务的上下文中。
+实验执行不是“报错了再跑一次”。ResearchOS 会记录尝试历史，诊断失败原因，执行有限修复，并在多个成功尝试之间提升最佳结果。
 
-### 4. 自进化知识库
-经验不是日志。每个任务完成后，`ArchivistAgent` 会评估执行结果是否包含可复用的洞见——必须是可泛化的、有证据支撑的、能在不同上下文中重用的。经验存储在结构化知识库中（4个类别：发现、决策、文献、开放问题），30天不被命中则自动衰减。每个新任务在执行前会检索最相关的 5 条历史经验，使系统在熟悉领域中随时间持续改进。
+### 4. Writer
 
-### 5. 实验完整性门控
-`ReviewerAgent` 在任何结论被允许进入论文草稿之前，执行专门的 ML 公平性检查（阻断级别）：
-- 提出方法和所有 baseline 是否使用相同数据集划分？
-- 如果使用了数据增强，baseline 是否获得了相同的增强预算？
-- 超参数选择过程中是否存在测试集泄漏？
-- 报告的精度是否来自 cherry-pick 的 epoch，还是预先声明的选择规则？
-- 对于类别不平衡数据集，是否仅报告了普通准确率而未补充类别感知指标？
+写作阶段受到证据约束。Writer 会结合：
 
-不满足以上条件的结论会被阻断，并附带具体的整改说明。
+- citation verification
+- verified metrics registry
+- metric grounding report
+- results freeze
 
-### 6. 基线优先的实验执行语义
-`BuilderAgent` 不会默认从零开始写实验代码。在生成任何代码前，它会从任务 payload 中解析出以下四种执行模式之一，并注入到 `builder_focus.execution_mode`：
+未落地的数字不会直接进入草稿。
 
-| 模式 | 触发条件 | 行为 |
-|------|---------|------|
-| `baseline_reproduction` | `kind=reproduce_baseline` 或 `baseline_only=true` | 先忠实复现提供的 baseline，再提出改进 |
-| `baseline_adaptation` | 存在 baseline 上下文 + `refine_patch` 或 `baseline_delta` | 最小化地 patch baseline，delta 必须显式说明 |
-| `baseline_extension` | 存在 baseline 上下文，无 patch | 以 baseline 为锚点，每次只做一个有依据的改动 |
-| `from_scratch` | 完全没有 baseline 上下文 | 仅在无可复用 baseline 时才使用 |
+### 5. Operator Console
 
-这意味着所有实验默认以已有工作为起点。prompt 明确禁止在有 baseline 的情况下重写整个实验。
+操作台不是辅助页面，而是控制面。它暴露：
 
-### 7. 外部实验结果导入
-`WriterAgent` 可以消费不由系统自身 `ExperimentRunner` 产生的结果。`RunManifest` 带有 `source_type`（`internal` / `imported` / `external`）和 `source_label` 字段，`ResultsFreeze` 带有 `supporting_run_ids` 和 `external_sources`。这些在调度时被解析进 `writer_focus.evidence_sources`，Writer 将导入结果与内部结果同等对待——但对任何溯源不完整的情况，必须在论文中标注为局限性，而不是静默跳过。
+- flow snapshot
+- run event stream
+- branch compare
+- checkpoint resume
+- approvals
+- provider health
 
----
+## 核心能力
 
-## Agent 目录
+### Typed Flow Control
 
-| Agent | 角色 | 核心职责 |
-|-------|------|---------|
-| **ReaderAgent** | 文献馆员 | 文献筛选 → 带证据引用的结构化论文卡片 |
-| **MapperAgent** | 综合分析师 | 论文卡片 → 研究空白聚类 + 带评分的候选方向 |
-| **HypothetistAgent** | 假设生成者 | 研究空白 → 可证伪、可操作的研究假设 |
-| **BuilderAgent** | 实验执行者 | 实验规格 → 基线优先实验代码（复现 / 适配 / 扩展 / 从零）|
-| **AnalystAgent** | 结果分析师 | 运行结果 → PROCEED / REFINE / PIVOT 决策（附数字依据）|
-| **ReviewerAgent** | 质量审查员 | 产物 → 阻断/警告级别审查报告（含 ML 公平性清单）|
-| **VerifierAgent** | 证据验证员 | 结论 → 证据链验证报告（明确声明验证范围）|
-| **WriterAgent** | 论文写作者 | 冻结证据 + 导入结果 → 论文章节 / 完整草稿（含 3 轮引用修复）|
-| **ArchivistAgent** | 档案管理员 | 运行结果 → 可复用经验 + 知识库条目 |
-| **BranchManagerAgent** | — | 多分支实验协调、评分与剪枝 |
+研究流以显式状态、决策和 checkpoint requirement 形式持久化。
 
----
+关键代码：
 
-## 技术栈
+- [app/workflows/research_flow.py](app/workflows/research_flow.py)
+- [app/services/project_service.py](app/services/project_service.py)
 
-| 层次 | 技术选型 |
-|------|---------|
-| 后端运行时 | Python 3.11、FastAPI、SQLAlchemy |
-| 数据存储 | SQLite（本地开发）/ PostgreSQL（生产环境）|
-| 任务队列 | Celery + Redis |
-| 前端 | React 18、TypeScript、Vite、Lucide |
-| LLM 接入 | Claude CLI、Codex CLI、Gemini CLI（子进程方式，无需直接 API）|
-| 论文检索 | arXiv API、Semantic Scholar API |
-| 容器化 | Docker Compose |
-| CI | GitHub Actions |
-| 包管理 | uv |
+### Diagnosis-Driven Experiment Repair
 
----
+实验执行链支持失败诊断、repair action、attempt history 和 best-result promotion。
+
+关键代码：
+
+- [app/tools/experiment_runner.py](app/tools/experiment_runner.py)
+
+### Verified Metrics Registry
+
+论文中的数字必须能回溯到 run manifest、artifact metadata 或 approved results freeze。
+
+关键代码：
+
+- [app/services/verified_metrics_registry.py](app/services/verified_metrics_registry.py)
+- [app/agents/writer.py](app/agents/writer.py)
+
+### Operator-First Inspection
+
+ResearchOS 从一开始就是面向 operator 的系统，而不是只面向后台 agent。
+
+关键代码：
+
+- [app/services/operator_inspection_service.py](app/services/operator_inspection_service.py)
+- [app/api/app.py](app/api/app.py)
+- [frontend/src/App.tsx](frontend/src/App.tsx)
+
+## 它和常见 Autonomous Research Agent 的区别
+
+ResearchOS 不靠“更像黑盒自动论文机”取胜。  
+它靠“更可信的自动化”取胜。
+
+| 维度 | 常见 autonomous research agent | ResearchOS |
+|---|---|---|
+| 叙事中心 | 自动跑更多步骤 | 把每一步做成可检查、可恢复的执行系统 |
+| 流程控制 | 隐式 task chaining | typed workflow state machine |
+| 失败处理 | 重试或重生成 | 诊断、修复、提升最佳结果 |
+| 草稿数字 | 常常直接信任 agent 输出 | 必须经过 verified metrics grounding |
+| 人类角色 | 事后批准 | 显式 checkpoint 与 operator console |
+| 产品形态 | agent workflow | research execution system |
+
+## 端到端证明链
+
+当前仓库已经包含一条完整 integration proof chain，覆盖：
+
+`guide -> flow -> experiment -> writer -> operator console`
+
+它会验证：
+
+- guide start 与 direction adoption
+- autopilot 在 branch planning 和 experiment fanout 中的推进
+- result grounding 与 draft generation
+- operator-facing 的 branch compare、event stream 和 flow surface
+
+相关测试：
+
+- [tests/integration/test_research_proof_chain.py](tests/integration/test_research_proof_chain.py)
+- [tests/integration/test_dispatch_workflow.py](tests/integration/test_dispatch_workflow.py)
+
+基准脚本：
+
+- [scripts/run_operator_benchmark.py](scripts/run_operator_benchmark.py)
 
 ## 快速开始
 
-**前置要求：** Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 18+
+环境要求：
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/)
+- Node.js 18+
 
 ```bash
-# 安装依赖
 uv sync --dev
-cd frontend && npm install && cd ..
-
-# 初始化本地数据库
+cd frontend
+npm install
+cd ..
 uv run researchos --db-path data/researchos.db init-db
-
-# 启动（API 服务在 :8000，前端在 :5173）
 uv run researchos web
 ```
 
-打开 `http://127.0.0.1:5173`，UI 会引导你从一个自然语言研究目标开始第一个项目。
+打开 `http://127.0.0.1:5173`。
 
-**使用真实 LLM Provider**（需要对应 CLI 已安装并完成认证）：
+### Provider 配置
 
-```bash
-export RESEARCHOS_PROVIDER=claude          # 或 codex / gemini
-export RESEARCHOS_PROVIDER_MODEL=sonnet
-export RESEARCHOS_WORKSPACE_ROOT=$(pwd)
-```
-
-**演示和 CI 模式**（确定性输出，无需任何 API Key）：
+本地确定性模式：
 
 ```bash
 export RESEARCHOS_PROVIDER=local
 export RESEARCHOS_PROVIDER_MODEL=deterministic-reader
 ```
 
-自定义端口：
+CLI provider 模式：
 
 ```bash
-uv run researchos web --port 8010 --frontend-port 5180
+export RESEARCHOS_PROVIDER=claude
+export RESEARCHOS_PROVIDER_MODEL=sonnet
+export RESEARCHOS_WORKSPACE_ROOT=$(pwd)
 ```
 
----
+仓库里还支持 `codex` 与 `gemini` provider family。
 
-## 引导式研究工作流
+## 仓库结构
 
-前端界面围绕研究流水线本身构建，而不是底层数据模型。
-
-```
-第 1 步：用自然语言输入研究目标
-─────────────────────────────────────────────────────────────────
-系统将目标分解为互补的检索子查询，
-从 arXiv + Semantic Scholar 按引用数加权抓取论文，
-自动生成结构化论文卡片。
-
-第 2 步：带对抗辩论的空白分析
-─────────────────────────────────────────────────────────────────
-MapperAgent 将证据聚类为研究空白。
-挑战 Agent 对每个候选方向进行辩论，弱点
-会与候选方向一同展示，使人工决策更有依据。
-
-第 3 步：★ 人工决策：方向选择工作台
-─────────────────────────────────────────────────────────────────
-- 新颖度 × 可行性散点矩阵
-- 每个方向的辩论弱点内联展示
-- LLM 顾问对话，深度讨论可行性
-- 可选：为审批附加约束条件（约束直接注入下游任务）
-
-第 4 步：自动驾驶推进至下一检查点
-─────────────────────────────────────────────────────────────────
-假设生成 → 规格冻结 → 实验执行 → 结果分析
-每个阶段可配置为 required（必须停等人工）或
-optional（置信度足够时自动推进）。
-
-第 5 步：生成论文草稿
-─────────────────────────────────────────────────────────────────
-LaTeX 或 Markdown 格式，含 3 轮引用验证修复，
-会议专项检查清单（NeurIPS/ICLR），以及诚实的
-局限性章节。
+```text
+app/
+  agents/        专职研究 agent
+  api/           FastAPI 控制面
+  services/      registries、freezes、operator inspection
+  tools/         实验执行、验证、检索工具
+  workflows/     typed research flow state machine
+frontend/
+  src/           operator console 与 workspace UI
+scripts/
+  run_operator_benchmark.py
+tests/
+  integration/   端到端证明链
+  unit/          service、API、agent 回归测试
+docs/
+  showcase/      对外展示材料
 ```
 
----
+## 仓库内的营销文案资产
 
-## 项目结构
+如果你需要的是对外讲产品，而不是对内讲工程，请看：
 
-```
-ResearchOS/
-├── app/
-│   ├── agents/          # 10 个专用 Agent（reader、mapper、builder……）
-│   ├── api/             # FastAPI 路由和 Schema
-│   ├── cli.py           # CLI 入口（uv run researchos）
-│   ├── core/            # 枚举、配置、流水线阶段定义
-│   ├── db/              # SQLAlchemy 模型、Alembic 迁移
-│   ├── providers/       # Claude / Codex / Gemini / Local CLI 封装
-│   ├── routing/         # Provider 健康检查、路由策略、降级链
-│   ├── roles/           # 角色契约、绑定关系、注册表
-│   ├── services/        # 所有领域服务（gap maps、lessons、KB……）
-│   ├── skills/          # 技能规格和注册表
-│   └── tools/           # arXiv、Semantic Scholar、实验运行器……
-├── frontend/
-│   └── src/
-│       ├── components/  # OverviewTab、OperationsTab、RegistryTab、CreateTab
-│       └── App.tsx
-├── prompts/             # Agent prompts + 角色 prompts + 顾问 prompts
-├── skills/              # 各角色的 SKILL.md（模板、反例、自检清单）
-├── registry/            # 持久化 JSONL 状态（论文卡片、空白图谱、经验……）
-├── tests/
-│   ├── unit/
-│   └── integration/
-└── docker-compose.yml
-```
+- [docs/github_project_intro.md](docs/github_project_intro.md)
+- [docs/website_copy.md](docs/website_copy.md)
+- [docs/comparison/AutoResearchClaw.md](docs/comparison/AutoResearchClaw.md)
 
----
+## 当前状态
 
-## 数据模型
+ResearchOS 已经具备：
 
-ResearchOS 将研究产物视为有类型、有版本的一等对象，而不是聊天记录或扁平文件。
+- typed flow control
+- checkpoint-aware resume
+- diagnosis-driven experiment repair
+- verified metrics grounding
+- branch comparison 与 operator inspection
+- integration 证明链覆盖
 
-| 对象 | 记录内容 |
-|------|---------|
-| `PaperCard` | 问题定义、方法摘要、最强实验结果、数据集、指标、证据引用 |
-| `GapMap` | 聚类研究空白，含新颖度/可行性评分和每个方向的辩论弱点 |
-| `TopicFreeze` | 所选研究方向及决策依据的不可变快照 |
-| `SpecFreeze` | 不可变实验规格：假设、baseline、数据集、指标、成功/失败标准 |
-| `RunManifest` | 执行记录：配置、种子、数据集快照、产物、指标；`source_type` 标记 internal / imported / external 溯源 |
-| `ResultsFreeze` | 最终结果快照：主要结论、表格、图表；`supporting_run_ids` + `external_sources` 支持外部结果导入 |
-| `Claim` | 与具体 run 绑定的经验断言，含风险等级和人工审批状态 |
-| `Lesson` | 来自过往任务的可复用洞见——有证据支撑、命中计数、30 天衰减 |
-| `KnowledgeBase` | 跨项目结构化知识：发现、决策、文献摘要、开放问题 |
+接下来真正需要放大的，不是“更黑盒的自动化”，而是：
 
----
+- 更强的公开 benchmark
+- 更完整的 showcase project
+- 更丰富的外部入口
 
-## API 接口（精选）
+但这些都应该建立在同一个核心上：
 
-```
-POST  /guide/start                    从自然语言目标启动新研究项目
-POST  /guide/discuss-direction        与 LLM 顾问讨论候选方向的可行性
-POST  /guide/adopt-direction          锁定研究方向，创建 topic freeze
-POST  /projects/{id}/autopilot        将项目推进至下一个人工检查点
-
-GET   /projects/{id}/dashboard        项目完整状态快照
-GET   /projects/{id}/events/stream    实时任务状态更新的 SSE 推送流
-GET   /routing/system                 当前 Provider 健康状态和路由策略
-GET   /providers/health               各 Provider 状态、冷却时间、失败计数
-
-POST  /tasks/{id}/dispatch            手动调度一个排队中的任务
-GET   /artifacts/{id}/inspect         查看产物内容和元数据
-GET   /audit/summary                  所有结论和运行的审计发现汇总
-GET   /verifications/summary          所有项目的证据验证状态汇总
-```
-
----
-
-## 运行测试
-
-```bash
-# 单元测试
-uv run pytest tests/unit -v
-
-# 集成测试（使用确定性本地 Provider，无需 API Key）
-uv run pytest tests/integration -v
-
-# 编译检查 + 前端构建（与 CI 保持一致）
-uv run python -m compileall app
-cd frontend && npm run build
-```
-
----
-
-## 生产部署
-
-```bash
-# 完整服务栈：FastAPI + PostgreSQL + Redis + Celery Worker
-docker compose up -d --build
-
-# 健康检查
-curl http://localhost:8000/health
-```
-
-生产环境将 SQLite 替换为 PostgreSQL，并增加 Celery Worker 负责异步任务调度。API 接口与本地开发环境完全一致。
-
----
-
-## 与同类系统对比
-
-| 特性 | ResearchOS | AI Scientist v2 | GPT-Researcher | AgentLaboratory |
-|------|:---:|:---:|:---:|:---:|
-| 结构化人工检查点 | ✅ | ❌ | ❌ | ⚠️ |
-| 实验自修复循环 | ✅ | ⚠️ | ❌ | ✅ |
-| 跨项目知识积累 | ✅ | ❌ | ❌ | ❌ |
-| 引用验证 + 修复 | ✅ | ⚠️ | ❌ | ❌ |
-| ML 公平性审查门控 | ✅ | ❌ | ❌ | ⚠️ |
-| Gap 对抗辩论验证 | ✅ | ❌ | ❌ | ❌ |
-| 操作者 Web UI | ✅ | ❌ | ❌ | ❌ |
-| 多 Provider 路由 + 降级 | ✅ | ✅ | ✅ | ⚠️ |
-| 完整产物溯源链 | ✅ | ⚠️ | ❌ | ⚠️ |
-
----
-
-## 开发路线图
-
-- [ ] HypothetistAgent 接入主调度流（已完成设计，尚未接入）
-- [ ] 分支树实验探索（树搜索风格，多分支并行）
-- [ ] LaTeX 编译生成 PDF
-- [ ] 跨项目知识图谱可视化
-- [ ] 实验结果对比看板
-- [ ] 所有注册表从 JSONL 迁移至 SQLite 主存储
-
----
-
-*Python 3.11 · FastAPI · React 18 · SQLAlchemy · 多 Provider LLM 路由*
+**可信的研究执行，而不是不可审计的自动论文生成。**
