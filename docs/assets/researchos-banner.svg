@@ -1,0 +1,84 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="94" y1="62" x2="1196" y2="588" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#06131F"/>
+      <stop offset="0.48" stop-color="#0A2236"/>
+      <stop offset="1" stop-color="#09111D"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="300" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#12314B" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#0C1E31" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="204" y1="180" x2="1148" y2="464" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4CC9F0"/>
+      <stop offset="0.42" stop-color="#4BE0C2"/>
+      <stop offset="1" stop-color="#FF8B4D"/>
+    </linearGradient>
+    <linearGradient id="pill" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#4CC9F0"/>
+      <stop offset="1" stop-color="#4BE0C2"/>
+    </linearGradient>
+    <filter id="glow" x="110" y="98" width="1060" height="432" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" rx="32" fill="url(#bg)"/>
+  <circle cx="1103" cy="112" r="182" fill="#1BC7C8" fill-opacity="0.14"/>
+  <circle cx="184" cy="570" r="188" fill="#F97316" fill-opacity="0.12"/>
+  <circle cx="1150" cy="572" r="154" fill="#38BDF8" fill-opacity="0.08"/>
+
+  <g filter="url(#glow)">
+    <path d="M190 420C314 320 420 282 544 288C647 293 732 343 841 347C941 350 1020 315 1132 214" stroke="url(#accent)" stroke-width="12" stroke-linecap="round"/>
+  </g>
+  <path d="M190 420C314 320 420 282 544 288C647 293 732 343 841 347C941 350 1020 315 1132 214" stroke="url(#accent)" stroke-width="5" stroke-linecap="round"/>
+
+  <rect x="72" y="72" width="1136" height="496" rx="28" stroke="white" stroke-opacity="0.08"/>
+
+  <rect x="104" y="104" width="210" height="44" rx="22" fill="#10263A"/>
+  <circle cx="130" cy="126" r="8" fill="#4BE0C2"/>
+  <text x="148" y="133" fill="#D9F5FF" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">ResearchOS</text>
+
+  <text x="108" y="214" fill="white" font-family="Segoe UI, Arial, sans-serif" font-size="64" font-weight="700">Trustworthy</text>
+  <text x="108" y="286" fill="white" font-family="Segoe UI, Arial, sans-serif" font-size="64" font-weight="700">Research Execution</text>
+  <text x="108" y="342" fill="#A9C8DA" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="400">
+    Guide direction, control flow, repair experiments, ground every metric,
+  </text>
+  <text x="108" y="378" fill="#A9C8DA" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="400">
+    and keep operators in the loop with visible checkpoints and branch compare.
+  </text>
+
+  <rect x="108" y="420" width="212" height="50" rx="25" fill="url(#pill)"/>
+  <text x="145" y="452" fill="#062034" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700">Auditable Flow</text>
+
+  <rect x="336" y="420" width="238" height="50" rx="25" fill="#10263A"/>
+  <text x="368" y="452" fill="#E9F7FF" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="600">Grounded Metrics</text>
+
+  <rect x="760" y="138" width="354" height="152" rx="26" fill="url(#card)" stroke="#65D8F5" stroke-opacity="0.22"/>
+  <text x="792" y="182" fill="#B7F2FF" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="600">Operator Console</text>
+  <text x="792" y="230" fill="white" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">Flow snapshots.</text>
+  <text x="792" y="270" fill="white" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">Branch compare.</text>
+  <text x="792" y="310" fill="#9FC2D7" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="400">Not just autonomous runs. A visible research control plane.</text>
+
+  <rect x="690" y="350" width="190" height="120" rx="24" fill="url(#card)" stroke="#73E7CA" stroke-opacity="0.2"/>
+  <text x="718" y="388" fill="#9DEBDD" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">Guide</text>
+  <text x="718" y="428" fill="white" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Human-visible</text>
+  <text x="718" y="456" fill="white" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">direction choice</text>
+
+  <rect x="904" y="332" width="220" height="138" rx="24" fill="url(#card)" stroke="#FF9B67" stroke-opacity="0.22"/>
+  <text x="934" y="370" fill="#FFD4BE" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">Experiment Loop</text>
+  <text x="934" y="412" fill="white" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Diagnose failure.</text>
+  <text x="934" y="440" fill="white" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Repair. Promote.</text>
+
+  <rect x="620" y="500" width="128" height="30" rx="15" fill="#0F263C"/>
+  <text x="648" y="520" fill="#9AD8E6" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Guide</text>
+
+  <rect x="758" y="500" width="128" height="30" rx="15" fill="#0F263C"/>
+  <text x="790" y="520" fill="#9AD8E6" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Flow</text>
+
+  <rect x="896" y="500" width="128" height="30" rx="15" fill="#0F263C"/>
+  <text x="922" y="520" fill="#9AD8E6" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Experiment</text>
+
+  <rect x="1034" y="500" width="128" height="30" rx="15" fill="#0F263C"/>
+  <text x="1068" y="520" fill="#9AD8E6" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Writer</text>
+</svg>

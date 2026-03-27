@@ -13,6 +13,8 @@
 ![Operator](https://img.shields.io/badge/operator-first-true-c2410c?style=for-the-badge)
 ![Workflow](https://img.shields.io/badge/proof%20chain-guide%20to%20console-2563eb?style=for-the-badge)
 
+![ResearchOS banner](docs/assets/researchos-banner.svg)
+
 </div>
 
 ## 为什么它不一样

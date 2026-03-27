@@ -13,6 +13,8 @@ Turn `idea -> hidden agent steps -> draft` into an auditable execution loop with
 ![Control Plane](https://img.shields.io/badge/operator-first-true-c2410c?style=for-the-badge)
 ![Workflow](https://img.shields.io/badge/proof%20chain-guide%20to%20console-2563eb?style=for-the-badge)
 
+![ResearchOS banner](docs/assets/researchos-banner.svg)
+
 </div>
 
 ## Why It Hits Different
