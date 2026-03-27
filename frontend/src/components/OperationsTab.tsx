@@ -3,9 +3,13 @@ import { FileCheck2, Hand, PlayCircle, Route, ShieldAlert, Sparkles, Square, Und
 import type {
   Approval,
   AuditReport,
+  BranchComparison,
   Claim,
+  FlowSnapshot,
+  ProjectDashboard,
   ProviderHealthSnapshot,
   RoutingInspection,
+  RunEvent,
   RunManifest,
   Task,
 } from "../api";
@@ -17,6 +21,10 @@ type Props = {
   claims: Claim[];
   approvals: Approval[];
   providers: ProviderHealthSnapshot[];
+  projectDashboard: ProjectDashboard | null;
+  flowSnapshot: FlowSnapshot | null;
+  recentEvents: RunEvent[];
+  branchComparison: BranchComparison | null;
   routingPreview: RoutingInspection | null;
   selectedRunAudit: AuditReport | null;
   runAction: (key: string, callback: () => Promise<unknown>, refresh?: boolean) => Promise<void>;
@@ -27,7 +35,9 @@ type Props = {
   loadRunAudit: (runId: string) => Promise<AuditReport>;
   dispatchTask: (taskId: string) => Promise<unknown>;
   retryTask: (taskId: string) => Promise<unknown>;
+  resumeTask: (taskId: string) => Promise<unknown>;
   cancelTask: (taskId: string) => Promise<unknown>;
+  transitionFlow: (action: string, payload: unknown) => Promise<unknown>;
   disableProvider: (provider: string) => Promise<unknown>;
   enableProvider: (provider: string) => Promise<unknown>;
   clearCooldown: (provider: string) => Promise<unknown>;
@@ -98,15 +108,72 @@ export function OperationsTab(props: Props) {
 
   return (
     <div className="content-grid operations-grid">
-      <Panel title="操作导航" subtitle="先处理排队和阻塞任务，再看路由、审批和 provider 状态。">
+      <Panel title="Control Guide" subtitle="Read flow status first, then unblock tasks, approvals, and providers.">
         <div className="ops-guide-grid">
-          <GuideCard title="先调度" body={`当前有 ${queuedCount} 个排队任务。`} tone="blue" />
-          <GuideCard title="先排障" body={`当前有 ${blockedCount} 个阻塞、失败或待审批任务。`} tone="orange" />
-          <GuideCard title="看运行" body={`当前有 ${runningCount} 个运行中任务。`} tone="green" />
+          <GuideCard title="Queued" body={`${queuedCount} task(s) ready to dispatch.`} tone="blue" />
+          <GuideCard title="Blocked" body={`${blockedCount} task(s) need operator attention.`} tone="orange" />
+          <GuideCard title="Running" body={`${runningCount} task(s) are still executing.`} tone="green" />
         </div>
       </Panel>
 
-      <Panel title="待审批" subtitle="支持通过、拒绝和带条件通过，不再回到高级表单里补。">
+      <Panel title="Flow Snapshot" subtitle="Project-level typed state machine with pause, resume, retry, pivot, and refine controls.">
+        {props.flowSnapshot ? (
+          <div className="stack-md">
+            <div className="inspect-card">
+              <KeyValue label="Stage" value={props.flowSnapshot.stage} />
+              <KeyValue label="Status" value={props.flowSnapshot.status} />
+              <KeyValue label="Decision" value={props.flowSnapshot.decision} />
+              <KeyValue label="Checkpoint" value={props.flowSnapshot.checkpoint_required ? "required" : "optional"} />
+              <KeyValue label="Active Task" value={props.flowSnapshot.active_task_id ?? "<none>"} />
+              <KeyValue label="Rollback" value={props.flowSnapshot.rollback_stage ?? "<none>"} />
+              <KeyValue label="Recommended Task" value={props.projectDashboard?.recommended_next_task_kind ?? "<none>"} />
+            </div>
+            <div className="button-row">
+              {props.flowSnapshot.available_actions.map((action) => (
+                <button
+                  key={action}
+                  className="button tiny secondary"
+                  type="button"
+                  onClick={() =>
+                    void props.runAction(`flow-${action}`, () =>
+                      props.transitionFlow(action, {
+                        task_id: props.flowSnapshot?.active_task_id,
+                        stage: props.flowSnapshot?.stage,
+                        note: `operator flow action: ${action}`,
+                      }),
+                    )
+                  }
+                  disabled={props.isBusy(`flow-${action}`)}
+                >
+                  {action}
+                </button>
+              ))}
+            </div>
+            {props.flowSnapshot.history.length ? (
+              <div className="inspect-card">
+                <div className="inspect-title">
+                  <Sparkles size={16} />
+                  <strong>Recent transitions</strong>
+                </div>
+                <ul className="plain-list">
+                  {props.flowSnapshot.history
+                    .slice(-5)
+                    .reverse()
+                    .map((entry, index) => (
+                      <li key={`${String(entry.created_at ?? index)}-${index}`}>
+                        {String(entry.event ?? "event")} | {String(entry.stage ?? "stage")} | {String(entry.status ?? "status")}
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <EmptyState title="No flow snapshot yet" body="The backend will expose the current research flow state here once the project is initialized." />
+        )}
+      </Panel>
+
+      <Panel title="Pending Approvals" subtitle="Approve, reject, or approve with conditions without leaving the operator console.">
         {pendingApprovals.length ? (
           <div className="approval-stack">
             {pendingApprovals.map((approval) => {
@@ -117,44 +184,42 @@ export function OperationsTab(props: Props) {
                     <div>
                       <strong>{approval.target_type}</strong>
                       <small>
-                        {approval.approval_id} · {approval.target_id}
+                        {approval.approval_id} | {approval.target_id}
                       </small>
                     </div>
                     <StatusPill value="waiting_approval" />
                   </div>
                   <div className="approval-meta">
-                    <span>提交人：{approval.approved_by || "operator"}</span>
-                    <span>截止：{approval.due_at ? approval.due_at.replace("T", " ").slice(0, 16) : "未设置"}</span>
+                    <span>Owner: {approval.approved_by || "operator"}</span>
+                    <span>Due: {approval.due_at ? approval.due_at.replace("T", " ").slice(0, 16) : "not set"}</span>
                   </div>
                   <div className="approval-context">
-                    <strong>上下文</strong>
-                    <p>{approval.context_summary || "当前没有额外上下文摘要。"}</p>
+                    <strong>Context</strong>
+                    <p>{approval.context_summary || "No context summary."}</p>
                   </div>
                   <div className="approval-context">
-                    <strong>推荐动作</strong>
-                    <p>{approval.recommended_action || "当前没有推荐动作。"}</p>
+                    <strong>Recommended action</strong>
+                    <p>{approval.recommended_action || "No recommendation."}</p>
                   </div>
                   <label>
-                    审批人
+                    Reviewer
                     <input
                       value={draft.approvedBy}
                       onChange={(event) => updateDraft(approval.approval_id, { approvedBy: event.target.value })}
                     />
                   </label>
                   <label>
-                    备注
+                    Comment
                     <textarea
                       value={draft.comment}
                       onChange={(event) => updateDraft(approval.approval_id, { comment: event.target.value })}
-                      placeholder="可写通过原因、驳回原因或额外说明。"
                     />
                   </label>
                   <label>
-                    条件通过附加条件
+                    Conditions
                     <textarea
                       value={draft.conditionText}
                       onChange={(event) => updateDraft(approval.approval_id, { conditionText: event.target.value })}
-                      placeholder="例如：重点对比 FGSM 而非 PGD；限制显存不超过 12GB。"
                     />
                   </label>
                   <div className="approval-decision-row">
@@ -164,7 +229,7 @@ export function OperationsTab(props: Props) {
                       onClick={() => void submitApproval(approval, "approved")}
                       disabled={props.isBusy(`approval-${approval.approval_id}-approved`)}
                     >
-                      通过
+                      Approve
                     </button>
                     <button
                       className="button tiny secondary"
@@ -172,7 +237,7 @@ export function OperationsTab(props: Props) {
                       onClick={() => void submitApproval(approval, "approved_with_conditions")}
                       disabled={!draft.conditionText.trim() || props.isBusy(`approval-${approval.approval_id}-approved_with_conditions`)}
                     >
-                      带条件通过
+                      Approve with conditions
                     </button>
                     <button
                       className="button tiny ghost"
@@ -180,7 +245,7 @@ export function OperationsTab(props: Props) {
                       onClick={() => void submitApproval(approval, "rejected")}
                       disabled={props.isBusy(`approval-${approval.approval_id}-rejected`)}
                     >
-                      拒绝
+                      Reject
                     </button>
                   </div>
                 </article>
@@ -188,21 +253,21 @@ export function OperationsTab(props: Props) {
             })}
           </div>
         ) : (
-          <EmptyState title="当前没有待审批项" body="一旦流程进入待审批状态，这里会直接给出上下文和操作按钮。" />
+          <EmptyState title="No pending approvals" body="Approval requests will appear here when the flow enters a human gate." />
         )}
       </Panel>
 
-      <Panel title="任务控制台" subtitle="按时间倒序显示任务。人工节点不会再显示自动调度按钮。">
+      <Panel title="Task Control" subtitle="Dispatch, retry, resume from checkpoint, cancel, or inspect routing for each task.">
         {props.projectTasks.length ? (
           <div className="table-card">
             <table>
               <thead>
                 <tr>
-                  <th>任务</th>
-                  <th>类型</th>
-                  <th>状态</th>
-                  <th>负责人</th>
-                  <th>操作</th>
+                  <th>Task</th>
+                  <th>Kind</th>
+                  <th>Status</th>
+                  <th>Owner</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -223,40 +288,53 @@ export function OperationsTab(props: Props) {
                       <td>
                         <div className="button-row">
                           {task.kind === "human_select" ? (
-                            <button className="button tiny" onClick={() => props.openHumanSelect(task)}>
+                            <button className="button tiny" type="button" onClick={() => props.openHumanSelect(task)}>
                               <Hand size={14} />
-                              人工决策
+                              Human select
                             </button>
                           ) : (
                             <button
                               className="button tiny"
+                              type="button"
                               onClick={() =>
                                 void props.runAction(`dispatch-${task.task_id}`, () => props.dispatchTask(task.task_id))
                               }
                               disabled={props.isBusy(`dispatch-${task.task_id}`)}
                             >
                               <PlayCircle size={14} />
-                              调度
+                              Dispatch
                             </button>
                           )}
                           <button
                             className="button tiny secondary"
+                            type="button"
                             onClick={() => void props.runAction(`retry-${task.task_id}`, () => props.retryTask(task.task_id))}
                             disabled={props.isBusy(`retry-${task.task_id}`)}
                           >
                             <Undo2 size={14} />
-                            重试
+                            Retry
+                          </button>
+                          <button
+                            className="button tiny secondary"
+                            type="button"
+                            onClick={() => void props.runAction(`resume-${task.task_id}`, () => props.resumeTask(task.task_id))}
+                            disabled={!task.checkpoint_path || props.isBusy(`resume-${task.task_id}`)}
+                          >
+                            <PlayCircle size={14} />
+                            Resume
                           </button>
                           <button
                             className="button tiny ghost"
+                            type="button"
                             onClick={() => void props.runAction(`cancel-${task.task_id}`, () => props.cancelTask(task.task_id))}
                             disabled={props.isBusy(`cancel-${task.task_id}`)}
                           >
                             <Square size={14} />
-                            取消
+                            Cancel
                           </button>
                           <button
                             className="button tiny ghost"
+                            type="button"
                             onClick={() =>
                               void props.runAction(
                                 `routing-${task.task_id}`,
@@ -267,7 +345,7 @@ export function OperationsTab(props: Props) {
                             disabled={props.isBusy(`routing-${task.task_id}`)}
                           >
                             <Route size={14} />
-                            路由
+                            Routing
                           </button>
                         </div>
                       </td>
@@ -277,11 +355,85 @@ export function OperationsTab(props: Props) {
             </table>
           </div>
         ) : (
-          <EmptyState title="当前没有任务" body="先去创建项目或让研究台自动生成任务。" />
+          <EmptyState title="No tasks" body="Create or guide a project first so the control plane has something to operate on." />
         )}
       </Panel>
 
-      <Panel title="Provider 控制" subtitle="启用、停用和清理冷却都放在这里。">
+      <Panel title="Recent Events" subtitle="Realtime run events, checkpoint saves, and operator-visible state changes.">
+        {props.recentEvents.length ? (
+          <div className="table-card">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Type</th>
+                  <th>Task</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.recentEvents
+                  .slice()
+                  .sort((left, right) => right.created_at.localeCompare(left.created_at))
+                  .slice(0, 10)
+                  .map((event) => (
+                    <tr key={event.event_id}>
+                      <td>{event.created_at.replace("T", " ").slice(0, 19)}</td>
+                      <td>{event.event_type}</td>
+                      <td>{event.task_id ?? "-"}</td>
+                      <td>{event.message}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No recent events" body="Task dispatches and checkpoints will populate the event feed." />
+        )}
+      </Panel>
+
+      <Panel title="Branch Compare" subtitle="Compare experimental branches by primary metric and supporting run metrics.">
+        {props.branchComparison?.branches.length ? (
+          <div className="table-card">
+            <table>
+              <thead>
+                <tr>
+                  <th>Branch</th>
+                  <th>Run</th>
+                  <th>Status</th>
+                  <th>Primary</th>
+                  <th>Metrics</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.branchComparison.branches.map((branch) => (
+                  <tr key={branch.run_id}>
+                    <td>{branch.branch_name ?? "-"}</td>
+                    <td>
+                      <strong>{branch.run_id}</strong>
+                      <small>{branch.source_task_id ?? ""}</small>
+                    </td>
+                    <td>{branch.status}</td>
+                    <td>
+                      {branch.primary_metric ? `${branch.primary_metric}: ${String(branch.primary_value ?? "")}` : "-"}
+                    </td>
+                    <td>
+                      {Object.entries(branch.metrics)
+                        .slice(0, 4)
+                        .map(([key, value]) => `${key}=${value}`)
+                        .join(" | ") || "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No branch comparison yet" body="Run multiple branches and their metrics will appear here." />
+        )}
+      </Panel>
+
+      <Panel title="Provider Control" subtitle="Probe, disable, enable, or clear cooldowns across provider families.">
         <div className="provider-list">
           {props.providers.map((provider) => (
             <div key={provider.provider_family} className="provider-row control">
@@ -290,49 +442,53 @@ export function OperationsTab(props: Props) {
                 <small>
                   cli={String(provider.cli_installed)} | cooldown={provider.cooldown_seconds_remaining}s
                 </small>
-                <p>{provider.detail || "当前状态正常。"}</p>
+                <p>{provider.detail || "healthy"}</p>
               </div>
               <div className="provider-actions">
                 <StatusPill value={provider.state} />
                 <button
                   className="button tiny"
+                  type="button"
                   onClick={() =>
                     void props.runAction(`probe-${provider.provider_family}`, () =>
                       props.probeProvider(provider.provider_family),
                     )
                   }
                 >
-                  探测
+                  Probe
                 </button>
                 <button
                   className="button tiny secondary"
+                  type="button"
                   onClick={() =>
                     void props.runAction(`disable-${provider.provider_family}`, () =>
                       props.disableProvider(provider.provider_family),
                     )
                   }
                 >
-                  停用
+                  Disable
                 </button>
                 <button
                   className="button tiny secondary"
+                  type="button"
                   onClick={() =>
                     void props.runAction(`enable-${provider.provider_family}`, () =>
                       props.enableProvider(provider.provider_family),
                     )
                   }
                 >
-                  启用
+                  Enable
                 </button>
                 <button
                   className="button tiny ghost"
+                  type="button"
                   onClick={() =>
                     void props.runAction(`cooldown-${provider.provider_family}`, () =>
                       props.clearCooldown(provider.provider_family),
                     )
                   }
                 >
-                  清空冷却
+                  Clear cooldown
                 </button>
               </div>
             </div>
@@ -340,16 +496,16 @@ export function OperationsTab(props: Props) {
         </div>
       </Panel>
 
-      <Panel title="验证入口" subtitle="Claim 验证和 Run 审计分开列出，方便排查。">
+      <Panel title="Verification Entry" subtitle="Trigger claim verification and run audit directly from the operator console.">
         <div className="double-form">
           <div className="table-card">
             <table>
               <thead>
                 <tr>
                   <th>Claim</th>
-                  <th>类型</th>
-                  <th>风险</th>
-                  <th>操作</th>
+                  <th>Type</th>
+                  <th>Risk</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -364,12 +520,13 @@ export function OperationsTab(props: Props) {
                     <td>
                       <button
                         className="button tiny"
+                        type="button"
                         onClick={() =>
                           void props.runAction(`verify-claim-${claim.claim_id}`, () => props.verifyClaim(claim.claim_id))
                         }
                       >
                         <FileCheck2 size={14} />
-                        验证
+                        Verify
                       </button>
                     </td>
                   </tr>
@@ -383,9 +540,9 @@ export function OperationsTab(props: Props) {
               <thead>
                 <tr>
                   <th>Run</th>
-                  <th>状态</th>
+                  <th>Status</th>
                   <th>GPU</th>
-                  <th>操作</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -403,13 +560,15 @@ export function OperationsTab(props: Props) {
                       <div className="button-row">
                         <button
                           className="button tiny"
+                          type="button"
                           onClick={() => void props.runAction(`verify-run-${run.run_id}`, () => props.verifyRun(run.run_id))}
                         >
                           <FileCheck2 size={14} />
-                          验证
+                          Verify
                         </button>
                         <button
                           className="button tiny secondary"
+                          type="button"
                           onClick={() =>
                             void props.runAction(
                               `audit-run-${run.run_id}`,
@@ -419,7 +578,7 @@ export function OperationsTab(props: Props) {
                           }
                         >
                           <ShieldAlert size={14} />
-                          审计
+                          Audit
                         </button>
                       </div>
                     </td>
@@ -431,18 +590,18 @@ export function OperationsTab(props: Props) {
         </div>
       </Panel>
 
-      <Panel title="检查结果" subtitle="这里显示任务路由和 Run 审计结果。">
+      <Panel title="Inspection Results" subtitle="Read routing decisions and audit findings in one place.">
         <div className="stack-md">
           {props.routingPreview ? (
             <div className="inspect-card">
               <div className="inspect-title">
                 <Route size={16} />
-                <strong>路由预览：{props.routingPreview.subject_id ?? "system"}</strong>
+                <strong>Routing preview: {props.routingPreview.subject_id ?? "system"}</strong>
               </div>
               <KeyValue label="Provider" value={props.routingPreview.resolved_dispatch.provider_name} />
-              <KeyValue label="模型" value={props.routingPreview.resolved_dispatch.model ?? "<default>"} />
-              <KeyValue label="Fallback" value={props.routingPreview.resolved_dispatch.fallback_reason ?? "无"} />
-              <KeyValue label="决策原因" value={props.routingPreview.resolved_dispatch.decision_reason ?? "system_default"} />
+              <KeyValue label="Model" value={props.routingPreview.resolved_dispatch.model ?? "<default>"} />
+              <KeyValue label="Fallback" value={props.routingPreview.resolved_dispatch.fallback_reason ?? "none"} />
+              <KeyValue label="Decision" value={props.routingPreview.resolved_dispatch.decision_reason ?? "system_default"} />
             </div>
           ) : null}
 
@@ -450,9 +609,9 @@ export function OperationsTab(props: Props) {
             <div className="inspect-card">
               <div className="inspect-title">
                 <ShieldAlert size={16} />
-                <strong>Run 审计：{props.selectedRunAudit.status}</strong>
+                <strong>Run audit: {props.selectedRunAudit.status}</strong>
               </div>
-              <p>{props.selectedRunAudit.findings.join(" | ") || "没有发现问题。"}</p>
+              <p>{props.selectedRunAudit.findings.join(" | ") || "No findings."}</p>
               <ul className="plain-list">
                 {props.selectedRunAudit.entries.slice(0, 5).map((entry) => (
                   <li key={entry.entry_id}>
@@ -464,14 +623,14 @@ export function OperationsTab(props: Props) {
           ) : null}
 
           {!props.routingPreview && !props.selectedRunAudit ? (
-            <EmptyState title="还没有检查结果" body="点击任务路由或 Run 审计后，这里会显示详情。" />
+            <EmptyState title="No inspection results" body="Inspect routing or audit a run to populate this area." />
           ) : (
             <div className="inspect-card inspect-tip">
               <div className="inspect-title">
                 <Sparkles size={16} />
-                <strong>使用建议</strong>
+                <strong>Operator hint</strong>
               </div>
-              <p>先看任务是否路由到了正确 provider，再看审计结果，排查会更快。</p>
+              <p>Read routing first, then audit findings, then branch comparison. That gives the shortest path to a justified intervention.</p>
             </div>
           )}
         </div>

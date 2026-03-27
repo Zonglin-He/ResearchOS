@@ -65,7 +65,7 @@ def test_dispatch_workflow_via_api_resolves_profile_and_persists_registry_output
     assert task_read.status_code == 200
     assert task_read.json()["last_run_routing"]["provider_name"] == "local"
     assert paper_cards.status_code == 200
-    assert paper_cards.json()[0]["paper_id"] == "integration-paper"
+    assert paper_cards.json()[0]["paper_id"] == "integration_paper"
     assert artifacts.status_code == 200
     assert artifacts.json()[0]["kind"] == "reader_note"
     assert artifacts.json()[0]["run_id"] == "run-t1"

@@ -62,6 +62,10 @@ from app.api.schemas.paper_cards import (
 )
 from app.api.schemas.operator import (
     ArtifactInspectionRead,
+    BranchComparisonRead,
+    BranchRunSummaryRead,
+    FlowActionRequest,
+    FlowSnapshotRead,
     ProjectDashboardRead,
     RoutingInspectionRead,
     StorageBoundaryRead,
@@ -91,6 +95,8 @@ __all__ = [
     "ArtifactAnnotationRead",
     "ArtifactDetailRead",
     "ArtifactInspectionRead",
+    "BranchComparisonRead",
+    "BranchRunSummaryRead",
     "ArtifactRead",
     "ArtifactProvenanceRead",
     "AuditSubjectRefRead",
@@ -169,6 +175,8 @@ __all__ = [
     "DiscussionMessage",
     "DiscussDirectionRequest",
     "DiscussDirectionResponse",
+    "FlowActionRequest",
+    "FlowSnapshotRead",
     "ClaimSupportRefRead",
     "RunEvidenceRefRead",
     "StorageBoundaryRead",

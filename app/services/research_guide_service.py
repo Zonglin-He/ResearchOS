@@ -29,6 +29,7 @@ from app.services.task_service import TaskService
 from app.tools.arxiv_fetcher import search_arxiv
 from app.tools.semantic_scholar import search_semantic_scholar, semantic_scholar_score
 from app.tools.query_decomposer import fallback_decompose_research_goal, broaden_query, query_hit_count
+from app.workflows.research_flow import FlowEvent, stage_for_task_kind
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DISCUSSION_PROMPT_PATH = _REPO_ROOT / "prompts" / "guide" / "discussion_advisor.md"
@@ -227,7 +228,12 @@ class ResearchGuideService:
             )
             ingest_tasks.append(intake_task)
 
-        self.project_service.update_stage(project.project_id, Stage.INGEST_PAPERS)
+        self.project_service.transition_flow(
+            project.project_id,
+            event=FlowEvent.SYNC_STAGE,
+            stage=Stage.INGEST_PAPERS,
+            note="research intake tasks created",
+        )
 
         autopilot = AutopilotResult(dispatched_task_ids=tuple(), stop_reason="created")
         self.activity_service.record_event(
@@ -281,7 +287,13 @@ class ResearchGuideService:
                 status="approved",
             )
         )
-        self.project_service.update_stage(project_id, Stage.FREEZE_TOPIC)
+        self.project_service.transition_flow(
+            project_id,
+            event=FlowEvent.APPROVE,
+            stage=Stage.HUMAN_SELECT,
+            task_id=human_select_task.task_id,
+            note=f"direction adopted for {gap_id}",
+        )
         self.kb_service.record_decision(
             KnowledgeRecord(
                 record_id=f"decision:{project_id}:{gap_id}",
@@ -321,7 +333,13 @@ class ResearchGuideService:
                 join_key="hypothesis_draft",
             )
         )
-        self.project_service.update_stage(project_id, Stage.IMPLEMENT_IDEA)
+        self.project_service.transition_flow(
+            project_id,
+            event=FlowEvent.SYNC_STAGE,
+            stage=Stage.FREEZE_TOPIC,
+            task_id=build_task.task_id,
+            note="hypothesis drafting task created",
+        )
 
         autopilot = AutopilotResult(dispatched_task_ids=tuple(), stop_reason="created")
         self.activity_service.record_event(
@@ -677,7 +695,7 @@ class ResearchGuideService:
         checkpoints = self._human_checkpoints(project)
         if not checkpoints:
             return False
-        stage = self._stage_for_task_kind(task.kind, terminal_status=task.status)
+        stage = stage_for_task_kind(task.kind, terminal_status=task.status)
         if stage is None or stage == Stage.HUMAN_SELECT:
             return False
         mode = checkpoints.get(stage.value, "")
@@ -950,13 +968,55 @@ class ResearchGuideService:
     def _sync_stage_for_batch(self, project_id: str, tasks: list[Task]) -> None:
         if not tasks:
             return
-        stage = self._stage_for_task_kind(tasks[0].kind)
+        stage = stage_for_task_kind(tasks[0].kind)
         if stage is not None:
-            self.project_service.update_stage(project_id, stage)
+            self.project_service.transition_flow(
+                project_id,
+                event=FlowEvent.SYNC_STAGE,
+                stage=stage,
+                task_id=tasks[0].task_id,
+                note=f"autopilot scheduled {tasks[0].kind}",
+            )
 
     def _sync_stage_after_dispatch(self, task: Task) -> None:
-        stage = self._stage_for_task_kind(task.kind, terminal_status=task.status)
+        stage = stage_for_task_kind(task.kind, terminal_status=task.status)
         if stage is not None:
+            if task.status == TaskStatus.WAITING_APPROVAL:
+                self.project_service.transition_flow(
+                    task.project_id,
+                    event=FlowEvent.REQUIRE_APPROVAL,
+                    stage=stage,
+                    task_id=task.task_id,
+                    note=f"{task.kind} waiting approval",
+                )
+                return
+            if task.status == TaskStatus.FAILED:
+                self.project_service.transition_flow(
+                    task.project_id,
+                    event=FlowEvent.FAIL,
+                    stage=stage,
+                    task_id=task.task_id,
+                    note=task.last_error or f"{task.kind} failed",
+                )
+                return
+            if task.status == TaskStatus.BLOCKED:
+                self.project_service.transition_flow(
+                    task.project_id,
+                    event=FlowEvent.PAUSE,
+                    stage=stage,
+                    task_id=task.task_id,
+                    note=f"{task.kind} blocked",
+                )
+                return
+            if task.status == TaskStatus.SUCCEEDED:
+                self.project_service.transition_flow(
+                    task.project_id,
+                    event=FlowEvent.SUCCEED,
+                    stage=stage,
+                    task_id=task.task_id,
+                    note=f"{task.kind} completed",
+                )
+                return
             self.project_service.update_stage(task.project_id, stage)
 
     @staticmethod
@@ -1019,36 +1079,6 @@ class ResearchGuideService:
     def _slugify(value: str, *, fallback: str) -> str:
         slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
         return slug[:80] or fallback
-
-    @staticmethod
-    def _stage_for_task_kind(
-        task_kind: str,
-        *,
-        terminal_status: TaskStatus | None = None,
-    ) -> Stage | None:
-        if task_kind == "paper_ingest":
-            return Stage.INGEST_PAPERS
-        if task_kind == "gap_mapping":
-            return Stage.HUMAN_SELECT if terminal_status == TaskStatus.SUCCEEDED else Stage.MAP_GAPS
-        if task_kind == "human_select":
-            return Stage.FREEZE_TOPIC
-        if task_kind == "hypothesis_draft":
-            return Stage.IMPLEMENT_IDEA
-        if task_kind in {"build_spec", "implement_experiment", "reproduce_baseline"}:
-            return Stage.IMPLEMENT_IDEA if terminal_status != TaskStatus.SUCCEEDED else Stage.RUN_EXPERIMENTS
-        if task_kind == "branch_plan":
-            return Stage.IMPLEMENT_IDEA if terminal_status != TaskStatus.SUCCEEDED else Stage.RUN_EXPERIMENTS
-        if task_kind == "branch_review":
-            return Stage.FREEZE_RESULTS if terminal_status == TaskStatus.SUCCEEDED else Stage.RUN_EXPERIMENTS
-        if task_kind == "analyze_run":
-            return Stage.AUDIT_RESULTS
-        if task_kind in {"review_build", "audit_run"}:
-            return Stage.REVIEW_DRAFT
-        if task_kind == "draft_write":
-            return Stage.WRITE_DRAFT
-        if task_kind == "style_pass":
-            return Stage.SUBMISSION_READY if terminal_status == TaskStatus.SUCCEEDED else Stage.STYLE_PASS
-        return None
 
     @staticmethod
     def _source_summary_from_seed(topic: str, paper: dict[str, Any], *, index: int) -> dict[str, Any]:

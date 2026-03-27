@@ -144,7 +144,8 @@ def test_builder_agent_registers_run_claims_and_review_task(tmp_path: Path) -> N
     assert persisted_run.experiment_proposal_id == "proposal-1"
     assert claims.get_claim("claim-1") is not None
     assert artifacts.list_artifacts()[0].artifact_id == "model-ckpt"
-    assert result.next_tasks[0].kind == "review_build"
+    assert result.next_tasks[0].kind == "analyze_run"
+    assert result.next_tasks[0].assigned_agent == "analyst_agent"
 
 
 def test_builder_agent_surfaces_baseline_first_context() -> None:
@@ -243,6 +244,9 @@ def test_writer_agent_writes_artifact_and_spawns_style_task(tmp_path: Path) -> N
 
     draft_path = tmp_path / result.output["draft_artifact_path"]
     assert draft_path.exists()
+    artifact_kinds = {artifact.kind for artifact in artifacts.list_artifacts()}
+    assert "draft_markdown" in artifact_kinds
+    assert "citation_verification_report" in artifact_kinds
     assert result.next_tasks[0].kind == "style_pass"
 
 
@@ -306,6 +310,63 @@ def test_writer_agent_loads_registered_imported_runs_and_results_freeze(tmp_path
     assert evidence_sources["registered_runs"][0]["source_label"] == "baseline-paper"
     assert evidence_sources["results_freeze"]["supporting_run_ids"] == ["run-imported"]
     assert evidence_sources["results_freeze"]["external_sources"] == ["table:paper-main"]
+    assert evidence_sources["verified_metrics_registry"]["entries"][0]["numeric_value"] == 0.87
+
+
+def test_writer_agent_blocks_ungrounded_numeric_claims(tmp_path: Path) -> None:
+    artifacts = ArtifactService(tmp_path / "artifacts.jsonl")
+    runs = RunService(tmp_path / "runs.jsonl")
+    runs.register_run(
+        RunManifest(
+            run_id="run-grounded",
+            spec_id="spec-1",
+            git_commit="abc123",
+            config_hash="cfg",
+            dataset_snapshot="dataset",
+            seed=1,
+            gpu="cpu",
+            status="completed",
+            metrics={"accuracy": 0.87},
+        )
+    )
+    agent = WriterAgent(
+        StaticProvider(
+            {
+                "title": "Numeric Draft",
+                "sections": [
+                    {
+                        "heading": "Results",
+                        "markdown": "Our method reaches 0.91 accuracy on the benchmark.",
+                        "supporting_claim_ids": ["claim-1"],
+                    }
+                ],
+                "citations": [],
+            }
+        ),
+        artifact_service=artifacts,
+        run_service=runs,
+    )
+    task = Task(
+        task_id="t-writer-grounding",
+        project_id="proj",
+        kind="write_draft",
+        goal="Write from grounded evidence",
+        input_payload={"supporting_run_ids": ["run-grounded"]},
+        owner="gabriel",
+    )
+    ctx = RunContext(run_id="run-writer-grounding", project_id="proj", task_id="t-writer-grounding")
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        result = asyncio.run(agent.run(task, ctx))
+    finally:
+        os.chdir(cwd)
+
+    assert result.status == "handoff"
+    assert result.next_tasks[0].input_payload["metric_grounding_feedback"][0]["token"] == "0.91"
+    artifact_kinds = {artifact.kind for artifact in artifacts.list_artifacts()}
+    assert "verified_metrics_registry" in artifact_kinds
+    assert "metric_grounding_report" in artifact_kinds
 
 
 def test_analyst_agent_writes_result_summary_artifact(tmp_path: Path) -> None:

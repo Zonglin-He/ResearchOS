@@ -9,9 +9,11 @@ import {
   type ArtifactDetail,
   type AuditReport,
   type AuditSummary,
+  type BranchComparison,
   type DiscussionHistory,
   type DiscussionSession,
   type Claim,
+  type FlowSnapshot,
   type GapMap,
   type GapMapDetail,
   type GuideAdoptDirectionResponse,
@@ -73,6 +75,9 @@ type DashboardData = {
   auditSummary: AuditSummary;
   auditClaims: AuditReport;
   discussions: DiscussionSession[];
+  branchComparison: BranchComparison | null;
+  recentEvents: RunEvent[];
+  flowSnapshot: FlowSnapshot | null;
 };
 
 const tabs: Array<{ id: MainTab; label: string; icon: typeof FlaskConical }> = [
@@ -182,6 +187,9 @@ export default function App() {
         auditClaims,
         discussions,
         projectDashboard,
+        branchComparison,
+        recentEvents,
+        flowSnapshot,
       ] = await Promise.all([
         getJson<Task[]>("/tasks"),
         getJson<Claim[]>("/claims"),
@@ -204,6 +212,9 @@ export default function App() {
         getJson<AuditReport>("/audit/claims"),
         getJson<DiscussionSession[]>(nextProjectId ? `/discussions?project_id=${encodeURIComponent(nextProjectId)}` : "/discussions"),
         nextProjectId ? getJson<ProjectDashboard>(`/projects/${nextProjectId}/dashboard`) : Promise.resolve(null),
+        nextProjectId ? getJson<BranchComparison>(`/projects/${nextProjectId}/branches/compare`) : Promise.resolve(null),
+        nextProjectId ? getJson<RunEvent[]>(`/projects/${nextProjectId}/events?limit=20`) : Promise.resolve([]),
+        nextProjectId ? getJson<FlowSnapshot>(`/projects/${nextProjectId}/flow`) : Promise.resolve(null),
       ]);
 
       setData({
@@ -230,6 +241,9 @@ export default function App() {
         auditSummary,
         auditClaims,
         discussions,
+        branchComparison,
+        recentEvents,
+        flowSnapshot,
       });
     } catch (loadError) {
       setError(normalizeError(loadError));
@@ -603,6 +617,10 @@ export default function App() {
                       claims={data.claims}
                       approvals={data.approvals}
                       providers={data.providers}
+                      projectDashboard={data.projectDashboard}
+                      flowSnapshot={data.flowSnapshot}
+                      recentEvents={data.recentEvents}
+                      branchComparison={data.branchComparison}
                       routingPreview={routingPreview}
                       selectedRunAudit={selectedRunAudit}
                       runAction={runAction}
@@ -613,7 +631,11 @@ export default function App() {
                       loadRunAudit={(runId) => getJson(`/audit/runs/${runId}`)}
                       dispatchTask={(taskId) => postJson(`/tasks/${taskId}/dispatch`)}
                       retryTask={(taskId) => postJson(`/tasks/${taskId}/retry`)}
+                      resumeTask={(taskId) => postJson(`/tasks/${taskId}/resume`)}
                       cancelTask={(taskId) => postJson(`/tasks/${taskId}/cancel`)}
+                      transitionFlow={(action, payload) =>
+                        postJson(`/projects/${selectedProjectId}/flow/${action}`, payload)
+                      }
                       disableProvider={(provider) => postJson(`/providers/${provider}/disable`)}
                       enableProvider={(provider) => postJson(`/providers/${provider}/enable`)}
                       clearCooldown={(provider) => postJson(`/providers/${provider}/clear-cooldown`)}

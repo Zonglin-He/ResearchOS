@@ -18,6 +18,7 @@ from app.api.schemas import (
     ArtifactRead,
     AutopilotRead,
     AutopilotResponse,
+    BranchComparisonRead,
     ArtifactProvenanceRead,
     AuditSubjectRefRead,
     AuditEntryRead,
@@ -39,6 +40,8 @@ from app.api.schemas import (
     DiscussDirectionRequest,
     DiscussDirectionResponse,
     EvidenceRefModel,
+    FlowActionRequest,
+    FlowSnapshotRead,
     GapCreate,
     GapClusterCreate,
     GapMapCreate,
@@ -117,6 +120,7 @@ from app.services.project_service import ProjectService
 from app.services.registry_store import to_record
 from app.services.task_service import TaskService
 from app.services.verification_service import VerificationService
+from app.workflows.research_flow import FlowEvent, available_flow_actions
 from app.worker.tasks import dispatch_task as dispatch_task_job
 
 
@@ -458,6 +462,49 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             raise HTTPException(status_code=404, detail=str(error)) from error
         return _to_project_dashboard_read(dashboard)
 
+    @app.get("/projects/{project_id}/flow", response_model=FlowSnapshotRead)
+    def get_project_flow(project_id: str) -> FlowSnapshotRead:
+        try:
+            snapshot = app.state.operator_inspection_service.inspect_project_flow(project_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return _to_flow_snapshot_read(snapshot)
+
+    @app.post("/projects/{project_id}/flow/{action}", response_model=FlowSnapshotRead)
+    def update_project_flow(
+        project_id: str,
+        action: str,
+        payload: FlowActionRequest,
+    ) -> FlowSnapshotRead:
+        try:
+            event = FlowEvent(action)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=f"Unsupported flow action: {action}") from error
+        try:
+            stage = Stage(payload.stage) if payload.stage else None
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=f"Unsupported stage: {payload.stage}") from error
+        try:
+            project = app.state.project_service.transition_flow(
+                project_id,
+                event=event,
+                stage=stage,
+                task_id=payload.task_id,
+                note=payload.note,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        snapshot = app.state.project_service.get_flow_snapshot(project.project_id)
+        return _to_flow_snapshot_read(snapshot)
+
+    @app.get("/projects/{project_id}/branches/compare", response_model=BranchComparisonRead)
+    def compare_project_branches(project_id: str) -> BranchComparisonRead:
+        try:
+            comparison = app.state.operator_inspection_service.compare_project_branches(project_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return _to_branch_comparison_read(comparison)
+
     @app.get("/kb/summary", response_model=KnowledgeSummaryRead)
     def kb_summary() -> KnowledgeSummaryRead:
         buckets = []
@@ -607,6 +654,35 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             raise HTTPException(status_code=404, detail=str(error)) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+        return _to_task_read(task)
+
+    @app.post("/tasks/{task_id}/resume", response_model=TaskRead)
+    def resume_task(
+        task_id: str,
+        task_service: TaskService = Depends(get_task_service),
+    ) -> TaskRead:
+        task = task_service.get_task(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+        checkpoint = app.state.checkpoint_service.load(task_id)
+        if checkpoint is None or not task.checkpoint_path:
+            raise HTTPException(status_code=400, detail=f"No checkpoint available for task {task_id}")
+        try:
+            task = task_service.retry_task(task_id)
+        except (KeyError, ValueError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        task.input_payload["resume_requested"] = True
+        task = task_service.save_task(task)
+        try:
+            app.state.project_service.transition_flow(
+                task.project_id,
+                event=FlowEvent.RESUME,
+                stage=app.state.project_service.get_flow_snapshot(task.project_id).stage,
+                task_id=task.task_id,
+                note="checkpoint resume requested",
+            )
+        except KeyError:
+            pass
         return _to_task_read(task)
 
     @app.post("/tasks/{task_id}/cancel", response_model=TaskRead)
@@ -1222,6 +1298,10 @@ def _to_project_dashboard_read(dashboard) -> ProjectDashboardRead:
         recommendation_reason=dashboard.recommendation_reason,
         expected_artifact=dashboard.expected_artifact,
         likely_next_task_kind=dashboard.likely_next_task_kind,
+        flow_snapshot={}
+        if dashboard.flow_snapshot is None
+        else dashboard.flow_snapshot.to_metadata(),
+        available_flow_actions=list(dashboard.available_flow_actions),
         storage_boundary=None
         if dashboard.storage_boundary is None
         else _to_storage_boundary_read(dashboard.storage_boundary),
@@ -1439,6 +1519,41 @@ def _to_artifact_inspection_read(inspection) -> ArtifactInspectionRead:
         metadata=inspection.metadata,
         resolved_path=inspection.resolved_path,
         workspace_relative_path=inspection.workspace_relative_path,
+    )
+
+
+def _to_flow_snapshot_read(snapshot) -> FlowSnapshotRead:
+    payload = snapshot.to_metadata()
+    return FlowSnapshotRead(
+        stage=snapshot.stage.value,
+        status=snapshot.status.value,
+        decision=snapshot.decision,
+        checkpoint_required=snapshot.checkpoint_required,
+        active_task_id=snapshot.active_task_id,
+        rollback_stage=None if snapshot.rollback_stage is None else snapshot.rollback_stage.value,
+        note=snapshot.note,
+        updated_at=snapshot.updated_at,
+        available_actions=list(available_flow_actions(snapshot)),
+        history=list(payload.get("history", [])),
+    )
+
+
+def _to_branch_comparison_read(comparison) -> BranchComparisonRead:
+    return BranchComparisonRead(
+        project_id=comparison.project_id,
+        metric_keys=list(comparison.metric_keys),
+        branches=[
+            {
+                "run_id": branch.run_id,
+                "status": branch.status,
+                "branch_name": branch.branch_name,
+                "primary_metric": branch.primary_metric,
+                "primary_value": branch.primary_value,
+                "metrics": branch.metrics,
+                "source_task_id": branch.source_task_id,
+            }
+            for branch in comparison.branches
+        ],
     )
 
 

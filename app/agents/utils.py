@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +44,9 @@ def write_artifact(
     metadata: dict[str, Any] | None = None,
     artifacts_dir: str | Path = "artifacts",
 ) -> ArtifactRecord:
-    path = Path(artifacts_dir) / run_id / f"{artifact_id}.{extension.lstrip('.')}"
+    run_dir = _safe_path_component(run_id)
+    artifact_name = _safe_path_component(artifact_id)
+    path = Path(artifacts_dir) / run_dir / f"{artifact_name}.{extension.lstrip('.')}"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
@@ -55,3 +58,16 @@ def write_artifact(
         hash=digest,
         metadata=metadata or {},
     )
+
+
+def _safe_path_component(value: str) -> str:
+    max_length = 48
+    raw = str(value).strip() or "artifact"
+    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "-", raw)
+    sanitized = re.sub(r"\s+", "-", sanitized).strip(".- ") or "artifact"
+    if sanitized == raw and len(sanitized) <= max_length:
+        return sanitized
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+    prefix_length = max(8, max_length - len(digest) - 1)
+    trimmed = sanitized[:prefix_length].rstrip(".- ") or "artifact"
+    return f"{trimmed}-{digest}"

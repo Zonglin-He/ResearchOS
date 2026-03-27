@@ -5,7 +5,13 @@ from app.core.paths import StorageBoundary
 from app.providers.health import ProviderHealthService
 from app.providers.registry import ProviderRegistry
 from app.routing.models import DispatchProfile, ProviderSpec, ResolvedDispatch
-from app.schemas.operator import ArtifactInspection, ProjectDashboard, RoutingInspection
+from app.schemas.operator import (
+    ArtifactInspection,
+    BranchComparison,
+    BranchRunSummary,
+    ProjectDashboard,
+    RoutingInspection,
+)
 from app.schemas.task import TaskStatus
 from app.services.artifact_annotation_service import ArtifactAnnotationService
 from app.services.artifact_service import ArtifactService
@@ -16,6 +22,7 @@ from app.services.project_service import ProjectService
 from app.services.provenance_service import ProvenanceService
 from app.services.run_service import RunService
 from app.services.task_service import TaskService
+from app.workflows.research_flow import available_flow_actions
 
 
 class OperatorInspectionService:
@@ -62,6 +69,7 @@ class OperatorInspectionService:
         recommended_task_kind, recommendation_reason, expected_artifact, likely_next_task_kind = (
             self._recommend_next_task(tasks, project.description or project.name)
         )
+        flow_snapshot = self.project_service.get_flow_snapshot(project_id)
         return ProjectDashboard(
             project_id=project.project_id,
             project_name=project.name,
@@ -85,7 +93,59 @@ class OperatorInspectionService:
             recommendation_reason=recommendation_reason,
             expected_artifact=expected_artifact,
             likely_next_task_kind=likely_next_task_kind,
+            flow_snapshot=flow_snapshot,
+            available_flow_actions=available_flow_actions(flow_snapshot),
             storage_boundary=self.storage_boundary,
+        )
+
+    def inspect_project_flow(self, project_id: str):
+        project = self.project_service.get_project(project_id)
+        if project is None:
+            raise KeyError(f"Project not found: {project_id}")
+        return self.project_service.get_flow_snapshot(project_id)
+
+    def compare_project_branches(self, project_id: str) -> BranchComparison:
+        project = self.project_service.get_project(project_id)
+        if project is None:
+            raise KeyError(f"Project not found: {project_id}")
+        tasks = [task for task in self.task_service.list_tasks() if task.project_id == project_id]
+        runs = [run for run in self.run_service.list_runs() if self._run_belongs_to_project(run.run_id, tasks)]
+        metric_keys = sorted(
+            {
+                metric_key
+                for run in runs
+                for metric_key in self._flatten_numeric_metrics(run.metrics).keys()
+            }
+        )
+        branches = []
+        for run in runs:
+            metrics = self._flatten_numeric_metrics(run.metrics)
+            primary_metric, primary_value = self._primary_metric(metrics)
+            source_task_id = self._task_id_for_run(run.run_id, tasks)
+            branch_name = run.experiment_branch or self._task_branch_name(source_task_id, tasks)
+            branches.append(
+                BranchRunSummary(
+                    run_id=run.run_id,
+                    status=run.status,
+                    branch_name=branch_name,
+                    primary_metric=primary_metric,
+                    primary_value=primary_value,
+                    metrics=metrics,
+                    source_task_id=source_task_id,
+                )
+            )
+        branches.sort(
+            key=lambda item: (
+                item.branch_name or "~",
+                item.primary_value is None,
+                -(item.primary_value or 0.0),
+                item.run_id,
+            )
+        )
+        return BranchComparison(
+            project_id=project_id,
+            metric_keys=tuple(metric_keys),
+            branches=tuple(branches),
         )
 
     def inspect_system_routing(self) -> RoutingInspection:
@@ -190,6 +250,64 @@ class OperatorInspectionService:
         return await self.provider_health_service.probe_provider(provider_name, self.provider_registry)
 
     @staticmethod
+    def _run_belongs_to_project(run_id: str, tasks) -> bool:
+        return any(run_id == f"run-{task.task_id}" or run_id == task.task_id for task in tasks)
+
+    @staticmethod
+    def _task_id_for_run(run_id: str, tasks) -> str | None:
+        for task in tasks:
+            if run_id == f"run-{task.task_id}" or run_id == task.task_id:
+                return task.task_id
+        return None
+
+    @staticmethod
+    def _task_branch_name(task_id: str | None, tasks) -> str | None:
+        if task_id is None:
+            return None
+        task = next((item for item in tasks if item.task_id == task_id), None)
+        if task is None:
+            return None
+        branch_name = str(task.input_payload.get("branch_name", "")).strip()
+        if branch_name:
+            return branch_name
+        if task.fanout_group:
+            return task.fanout_group
+        return task.parent_task_id
+
+    @classmethod
+    def _flatten_numeric_metrics(
+        cls,
+        payload: dict[str, object] | None,
+        *,
+        prefix: str = "",
+    ) -> dict[str, float]:
+        if not isinstance(payload, dict):
+            return {}
+        flattened: dict[str, float] = {}
+        for key, value in payload.items():
+            name = f"{prefix}.{key}" if prefix else str(key)
+            if isinstance(value, dict):
+                flattened.update(cls._flatten_numeric_metrics(value, prefix=name))
+                continue
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
+                flattened[name] = float(value)
+        return flattened
+
+    @staticmethod
+    def _primary_metric(metrics: dict[str, float]) -> tuple[str | None, float | None]:
+        priority = ("accuracy", "acc", "f1", "auc", "bleu", "rouge", "loss")
+        for key in priority:
+            for metric_name, metric_value in metrics.items():
+                if key in metric_name.lower():
+                    return metric_name, metric_value
+        if not metrics:
+            return None, None
+        first_key = sorted(metrics)[0]
+        return first_key, metrics[first_key]
+
+    @staticmethod
     def _recommend_next_task(tasks, fallback_goal: str) -> tuple[str | None, str, str, str | None]:
         completed_kinds = {
             task.kind
@@ -224,7 +342,16 @@ class OperatorInspectionService:
                 "hypothesis_set / experiment_spec",
                 "implement_experiment",
             )
-        if not completed_kinds.intersection({"review_build", "audit_run", "verify_evidence", "verify_results"}):
+        if completed_kinds.intersection({"style_pass", "polish_draft", "archive_research", "archive_run"}):
+            return (
+                "archive_research",
+                "The core loop is populated. Archive lessons and provenance before starting the next cycle.",
+                "archive_entry",
+                None,
+            )
+        if not completed_kinds.intersection(
+            {"analyze_run", "branch_review", "review_build", "audit_run", "verify_evidence", "verify_results"}
+        ):
             return (
                 "audit_run",
                 "Execution work exists, but review and verification are still missing.",

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from app.core.paths import StorageBoundary
 from app.routing.models import ProviderHealthSnapshot, ResolvedDispatch
+from app.workflows.research_flow import ResearchFlowSnapshot
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,8 @@ class ProjectDashboard:
     recommendation_reason: str = ""
     expected_artifact: str = ""
     likely_next_task_kind: str | None = None
+    flow_snapshot: ResearchFlowSnapshot | None = None
+    available_flow_actions: tuple[str, ...] = ()
     storage_boundary: StorageBoundary | None = None
 
 
@@ -58,3 +61,21 @@ class ArtifactInspection:
     metadata: dict[str, object] = field(default_factory=dict)
     resolved_path: str = ""
     workspace_relative_path: str | None = None
+
+
+@dataclass(frozen=True)
+class BranchRunSummary:
+    run_id: str
+    status: str
+    branch_name: str | None = None
+    primary_metric: str | None = None
+    primary_value: float | None = None
+    metrics: dict[str, float] = field(default_factory=dict)
+    source_task_id: str | None = None
+
+
+@dataclass(frozen=True)
+class BranchComparison:
+    project_id: str
+    metric_keys: tuple[str, ...] = ()
+    branches: tuple[BranchRunSummary, ...] = ()

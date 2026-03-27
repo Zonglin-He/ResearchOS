@@ -134,6 +134,8 @@ export type ProjectDashboard = {
   recommendation_reason: string;
   expected_artifact: string;
   likely_next_task_kind: string | null;
+  flow_snapshot: Record<string, unknown>;
+  available_flow_actions: string[];
 };
 
 export type RoutingInspection = {
@@ -545,6 +547,35 @@ export type RunEvent = {
   message: string;
   payload: Record<string, unknown>;
   created_at: string;
+};
+
+export type FlowSnapshot = {
+  stage: string;
+  status: string;
+  decision: string;
+  checkpoint_required: boolean;
+  active_task_id: string | null;
+  rollback_stage: string | null;
+  note: string;
+  updated_at: string;
+  available_actions: string[];
+  history: Array<Record<string, unknown>>;
+};
+
+export type BranchRunSummary = {
+  run_id: string;
+  status: string;
+  branch_name: string | null;
+  primary_metric: string | null;
+  primary_value: number | null;
+  metrics: Record<string, number>;
+  source_task_id: string | null;
+};
+
+export type BranchComparison = {
+  project_id: string;
+  metric_keys: string[];
+  branches: BranchRunSummary[];
 };
 
 export type ArtifactDetail = Artifact & {

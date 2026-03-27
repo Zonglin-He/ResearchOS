@@ -5,7 +5,6 @@ from pathlib import Path
 
 from app.agents.base import BaseAgent
 from app.core.error_summary import summarize_error_detail
-from app.core.enums import Stage
 from app.routing.models import ResolvedDispatch
 from app.routing.resolver import RoutingResolver
 from app.schemas.activity import RunEvent
@@ -19,6 +18,7 @@ from app.services.gap_map_service import GapMapService
 from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
 from app.services.lessons_service import LessonsService
+from app.workflows.research_flow import FlowEvent, stage_for_task_kind
 
 
 @dataclass
@@ -107,6 +107,15 @@ class Orchestrator:
         task.last_run_routing = routing
         task.next_retry_at = None
         task = self.task_service.save_task(task)
+        if self.project_service is not None:
+            stage = stage_for_task_kind(task.kind)
+            self.project_service.transition_flow(
+                task.project_id,
+                event=FlowEvent.START,
+                stage=stage,
+                task_id=task.task_id,
+                note=f"dispatch started for {task.kind}",
+            )
 
         checkpoint_path = self._save_checkpoint(
             task,
@@ -149,6 +158,14 @@ class Orchestrator:
                 payload={"error": error_detail, "agent_name": agent_name},
             )
             task = self.task_service.save_task(task)
+            if self.project_service is not None:
+                self.project_service.transition_flow(
+                    task.project_id,
+                    event=FlowEvent.FAIL,
+                    stage=stage_for_task_kind(task.kind),
+                    task_id=task.task_id,
+                    note=error_detail,
+                )
             result = AgentResult(
                 status="fail",
                 output={"error": error_detail},
@@ -368,8 +385,49 @@ class Orchestrator:
     def _sync_project_stage(self, task: Task, result: AgentResult) -> None:
         if self.project_service is None:
             return
-        stage = self._stage_for_task(task, result)
+        next_task_kinds = [next_task.kind for next_task in result.next_tasks]
+        stage = stage_for_task_kind(
+            task.kind,
+            terminal_status=task.status,
+            next_task_kinds=next_task_kinds,
+        )
         if stage is None:
+            return
+        if task.status == TaskStatus.SUCCEEDED:
+            self.project_service.transition_flow(
+                task.project_id,
+                event=FlowEvent.SUCCEED,
+                stage=stage,
+                task_id=task.task_id,
+                note=f"{task.kind} completed",
+            )
+            return
+        if task.status == TaskStatus.WAITING_APPROVAL:
+            self.project_service.transition_flow(
+                task.project_id,
+                event=FlowEvent.REQUIRE_APPROVAL,
+                stage=stage,
+                task_id=task.task_id,
+                note=f"{task.kind} requires approval",
+            )
+            return
+        if task.status == TaskStatus.FAILED:
+            self.project_service.transition_flow(
+                task.project_id,
+                event=FlowEvent.FAIL,
+                stage=stage,
+                task_id=task.task_id,
+                note=task.last_error or f"{task.kind} failed",
+            )
+            return
+        if task.status == TaskStatus.BLOCKED:
+            self.project_service.transition_flow(
+                task.project_id,
+                event=FlowEvent.PAUSE,
+                stage=stage,
+                task_id=task.task_id,
+                note=f"{task.kind} handed off for manual follow-up",
+            )
             return
         self.project_service.update_stage(task.project_id, stage)
 
@@ -431,32 +489,4 @@ class Orchestrator:
             return TaskStatus.WAITING_APPROVAL
         if result_status == "handoff":
             return TaskStatus.BLOCKED
-        return None
-
-    @staticmethod
-    def _stage_for_task(task: Task, result: AgentResult) -> Stage | None:
-        if task.kind == "paper_ingest":
-            return Stage.INGEST_PAPERS
-        if task.kind == "gap_mapping":
-            if any(next_task.kind == "human_select" for next_task in result.next_tasks):
-                return Stage.HUMAN_SELECT
-            return Stage.MAP_GAPS
-        if task.kind == "human_select":
-            return Stage.FREEZE_TOPIC
-        if task.kind == "hypothesis_draft":
-            return Stage.IMPLEMENT_IDEA
-        if task.kind == "branch_plan":
-            return Stage.RUN_EXPERIMENTS if task.status == TaskStatus.SUCCEEDED else Stage.IMPLEMENT_IDEA
-        if task.kind == "branch_review":
-            return Stage.FREEZE_RESULTS if task.status == TaskStatus.SUCCEEDED else Stage.RUN_EXPERIMENTS
-        if task.kind in {"build_spec", "implement_experiment", "reproduce_baseline"}:
-            return Stage.RUN_EXPERIMENTS if task.status == TaskStatus.SUCCEEDED else Stage.IMPLEMENT_IDEA
-        if task.kind == "analyze_run":
-            return Stage.AUDIT_RESULTS
-        if task.kind in {"review_build", "audit_run"}:
-            return Stage.REVIEW_DRAFT
-        if task.kind == "draft_write":
-            return Stage.WRITE_DRAFT
-        if task.kind == "style_pass":
-            return Stage.SUBMISSION_READY if task.status == TaskStatus.SUCCEEDED else Stage.STYLE_PASS
         return None

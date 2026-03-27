@@ -4,10 +4,11 @@ from fastapi.testclient import TestClient
 
 from app.api.app import create_app
 from app.schemas.artifact import ArtifactRecord
+from app.schemas.task import TaskStatus
 
 
 def test_api_can_create_project_and_task(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     project_response = client.post(
         "/projects",
@@ -50,7 +51,7 @@ def test_api_can_create_project_and_task(tmp_path: Path) -> None:
 
 
 def test_api_updates_task_status(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
     client.post(
         "/projects",
         json={
@@ -79,7 +80,7 @@ def test_api_updates_task_status(tmp_path: Path) -> None:
 
 
 def test_api_can_create_claim_and_run(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     claim_response = client.post(
         "/claims",
@@ -109,7 +110,7 @@ def test_api_can_create_claim_and_run(tmp_path: Path) -> None:
 
 
 def test_api_can_create_imported_run_and_results_freeze_metadata(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     run_response = client.post(
         "/runs",
@@ -154,7 +155,7 @@ def test_api_can_create_imported_run_and_results_freeze_metadata(tmp_path: Path)
 
 
 def test_api_can_create_and_list_pending_approvals(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     create_response = client.post(
         "/approvals",
@@ -176,7 +177,7 @@ def test_api_can_create_and_list_pending_approvals(tmp_path: Path) -> None:
 
 
 def test_api_can_persist_paper_gap_and_freeze_assets(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     paper_response = client.post(
         "/paper-cards",
@@ -221,7 +222,7 @@ def test_api_can_persist_paper_gap_and_freeze_assets(tmp_path: Path) -> None:
 
 
 def test_api_can_persist_spec_and_results_freezes(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     spec_response = client.post(
         "/freezes/spec",
@@ -255,7 +256,7 @@ def test_api_can_persist_spec_and_results_freezes(tmp_path: Path) -> None:
 
 
 def test_api_rejects_invalid_paper_card_payload(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     response = client.post(
         "/paper-cards",
@@ -272,7 +273,7 @@ def test_api_rejects_invalid_paper_card_payload(tmp_path: Path) -> None:
 
 
 def test_api_rejects_invalid_gap_map_payload(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     response = client.post(
         "/gap-maps",
@@ -292,7 +293,7 @@ def test_api_rejects_invalid_gap_map_payload(tmp_path: Path) -> None:
 
 
 def test_api_rejects_invalid_topic_freeze_payload(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     response = client.post(
         "/freezes/topic",
@@ -308,7 +309,7 @@ def test_api_rejects_invalid_topic_freeze_payload(tmp_path: Path) -> None:
 
 
 def test_api_rejects_invalid_spec_freeze_payload(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     response = client.post(
         "/freezes/spec",
@@ -324,7 +325,7 @@ def test_api_rejects_invalid_spec_freeze_payload(tmp_path: Path) -> None:
 
 
 def test_api_rejects_invalid_results_freeze_payload(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     response = client.post(
         "/freezes/results",
@@ -340,7 +341,7 @@ def test_api_rejects_invalid_results_freeze_payload(tmp_path: Path) -> None:
 
 
 def test_api_can_create_and_filter_lessons(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     create_response = client.post(
         "/lessons",
@@ -364,7 +365,7 @@ def test_api_can_create_and_filter_lessons(tmp_path: Path) -> None:
 
 
 def test_api_can_verify_run_and_expose_audit_report(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
     client.post(
         "/runs",
         json={
@@ -388,7 +389,7 @@ def test_api_can_verify_run_and_expose_audit_report(tmp_path: Path) -> None:
 
 
 def test_api_rejects_invalid_lesson_kind(tmp_path: Path) -> None:
-    client = TestClient(create_app(str(tmp_path / "researchos.db")))
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
 
     response = client.post(
         "/lessons",
@@ -594,6 +595,7 @@ def test_api_exposes_project_dashboard_and_routing_surfaces(tmp_path: Path) -> N
     client.post("/tasks/t1/dispatch")
 
     dashboard = client.get("/projects/p1/dashboard")
+    flow = client.get("/projects/p1/flow")
     system_routing = client.get("/routing/system")
     task_routing = client.get("/routing/tasks/t1")
     provider_health = client.get("/providers/health")
@@ -601,6 +603,10 @@ def test_api_exposes_project_dashboard_and_routing_surfaces(tmp_path: Path) -> N
     assert dashboard.status_code == 200
     assert dashboard.json()["project_id"] == "p1"
     assert dashboard.json()["artifact_count"] >= 1
+    assert dashboard.json()["flow_snapshot"]["stage"] == "MAP_GAPS"
+    assert "pause" in dashboard.json()["available_flow_actions"]
+    assert flow.status_code == 200
+    assert flow.json()["stage"] == "MAP_GAPS"
     assert dashboard.json()["storage_boundary"]["registry_dir"].endswith("registry")
     assert system_routing.status_code == 200
     assert "resolved_dispatch" in system_routing.json()
@@ -656,3 +662,110 @@ def test_api_can_return_artifact_inspection_surface(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["artifact_id"] == "artifact_inspect"
     assert response.json()["exists_on_disk"] is True
+
+
+def test_api_can_resume_checkpoint_and_compare_branches(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
+
+    client.post(
+        "/projects",
+        json={
+            "project_id": "p1",
+            "name": "Resume Project",
+            "description": "resume and compare",
+            "status": "active",
+        },
+    )
+    client.post(
+        "/tasks",
+        json={
+            "task_id": "t1",
+            "project_id": "p1",
+            "kind": "paper_ingest",
+            "goal": "Read one source",
+            "input_payload": {
+                "topic": "retrieval",
+                "source_summary": {
+                    "title": "Resume Source",
+                    "abstract": "Compact summary.",
+                    "setting": "retrieval",
+                },
+            },
+            "owner": "tester",
+        },
+    )
+    client.post("/tasks/t1/dispatch")
+    task = client.app.state.task_service.get_task("t1")
+    assert task is not None
+    assert task.checkpoint_path is not None
+    task.status = TaskStatus.FAILED
+    client.app.state.task_service.save_task(task)
+
+    resume_response = client.post("/tasks/t1/resume")
+
+    assert resume_response.status_code == 200
+    assert resume_response.json()["status"] == "queued"
+
+    client.post(
+        "/tasks",
+        json={
+            "task_id": "exp-1",
+            "project_id": "p1",
+            "kind": "implement_experiment",
+            "goal": "branch one",
+            "input_payload": {"branch_name": "branch-a"},
+            "owner": "tester",
+            "fanout_group": "branch-a",
+        },
+    )
+    client.post(
+        "/tasks",
+        json={
+            "task_id": "exp-2",
+            "project_id": "p1",
+            "kind": "implement_experiment",
+            "goal": "branch two",
+            "input_payload": {"branch_name": "branch-b"},
+            "owner": "tester",
+            "fanout_group": "branch-b",
+        },
+    )
+    client.post(
+        "/runs",
+        json={
+            "run_id": "run-exp-1",
+            "spec_id": "spec_001",
+            "git_commit": "abc123",
+            "config_hash": "sha256:123",
+            "dataset_snapshot": "dataset_v1",
+            "seed": 1,
+            "gpu": "A100",
+            "status": "completed",
+            "experiment_branch": "branch-a",
+            "metrics": {"accuracy": 0.88},
+        },
+    )
+    client.post(
+        "/runs",
+        json={
+            "run_id": "run-exp-2",
+            "spec_id": "spec_001",
+            "git_commit": "abc124",
+            "config_hash": "sha256:124",
+            "dataset_snapshot": "dataset_v1",
+            "seed": 2,
+            "gpu": "A100",
+            "status": "completed",
+            "experiment_branch": "branch-b",
+            "metrics": {"accuracy": 0.91},
+        },
+    )
+
+    comparison = client.get("/projects/p1/branches/compare")
+    pause_flow = client.post("/projects/p1/flow/pause", json={"note": "operator pause"})
+
+    assert comparison.status_code == 200
+    assert comparison.json()["branches"][0]["branch_name"] in {"branch-a", "branch-b"}
+    assert "accuracy" in comparison.json()["metric_keys"]
+    assert pause_flow.status_code == 200
+    assert pause_flow.json()["status"] == "paused"

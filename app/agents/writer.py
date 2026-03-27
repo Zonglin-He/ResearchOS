@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -14,6 +15,10 @@ from app.schemas.task import Task
 from app.services.artifact_service import ArtifactService
 from app.services.freeze_service import FreezeService
 from app.services.run_service import RunService
+from app.services.verified_metrics_registry import (
+    build_verified_metrics_registry,
+    ground_text_numbers,
+)
 from app.tools.citation_verifier import verify_citations
 
 FALSE_POSITIVE_PREFIXES = {
@@ -71,6 +76,24 @@ class WriterAgent(PromptDrivenAgent):
         output_format = self._desired_output_format(target_venue)
         results_freeze = self._resolve_results_freeze(task)
         evidence_runs = self._resolve_evidence_runs(task, results_freeze)
+        evidence_artifacts = []
+        if self.artifact_service is not None:
+            evidence_run_ids = {run.run_id for run in evidence_runs}
+            evidence_artifacts = [
+                artifact
+                for artifact in self.artifact_service.list_artifacts()
+                if artifact.run_id in evidence_run_ids
+            ]
+        metrics_registry = build_verified_metrics_registry(
+            runs=evidence_runs,
+            artifacts=evidence_artifacts,
+            results_freeze=results_freeze,
+            external_results=[
+                item
+                for item in task.input_payload.get("external_results", [])
+                if isinstance(item, dict)
+            ],
+        )
         payload["writer_focus"] = {
             "required_outputs": ["title", "sections", "audit_notes", "citations"],
             "hard_constraints": [
@@ -78,6 +101,7 @@ class WriterAgent(PromptDrivenAgent):
                 "do not invent new results",
                 "keep claim-evidence alignment explicit",
                 "use imported or external runs only when they are explicitly present in evidence_sources",
+                "numeric claims must be grounded in the verified_metrics_registry",
             ],
             "output_format": output_format,
             "target_venue": target_venue,
@@ -87,6 +111,7 @@ class WriterAgent(PromptDrivenAgent):
                 "results_freeze": None if results_freeze is None else self._results_freeze_record(results_freeze),
                 "imported_runs": task.input_payload.get("imported_runs", []),
                 "external_results": task.input_payload.get("external_results", []),
+                "verified_metrics_registry": metrics_registry.to_record(),
             },
         }
         return payload
@@ -96,9 +121,24 @@ class WriterAgent(PromptDrivenAgent):
         sections = output.get("sections", [])
         target_venue = str(task.input_payload.get("target_venue", "")).strip()
         output_format = str(output.get("output_format", "")).strip().lower() or self._desired_output_format(target_venue)
-        repair_round = max(0, int(task.input_payload.get("citation_repair_round", 0) or 0))
+        citation_repair_round = max(0, int(task.input_payload.get("citation_repair_round", 0) or 0))
+        metric_repair_round = max(0, int(task.input_payload.get("metric_grounding_round", 0) or 0))
         citations, used_fallback_citations = self._collect_citations(output, task)
-        verification = verify_citations(citations) if citations else {"valid": [], "hallucinated": []}
+        verification = (
+            verify_citations(citations)
+            if citations
+            else {
+                "valid": [],
+                "hallucinated": [],
+                "details": [],
+                "summary": {
+                    "total": 0,
+                    "verified_count": 0,
+                    "unresolved_count": 0,
+                    "sources_used": [],
+                },
+            }
+        )
         audit_notes = list(output.get("audit_notes", []))
         if used_fallback_citations:
             audit_notes.append("writer used fallback citation extraction because output.citations was empty or invalid")
@@ -114,6 +154,37 @@ class WriterAgent(PromptDrivenAgent):
             abstract=str(output.get("abstract", "")).strip(),
             target_venue=target_venue,
         )
+        results_freeze = self._resolve_results_freeze(task)
+        evidence_runs = self._resolve_evidence_runs(task, results_freeze)
+        evidence_run_ids = {run.run_id for run in evidence_runs}
+        evidence_artifacts = []
+        if self.artifact_service is not None:
+            evidence_artifacts = [
+                artifact
+                for artifact in self.artifact_service.list_artifacts()
+                if artifact.run_id in evidence_run_ids
+            ]
+        metrics_registry = build_verified_metrics_registry(
+            runs=evidence_runs,
+            artifacts=evidence_artifacts,
+            results_freeze=results_freeze,
+            external_results=[
+                item
+                for item in task.input_payload.get("external_results", [])
+                if isinstance(item, dict)
+            ],
+        )
+        grounding_report = ground_text_numbers(document, metrics_registry)
+        if grounding_report["summary"]["ungrounded_count"]:
+            audit_notes.append(
+                "metric grounding flagged unsupported numbers: "
+                + ", ".join(item["token"] for item in grounding_report["ungrounded"][:5])
+            )
+        verification_report = {
+            "citations": citations,
+            "used_fallback_citations": used_fallback_citations,
+            **verification,
+        }
         extension = "tex" if output_format == "latex" else "md"
         artifact_kind = "draft_latex" if output_format == "latex" else "draft_markdown"
         artifact = write_artifact(
@@ -126,14 +197,50 @@ class WriterAgent(PromptDrivenAgent):
                 "section_count": len(sections),
                 "output_format": output_format,
                 "target_venue": target_venue,
-                "citation_verification": verification,
+                "citation_verification": verification.get("summary", verification),
             },
             artifacts_dir=ctx.artifacts_dir or "artifacts",
         )
         if self.artifact_service is not None:
             self.artifact_service.register_artifact(artifact)
+        verification_artifact = write_artifact(
+            run_id=ctx.run_id,
+            artifact_id=f"{ctx.run_id}-citation-verification",
+            kind="citation_verification_report",
+            content=json.dumps(verification_report, ensure_ascii=False, indent=2),
+            extension="json",
+            metadata={
+                "verified_count": len(verification.get("valid", [])),
+                "unresolved_count": len(verification.get("hallucinated", [])),
+            },
+            artifacts_dir=ctx.artifacts_dir or "artifacts",
+        )
+        if self.artifact_service is not None:
+            self.artifact_service.register_artifact(verification_artifact)
+        metrics_registry_artifact = write_artifact(
+            run_id=ctx.run_id,
+            artifact_id=f"{ctx.run_id}-verified-metrics-registry",
+            kind="verified_metrics_registry",
+            content=json.dumps(metrics_registry.to_record(), ensure_ascii=False, indent=2),
+            extension="json",
+            metadata={"entry_count": len(metrics_registry.entries)},
+            artifacts_dir=ctx.artifacts_dir or "artifacts",
+        )
+        if self.artifact_service is not None:
+            self.artifact_service.register_artifact(metrics_registry_artifact)
+        grounding_artifact = write_artifact(
+            run_id=ctx.run_id,
+            artifact_id=f"{ctx.run_id}-metric-grounding",
+            kind="metric_grounding_report",
+            content=json.dumps(grounding_report, ensure_ascii=False, indent=2),
+            extension="json",
+            metadata=grounding_report["summary"],
+            artifacts_dir=ctx.artifacts_dir or "artifacts",
+        )
+        if self.artifact_service is not None:
+            self.artifact_service.register_artifact(grounding_artifact)
 
-        if verification["hallucinated"] and repair_round < 3:
+        if verification["hallucinated"] and citation_repair_round < 3:
             return AgentResult(
                 status="handoff",
                 output={
@@ -141,17 +248,56 @@ class WriterAgent(PromptDrivenAgent):
                     "sections": sections,
                     "draft_artifact_path": artifact.path,
                     "citation_verification": verification,
+                    "metric_grounding": grounding_report,
                 },
-                artifacts=[artifact.artifact_id],
+                artifacts=[
+                    artifact.artifact_id,
+                    verification_artifact.artifact_id,
+                    metrics_registry_artifact.artifact_id,
+                    grounding_artifact.artifact_id,
+                ],
                 next_tasks=[
                     build_child_task(
                         task,
                         kind="write_draft",
-                        goal=f"Repair unresolved citations and regenerate the draft (round {repair_round + 1}/3)",
+                        goal=f"Repair unresolved citations and regenerate the draft (round {citation_repair_round + 1}/3)",
                         input_payload={
                             **task.input_payload,
-                            "citation_repair_round": repair_round + 1,
+                            "citation_repair_round": citation_repair_round + 1,
                             "citation_feedback": verification["hallucinated"],
+                            "draft_artifact_path": artifact.path,
+                        },
+                        assigned_agent="writer_agent",
+                    )
+                ],
+                audit_notes=audit_notes,
+            )
+        if grounding_report["summary"]["ungrounded_count"] and metric_repair_round < 3:
+            return AgentResult(
+                status="handoff",
+                output={
+                    "title": title,
+                    "sections": sections,
+                    "draft_artifact_path": artifact.path,
+                    "output_format": output_format,
+                    "citation_verification": verification,
+                    "metric_grounding": grounding_report,
+                },
+                artifacts=[
+                    artifact.artifact_id,
+                    verification_artifact.artifact_id,
+                    metrics_registry_artifact.artifact_id,
+                    grounding_artifact.artifact_id,
+                ],
+                next_tasks=[
+                    build_child_task(
+                        task,
+                        kind="write_draft",
+                        goal=f"Repair unsupported numeric claims and regenerate the draft (round {metric_repair_round + 1}/3)",
+                        input_payload={
+                            **task.input_payload,
+                            "metric_grounding_round": metric_repair_round + 1,
+                            "metric_grounding_feedback": grounding_report["ungrounded"],
                             "draft_artifact_path": artifact.path,
                         },
                         assigned_agent="writer_agent",
@@ -171,8 +317,37 @@ class WriterAgent(PromptDrivenAgent):
                     "draft_artifact_path": artifact.path,
                     "output_format": output_format,
                     "citation_verification": verification,
+                    "metric_grounding": grounding_report,
                 },
-                artifacts=[artifact.artifact_id],
+                artifacts=[
+                    artifact.artifact_id,
+                    verification_artifact.artifact_id,
+                    metrics_registry_artifact.artifact_id,
+                    grounding_artifact.artifact_id,
+                ],
+                audit_notes=audit_notes,
+            )
+        if grounding_report["summary"]["ungrounded_count"]:
+            audit_notes.append(
+                "metric_grounding_failed: "
+                + ", ".join(item["token"] for item in grounding_report["ungrounded"][:5])
+            )
+            return AgentResult(
+                status="needs_approval",
+                output={
+                    "title": title,
+                    "sections": sections,
+                    "draft_artifact_path": artifact.path,
+                    "output_format": output_format,
+                    "citation_verification": verification,
+                    "metric_grounding": grounding_report,
+                },
+                artifacts=[
+                    artifact.artifact_id,
+                    verification_artifact.artifact_id,
+                    metrics_registry_artifact.artifact_id,
+                    grounding_artifact.artifact_id,
+                ],
                 audit_notes=audit_notes,
             )
 
@@ -197,8 +372,14 @@ class WriterAgent(PromptDrivenAgent):
                 "draft_artifact_path": artifact.path,
                 "output_format": output_format,
                 "citation_verification": verification,
+                "metric_grounding": grounding_report,
             },
-            artifacts=[artifact.artifact_id],
+            artifacts=[
+                artifact.artifact_id,
+                verification_artifact.artifact_id,
+                metrics_registry_artifact.artifact_id,
+                grounding_artifact.artifact_id,
+            ],
             next_tasks=next_tasks,
             audit_notes=audit_notes,
         )
