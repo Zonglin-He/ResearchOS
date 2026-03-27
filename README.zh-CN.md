@@ -1,181 +1,122 @@
 # ResearchOS
 
-<p align="right">
-  <a href="README.md"><img src="https://img.shields.io/badge/lang-English-blue?style=flat-square" alt="English" /></a>
-  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/lang-中文-red?style=flat-square" alt="中文" /></a>
-</p>
+<div align="center">
 
-> 面向可信 AI 研究的研究执行系统。
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-ResearchOS 要解决的不是“怎么再多自动化几步”，而是“怎么把研究流程变成可追踪、可恢复、可验证的系统”。  
-它不是自动论文机，而是把研究从黑盒 agent workflow，升级成一个 operator 可见、证据可查、状态可控的执行闭环。
+### 面向可信 AI 研究的执行操作系统
 
-## 定位
+把 `idea -> hidden agent steps -> draft` 这种黑盒流程，升级成一条有状态机、有实验修复、有指标落地、有人工控制面的研究闭环。
 
-ResearchOS 的核心定位是：
+![Python](https://img.shields.io/badge/python-3.11+-0f172a?style=for-the-badge&logo=python&logoColor=white)
+![UV](https://img.shields.io/badge/package%20manager-uv-2dd4bf?style=for-the-badge)
+![Operator](https://img.shields.io/badge/operator-first-true-c2410c?style=for-the-badge)
+![Workflow](https://img.shields.io/badge/proof%20chain-guide%20to%20console-2563eb?style=for-the-badge)
 
-**Trustworthy Research Execution System**
+</div>
 
-也就是：
+## 为什么它不一样
 
-- 从模糊目标出发，逐步引导到可执行研究方向
-- 用显式状态机管理研究流，而不是靠隐式 agent 串联
-- 用诊断式实验修复替代盲目重试
-- 用指标落地和证据绑定约束写作
-- 用 operator console 让人类实时接管关键节点
+大多数 research agent 追求的是“再自动一点”。
 
-## 为什么要做这个
+ResearchOS 追求的是更难也更值钱的事情：
 
-很多 research agent 追求的是“更自动”。  
-但真实研究团队还需要另外四件事：
+- 团队能不能看见系统到底做了什么
+- 实验失败后能不能从正确 checkpoint 恢复
+- 草稿里的每一个数字能不能追溯到 artifact
+- operator 能不能在批准之前比较分支和证据
 
-- 可见性：系统做了什么、什么时候做的、为什么这么做
-- 可恢复性：失败后从哪里继续
-- 可问责性：论文中的数字和结论到底来自哪里
-- 可控性：人类在关键节点如何介入，而不是事后补救
-
-ResearchOS 的答案不是再堆一层 agent，而是把研究流程操作系统化。
-
-一句话概括：
-
-**不要盲目自动化研究，而要负责任地操作化研究。**
+ResearchOS 给出的不是一句口号，而是一套真正可操作的产品面。
 
 ## 产品故事
 
-ResearchOS 把这条黑盒链路：
+```text
+idea -> guide -> typed flow -> experiment repair loop -> verified writing -> operator console
+```
 
-`idea -> hidden agent steps -> draft`
+它不是自动论文机。
 
-改造成这条可验证链路：
+它是一个 **Trustworthy Research Execution System**，帮助研究团队：
 
-`guide -> flow -> experiment -> writer -> operator console`
+- 把模糊目标收敛成可执行研究方向
+- 用显式 `gate`、`rollback`、`retry`、`pause`、`resume`、`pivot`、`refine` 管理流程
+- 用 diagnosis-driven experiment loop 代替盲目重试
+- 在写作前把数字绑定到真实 run、artifact、freeze 和证据
+- 通过 operator console 实时查看事件、checkpoint、分支和 provider 健康状态
 
-这五段不是功能列表，而是产品本体。
+## 从黑盒 Agent 到研究控制面
 
-### 1. Guide
+```mermaid
+flowchart LR
+    A["自然语言研究目标"] --> B["Guide"]
+    B --> C["Typed Flow State Machine"]
+    C --> D["Diagnosis-Driven Experiment Loop"]
+    D --> E["Verified Metrics Registry"]
+    E --> F["Writer"]
+    F --> G["Operator Console"]
+    G --> H["批准、恢复、比较或转向"]
+```
 
-从自然语言研究目标开始。系统会分解查询、抓取 seed papers、生成 gap candidates，并在 `human_select` 节点停下，让方向选择保持人类可见。
+## 核心产品面
 
-### 2. Flow
+| 产品面 | 做什么 | 为什么重要 |
+|---|---|---|
+| `Guide` | 拆解问题、抓取 seed papers、在人类该决策时停在 `human_select` | 研究起点不再靠 agent 漂移 |
+| `Typed Flow` | 持久化阶段、迁移、checkpoint 和决策历史 | 恢复与审计成为内建能力 |
+| `Experiment Loop` | 诊断失败、执行有限修复、记录尝试历史、提升最佳结果 | 实验从脆弱脚本变成可恢复闭环 |
+| `Verified Metrics Registry` | 把数字绑定到 run、artifact、freeze 和证据包 | 未落地指标不能进入论文 |
+| `Operator Console` | 暴露 flow snapshot、event stream、branch compare、checkpoint resume 和 health | 自动化扩大后仍然可控、可见 |
 
-研究流程不是一串松散 task string，而是持久化的 typed state machine。  
-当前 flow 明确支持：
+## ResearchOS 强在哪
 
-- `gate`
-- `rollback`
-- `retry`
-- `pause`
-- `resume`
-- `pivot`
-- `refine`
+ResearchOS 不靠“更像魔法”取胜。
 
-### 3. Experiment
-
-实验执行不是“报错了再跑一次”。ResearchOS 会记录尝试历史，诊断失败原因，执行有限修复，并在多个成功尝试之间提升最佳结果。
-
-### 4. Writer
-
-写作阶段受到证据约束。Writer 会结合：
-
-- citation verification
-- verified metrics registry
-- metric grounding report
-- results freeze
-
-未落地的数字不会直接进入草稿。
-
-### 5. Operator Console
-
-操作台不是辅助页面，而是控制面。它暴露：
-
-- flow snapshot
-- run event stream
-- branch compare
-- checkpoint resume
-- approvals
-- provider health
-
-## 核心能力
-
-### Typed Flow Control
-
-研究流以显式状态、决策和 checkpoint requirement 形式持久化。
-
-关键代码：
-
-- [app/workflows/research_flow.py](app/workflows/research_flow.py)
-- [app/services/project_service.py](app/services/project_service.py)
-
-### Diagnosis-Driven Experiment Repair
-
-实验执行链支持失败诊断、repair action、attempt history 和 best-result promotion。
-
-关键代码：
-
-- [app/tools/experiment_runner.py](app/tools/experiment_runner.py)
-
-### Verified Metrics Registry
-
-论文中的数字必须能回溯到 run manifest、artifact metadata 或 approved results freeze。
-
-关键代码：
-
-- [app/services/verified_metrics_registry.py](app/services/verified_metrics_registry.py)
-- [app/agents/writer.py](app/agents/writer.py)
-
-### Operator-First Inspection
-
-ResearchOS 从一开始就是面向 operator 的系统，而不是只面向后台 agent。
-
-关键代码：
-
-- [app/services/operator_inspection_service.py](app/services/operator_inspection_service.py)
-- [app/api/app.py](app/api/app.py)
-- [frontend/src/App.tsx](frontend/src/App.tsx)
-
-## 它和常见 Autonomous Research Agent 的区别
-
-ResearchOS 不靠“更像黑盒自动论文机”取胜。  
 它靠“更可信的自动化”取胜。
 
 | 维度 | 常见 autonomous research agent | ResearchOS |
 |---|---|---|
-| 叙事中心 | 自动跑更多步骤 | 把每一步做成可检查、可恢复的执行系统 |
-| 流程控制 | 隐式 task chaining | typed workflow state machine |
-| 失败处理 | 重试或重生成 | 诊断、修复、提升最佳结果 |
-| 草稿数字 | 常常直接信任 agent 输出 | 必须经过 verified metrics grounding |
-| 人类角色 | 事后批准 | 显式 checkpoint 与 operator console |
+| 核心叙事 | 自动化更多步骤 | 负责任地操作化研究 |
+| 流程控制 | 隐式 task chaining | typed state machine |
+| 失败处理 | 重试或重生 | 诊断、修复、提升最佳结果 |
+| 草稿中的数字 | 直接信任 agent 输出 | 必须经过 grounded metrics |
+| 人类角色 | 事后审阅 | 通过显式 checkpoint 介入 |
 | 产品形态 | agent workflow | research execution system |
 
-## 端到端证明链
+## 不是文案，是证明链
 
-当前仓库已经包含一条完整 integration proof chain，覆盖：
+仓库里已经有一条完整的 integration proof chain，覆盖：
 
 `guide -> flow -> experiment -> writer -> operator console`
 
 它会验证：
 
-- guide start 与 direction adoption
-- autopilot 在 branch planning 和 experiment fanout 中的推进
-- result grounding 与 draft generation
-- operator-facing 的 branch compare、event stream 和 flow surface
+- guided start 与 direction adoption
+- autopilot 在分支和实验阶段的推进
+- 草稿输出前的 verified metrics grounding
+- operator-facing 的 branch compare、event stream 和 flow inspection
 
-相关测试：
+关键入口：
 
 - [tests/integration/test_research_proof_chain.py](tests/integration/test_research_proof_chain.py)
 - [tests/integration/test_dispatch_workflow.py](tests/integration/test_dispatch_workflow.py)
-
-基准脚本：
-
 - [scripts/run_operator_benchmark.py](scripts/run_operator_benchmark.py)
+
+## 代码地图
+
+| 区域 | 关键文件 |
+|---|---|
+| Flow 状态机 | [app/workflows/research_flow.py](app/workflows/research_flow.py), [app/services/project_service.py](app/services/project_service.py) |
+| 实验修复闭环 | [app/tools/experiment_runner.py](app/tools/experiment_runner.py) |
+| 可信写作 | [app/services/verified_metrics_registry.py](app/services/verified_metrics_registry.py), [app/agents/writer.py](app/agents/writer.py) |
+| Operator 检视层 | [app/services/operator_inspection_service.py](app/services/operator_inspection_service.py), [app/api/app.py](app/api/app.py), [frontend/src/App.tsx](frontend/src/App.tsx) |
 
 ## 快速开始
 
 环境要求：
 
-- Python 3.11+
+- Python `3.11+`
 - [uv](https://docs.astral.sh/uv/)
-- Node.js 18+
+- Node.js `18+`
 
 ```bash
 uv sync --dev
@@ -187,8 +128,6 @@ uv run researchos web
 ```
 
 打开 `http://127.0.0.1:5173`。
-
-### Provider 配置
 
 本地确定性模式：
 
@@ -205,16 +144,16 @@ export RESEARCHOS_PROVIDER_MODEL=sonnet
 export RESEARCHOS_WORKSPACE_ROOT=$(pwd)
 ```
 
-仓库里还支持 `codex` 与 `gemini` provider family。
+仓库当前支持的 provider family 包括 `claude`、`codex`、`gemini` 和 `local`。
 
 ## 仓库结构
 
 ```text
 app/
-  agents/        专职研究 agent
+  agents/        专职研究 agents
   api/           FastAPI 控制面
-  services/      registries、freezes、operator inspection
-  tools/         实验执行、验证、检索工具
+  services/      registries、freezes、approvals、operator inspection
+  tools/         实验执行、验证、检索辅助
   workflows/     typed research flow state machine
 frontend/
   src/           operator console 与 workspace UI
@@ -222,14 +161,14 @@ scripts/
   run_operator_benchmark.py
 tests/
   integration/   端到端证明链
-  unit/          service、API、agent 回归测试
+  unit/          service、API 与 agent 回归测试
 docs/
   showcase/      对外展示材料
 ```
 
-## 仓库内的营销文案资产
+## 仓库里的营销文案资产
 
-如果你需要的是对外讲产品，而不是对内讲工程，请看：
+如果你想看对外产品叙事，而不是工程说明：
 
 - [docs/github_project_intro.md](docs/github_project_intro.md)
 - [docs/website_copy.md](docs/website_copy.md)
@@ -243,15 +182,9 @@ ResearchOS 已经具备：
 - checkpoint-aware resume
 - diagnosis-driven experiment repair
 - verified metrics grounding
-- branch comparison 与 operator inspection
-- integration 证明链覆盖
+- branch comparison 和 operator inspection
+- integration proof-chain coverage
 
-接下来真正需要放大的，不是“更黑盒的自动化”，而是：
+下一步真正该放大的，不是更黑盒的自动化。
 
-- 更强的公开 benchmark
-- 更完整的 showcase project
-- 更丰富的外部入口
-
-但这些都应该建立在同一个核心上：
-
-**可信的研究执行，而不是不可审计的自动论文生成。**
+而是围绕同一个可信执行内核做更强包装：公开 benchmark、showcase project，以及更多外部入口。

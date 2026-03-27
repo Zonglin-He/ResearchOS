@@ -25,7 +25,17 @@ def test_prompt_driven_agent_returns_agent_result() -> None:
         project_id="p1",
         kind="paper_ingest",
         goal="Ingest a paper",
-        input_payload={},
+        input_payload={
+            "topic": "retrieval augmentation",
+            "source_summary": {
+                "title": "A grounded retrieval paper",
+                "abstract": "Studies retrieval with explicit evidence grounding.",
+                "datasets": ["NQ"],
+                "metrics": ["accuracy"],
+                "claimed_contributions": ["grounded retrieval analysis"],
+                "strongest_result": "Improves accuracy on NQ.",
+            },
+        },
         owner="gabriel",
     )
     context = RunContext(run_id="run-1", project_id="p1", task_id="t1")
@@ -33,5 +43,5 @@ def test_prompt_driven_agent_returns_agent_result() -> None:
     result = asyncio.run(agent.run(task, context))
 
     assert result.status == "success"
-    assert result.output["paper_cards"] == []
-    assert result.output["uncertainties"] == []
+    assert result.output["paper_cards"][0]["title"] == "A grounded retrieval paper"
+    assert result.output["uncertainties"]

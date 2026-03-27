@@ -28,11 +28,10 @@ def summarize_error_detail(detail: str, *, max_length: int = 240) -> str:
     if not text:
         return "Provider invocation failed."
 
-    for marker in _TRUNCATION_MARKERS:
-        marker_index = text.find(marker)
-        if marker_index > 0:
-            text = text[:marker_index].strip()
-            break
+    cut_positions = [text.find(marker) for marker in _TRUNCATION_MARKERS]
+    positive_positions = [position for position in cut_positions if position > 0]
+    if positive_positions:
+        text = text[: min(positive_positions)].strip()
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     text = lines[0] if lines else text
