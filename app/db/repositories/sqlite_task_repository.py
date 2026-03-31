@@ -7,6 +7,7 @@ from app.db.repositories.task_repository import TaskRepository
 from app.db.sqlite import SQLiteDatabase
 from app.routing import dispatch_profile_from_dict, resolved_dispatch_from_dict
 from app.schemas.task import Task, TaskStatus
+from app.schemas.strategy import HandoffPacket, RetrievalEvidence, StrategyTrace
 from app.services.registry_store import to_record
 
 
@@ -39,8 +40,11 @@ class SQLiteTaskRepository(TaskRepository):
                     last_error,
                     next_retry_at,
                     checkpoint_path,
+                    latest_strategy_trace_json,
+                    latest_retrieval_evidence_json,
+                    latest_handoff_packet_json,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     task.task_id,
@@ -67,6 +71,13 @@ class SQLiteTaskRepository(TaskRepository):
                     task.last_error,
                     task.next_retry_at.isoformat() if task.next_retry_at is not None else None,
                     task.checkpoint_path,
+                    json.dumps(to_record(task.latest_strategy_trace))
+                    if task.latest_strategy_trace is not None
+                    else None,
+                    json.dumps(to_record(task.latest_retrieval_evidence)),
+                    json.dumps(to_record(task.latest_handoff_packet))
+                    if task.latest_handoff_packet is not None
+                    else None,
                     task.created_at.isoformat(),
                 ),
             )
@@ -96,6 +107,9 @@ class SQLiteTaskRepository(TaskRepository):
                     last_error = ?,
                     next_retry_at = ?,
                     checkpoint_path = ?,
+                    latest_strategy_trace_json = ?,
+                    latest_retrieval_evidence_json = ?,
+                    latest_handoff_packet_json = ?,
                     created_at = ?
                 WHERE task_id = ?
                 """,
@@ -123,6 +137,13 @@ class SQLiteTaskRepository(TaskRepository):
                     task.last_error,
                     task.next_retry_at.isoformat() if task.next_retry_at is not None else None,
                     task.checkpoint_path,
+                    json.dumps(to_record(task.latest_strategy_trace))
+                    if task.latest_strategy_trace is not None
+                    else None,
+                    json.dumps(to_record(task.latest_retrieval_evidence)),
+                    json.dumps(to_record(task.latest_handoff_packet))
+                    if task.latest_handoff_packet is not None
+                    else None,
                     task.created_at.isoformat(),
                     task.task_id,
                 ),
@@ -152,6 +173,16 @@ class SQLiteTaskRepository(TaskRepository):
 
     @staticmethod
     def _row_to_task(row: object) -> Task:
+        strategy_payload = (
+            json.loads(row["latest_strategy_trace_json"])
+            if row["latest_strategy_trace_json"]
+            else None
+        )
+        handoff_payload = (
+            json.loads(row["latest_handoff_packet_json"])
+            if row["latest_handoff_packet_json"]
+            else None
+        )
         return Task(
             task_id=row["task_id"],
             project_id=row["project_id"],
@@ -183,5 +214,30 @@ class SQLiteTaskRepository(TaskRepository):
             if row["next_retry_at"]
             else None,
             checkpoint_path=row["checkpoint_path"],
+            latest_strategy_trace=StrategyTrace(
+                task_id=str(strategy_payload["task_id"]),
+                project_id=str(strategy_payload["project_id"]),
+                should_retrieve=bool(strategy_payload["should_retrieve"]),
+                retrieval_targets=tuple(strategy_payload.get("retrieval_targets", [])),
+                should_call_tools=bool(strategy_payload.get("should_call_tools", False)),
+                tool_candidates=tuple(strategy_payload.get("tool_candidates", [])),
+                needs_human_checkpoint=bool(strategy_payload.get("needs_human_checkpoint", False)),
+                reasoning_summary=str(strategy_payload.get("reasoning_summary", "")),
+                created_at=datetime.fromisoformat(str(strategy_payload["created_at"])),
+            ) if strategy_payload else None,
+            latest_retrieval_evidence=[
+                RetrievalEvidence(**item)
+                for item in json.loads(row["latest_retrieval_evidence_json"])
+            ] if row["latest_retrieval_evidence_json"] else [],
+            latest_handoff_packet=HandoffPacket(
+                from_agent=str(handoff_payload["from_agent"]),
+                to_agent=str(handoff_payload["to_agent"]),
+                task_kind=str(handoff_payload["task_kind"]),
+                objective=str(handoff_payload["objective"]),
+                required_inputs=tuple(handoff_payload.get("required_inputs", [])),
+                attached_evidence_ids=tuple(handoff_payload.get("attached_evidence_ids", [])),
+                blocking_questions=tuple(handoff_payload.get("blocking_questions", [])),
+                done_definition=str(handoff_payload.get("done_definition", "")),
+            ) if handoff_payload else None,
             created_at=datetime.fromisoformat(row["created_at"]),
         )

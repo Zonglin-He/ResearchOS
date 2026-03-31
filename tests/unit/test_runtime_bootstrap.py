@@ -36,6 +36,9 @@ def test_runtime_bootstrap_uses_sqlite_when_database_url_is_empty(tmp_path: Path
     assert services.tool_registry.get("filesystem").name == "filesystem"
     assert services.experiment_manager is not None
     assert services.lessons_service is not None
+    assert services.memory_registry_service is not None
+    assert services.strategy_service is not None
+    assert services.benchmark_service is not None
     assert services.verification_service is not None
     assert services.discussion_service is not None
     assert services.provider_health_service is not None
@@ -84,6 +87,7 @@ def test_runtime_bootstrap_resolves_workspace_backed_registry_paths(tmp_path: Pa
     assert services.freeze_service.freeze_dir == paths.freezes_dir
     assert services.artifact_service.registry_path == paths.registry_file("artifacts.jsonl")
     assert services.lessons_service.registry_path == paths.registry_file("lessons.jsonl")
+    assert services.memory_registry_service.registry_path == paths.registry_file("memory.jsonl")
     assert services.verification_service.registry_path == paths.registry_file("verifications.jsonl")
     assert services.discussion_service.registry_path == paths.registry_file("discussions.jsonl")
     assert services.experiment_manager.registry.base_dir == paths.experiments_dir

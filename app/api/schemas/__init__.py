@@ -3,6 +3,11 @@ from app.api.schemas.artifact_annotations import ArtifactAnnotationCreate, Artif
 from app.api.schemas.artifacts import ArtifactDetailRead, ArtifactRead
 from app.api.schemas.audit import AuditEntryRead, AuditReportRead, AuditSummaryRead
 from app.api.schemas.approvals import ApprovalCreate, ApprovalRead
+from app.api.schemas.benchmarks import (
+    BenchmarkRunRequest,
+    BenchmarkRunSummaryRead,
+    BenchmarkScenarioResultRead,
+)
 from app.api.schemas.claims import ClaimCreate, ClaimRead
 from app.api.schemas.discussions import (
     DiscussionAdoptCreate,
@@ -86,6 +91,12 @@ from app.api.schemas.routing import (
     ProviderSpecModel,
     ResolvedDispatchModel,
 )
+from app.api.schemas.strategy import (
+    HandoffPacketRead,
+    MemoryRecordRead,
+    RetrievalEvidenceRead,
+    StrategyTraceRead,
+)
 from app.api.schemas.runs import RunManifestCreate, RunManifestRead
 from app.api.schemas.tasks import TaskCreate, TaskRead, TaskStatusUpdate
 from app.api.schemas.verifications import VerificationRead, VerificationSummaryRead
@@ -106,6 +117,9 @@ __all__ = [
     "DiscussionHistoryRead",
     "ApprovalCreate",
     "ApprovalRead",
+    "BenchmarkRunRequest",
+    "BenchmarkRunSummaryRead",
+    "BenchmarkScenarioResultRead",
     "ClaimCreate",
     "ClaimRead",
     "DiscussionAdoptCreate",
@@ -147,6 +161,9 @@ __all__ = [
     "ProjectRead",
     "ProvenanceEvidenceRefRead",
     "ProviderSpecModel",
+    "HandoffPacketRead",
+    "MemoryRecordRead",
+    "RetrievalEvidenceRead",
     "ResolvedDispatchModel",
     "RoutingInspectionRead",
     "ResearchStartRequest",
@@ -180,4 +197,5 @@ __all__ = [
     "ClaimSupportRefRead",
     "RunEvidenceRefRead",
     "StorageBoundaryRead",
+    "StrategyTraceRead",
 ]

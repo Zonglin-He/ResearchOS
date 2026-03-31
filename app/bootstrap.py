@@ -38,6 +38,7 @@ from app.routing.models import (
 )
 from app.routing.provider_router import ProviderInvocationService
 from app.routing.resolver import RoutingResolver
+from app.evals.service import BenchmarkService
 from app.skills import ROLE_SKILL_REGISTRY, RoleSkillRegistry
 from app.services.approval_service import ApprovalService
 from app.services.activity_service import ActivityService
@@ -53,12 +54,14 @@ from app.services.freeze_service import FreezeService
 from app.services.gap_map_service import GapMapService
 from app.services.lessons_service import LessonsService
 from app.services.kb_service import KnowledgeBaseService
+from app.services.memory_registry_service import MemoryRegistryService
 from app.services.operator_inspection_service import OperatorInspectionService
 from app.services.paper_card_service import PaperCardService
 from app.services.project_service import ProjectService
 from app.services.research_guide_service import ResearchGuideService
 from app.services.provenance_service import ProvenanceService
 from app.services.run_service import RunService
+from app.services.strategy_service import StrategyService
 from app.services.task_service import TaskService
 from app.services.verification_service import VerificationService
 from app.tools.experiment_runner import ExperimentRunnerTool
@@ -96,6 +99,9 @@ class RuntimeServices:
     lessons_service: LessonsService
     verification_service: VerificationService
     kb_service: KnowledgeBaseService
+    memory_registry_service: MemoryRegistryService
+    strategy_service: StrategyService
+    benchmark_service: BenchmarkService
     provenance_service: ProvenanceService
     operator_inspection_service: OperatorInspectionService
     tool_registry: ToolRegistry
@@ -204,6 +210,9 @@ def build_orchestrator(config: AppConfig, services: RuntimeServices) -> Orchestr
         lessons_service=services.lessons_service,
         approval_service=services.approval_service,
         gap_map_service=services.gap_map_service,
+        strategy_service=services.strategy_service,
+        artifact_service=services.artifact_service,
+        memory_registry_service=services.memory_registry_service,
         artifacts_dir=WorkspacePaths.from_root(config.workspace_root).artifacts_dir,
         activity_service=services.activity_service,
         checkpoint_service=services.checkpoint_service,
@@ -478,6 +487,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
     project_service = ProjectService(project_repository)
     task_service = TaskService(task_repository, activity_service=activity_service)
     kb_service = KnowledgeBaseService(workspace_paths.registry_dir / "kb")
+    memory_registry_service = MemoryRegistryService(workspace_paths.registry_file("memory.jsonl"))
     provider_registry = build_provider_registry()
     default_provider = provider_registry.get(config.provider_name.lower())
     tool_registry = build_tool_registry()
@@ -492,6 +502,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         provider_health_service,
     )
     routing_resolver = RoutingResolver(build_system_dispatch_profile(config))
+    strategy_service = StrategyService(memory_registry_service)
     storage_boundary = workspace_paths.storage_boundary(
         database_backend="postgres" if config.database_url else "sqlite",
         database_location=config.database_url or config.db_path,
@@ -512,6 +523,9 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         lessons_service=lessons_service,
         approval_service=approval_service,
         gap_map_service=gap_map_service,
+        strategy_service=strategy_service,
+        artifact_service=artifact_service,
+        memory_registry_service=memory_registry_service,
         artifacts_dir=workspace_paths.artifacts_dir,
         activity_service=activity_service,
         checkpoint_service=checkpoint_service,
@@ -553,6 +567,31 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         lessons_service=lessons_service,
         verification_service=verification_service,
         kb_service=kb_service,
+        memory_registry_service=memory_registry_service,
+        strategy_service=strategy_service,
+        benchmark_service=BenchmarkService(
+            registry_path=workspace_paths.registry_dir / "benchmarks" / "latest.json",
+            strategy_service=strategy_service,
+            memory_registry=memory_registry_service,
+            operator_inspection_service=OperatorInspectionService(
+                project_service=project_service,
+                task_service=task_service,
+                run_service=run_service,
+                artifact_service=artifact_service,
+                artifact_annotation_service=artifact_annotation_service,
+                paper_card_service=paper_card_service,
+                gap_map_service=gap_map_service,
+                freeze_service=freeze_service,
+                provenance_service=provenance_service,
+                orchestrator=placeholder_orchestrator,
+                provider_registry=provider_registry,
+                provider_health_service=provider_health_service,
+                strategy_service=strategy_service,
+                memory_registry_service=memory_registry_service,
+                storage_boundary=storage_boundary,
+            ),
+            orchestrator=placeholder_orchestrator,
+        ),
         provenance_service=provenance_service,
         operator_inspection_service=OperatorInspectionService(
             project_service=project_service,
@@ -567,6 +606,8 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
             orchestrator=placeholder_orchestrator,
             provider_registry=provider_registry,
             provider_health_service=provider_health_service,
+            strategy_service=strategy_service,
+            memory_registry_service=memory_registry_service,
             storage_boundary=storage_boundary,
         ),
         tool_registry=tool_registry,
@@ -585,6 +626,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
             paper_card_service=paper_card_service,
             provider_registry=provider_registry,
             kb_service=kb_service,
+            memory_registry_service=memory_registry_service,
             approval_service=approval_service,
             tool_registry=tool_registry,
             orchestrator=placeholder_orchestrator,
@@ -600,6 +642,7 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         paper_card_service=paper_card_service,
         provider_registry=provider_registry,
         kb_service=services.kb_service,
+        memory_registry_service=services.memory_registry_service,
         approval_service=approval_service,
         tool_registry=tool_registry,
         orchestrator=services.orchestrator,
@@ -618,6 +661,15 @@ def build_runtime_services(config: AppConfig) -> RuntimeServices:
         orchestrator=services.orchestrator,
         provider_registry=provider_registry,
         provider_health_service=provider_health_service,
+        strategy_service=services.strategy_service,
+        memory_registry_service=services.memory_registry_service,
         storage_boundary=storage_boundary,
+    )
+    services.benchmark_service = BenchmarkService(
+        registry_path=workspace_paths.registry_dir / "benchmarks" / "latest.json",
+        strategy_service=services.strategy_service,
+        memory_registry=services.memory_registry_service,
+        operator_inspection_service=services.operator_inspection_service,
+        orchestrator=services.orchestrator,
     )
     return services

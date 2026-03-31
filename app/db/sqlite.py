@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     last_error TEXT,
     next_retry_at TEXT,
     checkpoint_path TEXT,
+    latest_strategy_trace_json TEXT,
+    latest_retrieval_evidence_json TEXT,
+    latest_handoff_packet_json TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY(project_id) REFERENCES projects(project_id)
 );
@@ -138,6 +141,9 @@ class SQLiteDatabase:
             self._ensure_column(connection, "tasks", "last_error", "TEXT")
             self._ensure_column(connection, "tasks", "next_retry_at", "TEXT")
             self._ensure_column(connection, "tasks", "checkpoint_path", "TEXT")
+            self._ensure_column(connection, "tasks", "latest_strategy_trace_json", "TEXT")
+            self._ensure_column(connection, "tasks", "latest_retrieval_evidence_json", "TEXT")
+            self._ensure_column(connection, "tasks", "latest_handoff_packet_json", "TEXT")
 
     def connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path)

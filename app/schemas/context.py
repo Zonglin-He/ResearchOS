@@ -3,6 +3,7 @@ from typing import Any, Callable
 
 from app.routing.models import ResolvedDispatch
 from app.schemas.lesson import LessonRecord
+from app.schemas.strategy import StrategyTrace
 
 @dataclass
 class RunContext:
@@ -17,6 +18,8 @@ class RunContext:
     checkpoint_dir: str = ""
     checkpoint_path: str | None = None
     resume_from_checkpoint: dict[str, Any] | None = None
+    strategy_trace: StrategyTrace | None = None
+    retrieval_evidence_ids: list[str] = field(default_factory=list)
     checkpoint_recorder: Callable[[str, dict[str, Any]], str | None] | None = field(
         default=None,
         repr=False,

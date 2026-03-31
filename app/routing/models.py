@@ -138,6 +138,7 @@ class ResolvedDispatch:
     health_snapshots: list[ProviderHealthSnapshot] = field(default_factory=list)
     sources: dict[str, str] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+    strategy_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def provider_spec_from_dict(data: Mapping[str, Any] | None) -> ProviderSpec | None:
@@ -251,6 +252,7 @@ def resolved_dispatch_from_dict(data: Mapping[str, Any] | None) -> ResolvedDispa
         ],
         sources=dict(data.get("sources") or {}),
         metadata=dict(data.get("metadata") or {}),
+        strategy_metadata=dict(data.get("strategy_metadata") or {}),
     )
 
 

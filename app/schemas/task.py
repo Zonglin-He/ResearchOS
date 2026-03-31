@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Any
 
 from app.routing.models import DispatchProfile, ResolvedDispatch
+from app.schemas.strategy import HandoffPacket, RetrievalEvidence, StrategyTrace
 
 
 class TaskStatus(str, Enum):
@@ -38,4 +39,7 @@ class Task:
     last_error: str | None = None
     next_retry_at: datetime | None = None
     checkpoint_path: str | None = None
+    latest_strategy_trace: StrategyTrace | None = None
+    latest_retrieval_evidence: list[RetrievalEvidence] = field(default_factory=list)
+    latest_handoff_packet: HandoffPacket | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

@@ -67,6 +67,10 @@ def to_record(value: Any) -> Any:
         return {key: to_record(item) for key, item in asdict(value).items()}
     if isinstance(value, list):
         return [to_record(item) for item in value]
+    if isinstance(value, tuple):
+        return [to_record(item) for item in value]
+    if isinstance(value, set):
+        return [to_record(item) for item in sorted(value, key=repr)]
     if isinstance(value, dict):
         return {key: to_record(item) for key, item in value.items()}
     return value

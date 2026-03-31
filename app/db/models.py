@@ -56,6 +56,9 @@ class TaskModel(Base):
     last_error: Mapped[str | None] = mapped_column(String, nullable=True)
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     checkpoint_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    latest_strategy_trace: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    latest_retrieval_evidence: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    latest_handoff_packet: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

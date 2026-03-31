@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from app.schemas.task import Task
-from app.services.registry_store import ensure_parent
+from app.services.registry_store import ensure_parent, to_record
 
 
 class CheckpointService:
@@ -31,7 +31,7 @@ class CheckpointService:
             "task_id": task.task_id,
             "project_id": task.project_id,
             "stage": stage,
-            "payload": payload,
+            "payload": to_record(payload),
             "saved_at": datetime.now(timezone.utc).isoformat(),
         }
         path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -24,6 +24,7 @@ from app.services.freeze_service import FreezeService
 from app.services.gap_map_service import GapMapService
 from app.services.paper_card_service import PaperCardService
 from app.services.kb_service import KnowledgeBaseService, KnowledgeRecord
+from app.services.memory_registry_service import MemoryRegistryService
 from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
 from app.tools.arxiv_fetcher import search_arxiv
@@ -97,6 +98,7 @@ class ResearchGuideService:
         paper_card_service: PaperCardService,
         provider_registry: ProviderRegistry,
         kb_service: KnowledgeBaseService,
+        memory_registry_service: MemoryRegistryService | None,
         approval_service: ApprovalService,
         tool_registry,
         orchestrator: Orchestrator,
@@ -109,6 +111,7 @@ class ResearchGuideService:
         self.paper_card_service = paper_card_service
         self.provider_registry = provider_registry
         self.kb_service = kb_service
+        self.memory_registry_service = memory_registry_service
         self.approval_service = approval_service
         self.tool_registry = tool_registry
         self.orchestrator = orchestrator
@@ -304,6 +307,19 @@ class ResearchGuideService:
                 payload={"candidate": candidate, "operator_note": operator_note.strip()},
             )
         )
+        if self.memory_registry_service is not None:
+            self.memory_registry_service.record_task_summary(
+                project_id=project_id,
+                task_id=human_select_task.task_id,
+                bucket="research_decision",
+                summary=resolved_question,
+                confidence=0.95,
+                tags=[topic, gap_id, *novelty],
+                metadata={
+                    "title": f"Adopted direction {gap_id}",
+                    "operator_note": operator_note.strip(),
+                },
+            )
 
         if human_select_task.status != TaskStatus.SUCCEEDED:
             human_select_task.status = TaskStatus.SUCCEEDED

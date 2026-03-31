@@ -72,6 +72,9 @@ export type Task = {
   last_error: string | null;
   next_retry_at: string | null;
   checkpoint_path: string | null;
+  latest_strategy_trace: StrategyTrace | null;
+  latest_retrieval_evidence: RetrievalEvidence[];
+  latest_handoff_packet: HandoffPacket | null;
   created_at: string;
 };
 
@@ -109,6 +112,79 @@ export type ResolvedDispatch = {
   fallback_reason: string | null;
   sources: Record<string, string>;
   metadata: Record<string, unknown>;
+  strategy_metadata: Record<string, unknown>;
+};
+
+export type StrategyTrace = {
+  task_id: string;
+  project_id: string;
+  should_retrieve: boolean;
+  retrieval_targets: string[];
+  should_call_tools: boolean;
+  tool_candidates: string[];
+  needs_human_checkpoint: boolean;
+  reasoning_summary: string;
+  created_at: string;
+};
+
+export type RetrievalEvidence = {
+  source_type: string;
+  source_id: string;
+  title: string;
+  snippet: string;
+  score: number;
+  why_selected: string;
+};
+
+export type HandoffPacket = {
+  from_agent: string;
+  to_agent: string;
+  task_kind: string;
+  objective: string;
+  required_inputs: string[];
+  attached_evidence_ids: string[];
+  blocking_questions: string[];
+  done_definition: string;
+};
+
+export type MemoryRecord = {
+  record_id: string;
+  project_id: string;
+  bucket: string;
+  source_task_id: string | null;
+  summary: string;
+  confidence: number;
+  created_at: string;
+  expires_at: string | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+};
+
+export type BenchmarkScenarioResult = {
+  scenario_id: string;
+  task_kind: string;
+  success: boolean;
+  latency_ms: number;
+  provider_route: string;
+  retrieval_used: boolean;
+  tool_calls: string[];
+  checkpoint_used: boolean;
+  score_breakdown: Record<string, number>;
+  failure_reason: string;
+};
+
+export type BenchmarkRunSummary = {
+  benchmark_id: string;
+  project_id: string | null;
+  success_rate: number;
+  routing_accuracy: number;
+  retrieval_usefulness: number;
+  resume_success: number;
+  branch_selection_quality: number;
+  scenario_count: number;
+  scenarios: BenchmarkScenarioResult[];
+  failure_reasons: string[];
+  created_at: string;
 };
 
 export type ProjectDashboard = {

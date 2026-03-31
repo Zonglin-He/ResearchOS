@@ -26,6 +26,8 @@ from app.api.schemas import (
     AuditSummaryRead,
     ApprovalCreate,
     ApprovalRead,
+    BenchmarkRunRequest,
+    BenchmarkRunSummaryRead,
     ClaimCreate,
     ClaimSupportRefRead,
     ClaimRead,
@@ -86,6 +88,10 @@ from app.api.schemas import (
     ProvenanceEvidenceRefRead,
     VerificationSummaryRead,
     ProviderHealthSnapshotModel,
+    HandoffPacketRead,
+    MemoryRecordRead,
+    RetrievalEvidenceRead,
+    StrategyTraceRead,
 )
 from app.bootstrap import build_runtime_services
 from app.core.config import load_config
@@ -161,6 +167,9 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
     app.state.research_guide_service = services.research_guide_service
     app.state.activity_service = services.activity_service
     app.state.checkpoint_service = services.checkpoint_service
+    app.state.memory_registry_service = services.memory_registry_service
+    app.state.strategy_service = services.strategy_service
+    app.state.benchmark_service = services.benchmark_service
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -720,6 +729,34 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
         result = dispatch_task_job.delay(task_id)
         return {"celery_task_id": result.id, "task_id": task_id}
 
+    @app.get("/projects/{project_id}/strategy/latest", response_model=StrategyTraceRead | None)
+    def get_latest_project_strategy(project_id: str) -> StrategyTraceRead | None:
+        try:
+            trace = app.state.operator_inspection_service.latest_project_strategy(project_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return None if trace is None else _to_strategy_trace_read(trace)
+
+    @app.get("/projects/{project_id}/memory/search", response_model=list[MemoryRecordRead])
+    def search_project_memory(
+        project_id: str,
+        q: str = Query(default=""),
+        limit: int = Query(default=12, ge=1, le=50),
+    ) -> list[MemoryRecordRead]:
+        try:
+            records = app.state.operator_inspection_service.search_project_memory(project_id, q, limit=limit)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return [_to_memory_record_read(record) for record in records]
+
+    @app.get("/tasks/{task_id}/retrieval-evidence", response_model=list[RetrievalEvidenceRead])
+    def get_task_retrieval_evidence(task_id: str) -> list[RetrievalEvidenceRead]:
+        try:
+            evidence = app.state.operator_inspection_service.task_retrieval_evidence(task_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return [_to_retrieval_evidence_read(item) for item in evidence]
+
     @app.get("/routing/system", response_model=RoutingInspectionRead)
     def inspect_system_routing() -> RoutingInspectionRead:
         return _to_routing_inspection_read(app.state.operator_inspection_service.inspect_system_routing())
@@ -738,6 +775,16 @@ def create_app(db_path: str = "data/researchos.db", workspace_root: str | None =
             ProviderHealthSnapshotModel.model_validate(to_record(snapshot))
             for snapshot in app.state.operator_inspection_service.list_provider_health()
         ]
+
+    @app.post("/benchmarks/run", response_model=BenchmarkRunSummaryRead)
+    def run_benchmark(payload: BenchmarkRunRequest) -> BenchmarkRunSummaryRead:
+        summary = app.state.benchmark_service.run(project_id=payload.project_id)
+        return _to_benchmark_run_summary_read(summary)
+
+    @app.get("/benchmarks/latest", response_model=BenchmarkRunSummaryRead | None)
+    def get_latest_benchmark() -> BenchmarkRunSummaryRead | None:
+        summary = app.state.benchmark_service.latest()
+        return None if summary is None else _to_benchmark_run_summary_read(summary)
 
     @app.post("/providers/{provider_name}/disable", response_model=ProviderHealthSnapshotModel)
     def disable_provider(provider_name: str) -> ProviderHealthSnapshotModel:
@@ -1247,7 +1294,99 @@ def _to_task_read(task: Task) -> TaskRead:
         last_error=task.last_error,
         next_retry_at=task.next_retry_at,
         checkpoint_path=task.checkpoint_path,
+        latest_strategy_trace=None
+        if task.latest_strategy_trace is None
+        else _to_strategy_trace_read(task.latest_strategy_trace),
+        latest_retrieval_evidence=[
+            _to_retrieval_evidence_read(item) for item in task.latest_retrieval_evidence
+        ],
+        latest_handoff_packet=None
+        if task.latest_handoff_packet is None
+        else _to_handoff_packet_read(task.latest_handoff_packet),
         created_at=task.created_at,
+    )
+
+
+def _to_strategy_trace_read(trace) -> StrategyTraceRead:
+    return StrategyTraceRead(
+        task_id=trace.task_id,
+        project_id=trace.project_id,
+        should_retrieve=trace.should_retrieve,
+        retrieval_targets=list(trace.retrieval_targets),
+        should_call_tools=trace.should_call_tools,
+        tool_candidates=list(trace.tool_candidates),
+        needs_human_checkpoint=trace.needs_human_checkpoint,
+        reasoning_summary=trace.reasoning_summary,
+        created_at=trace.created_at,
+    )
+
+
+def _to_retrieval_evidence_read(evidence) -> RetrievalEvidenceRead:
+    return RetrievalEvidenceRead(
+        source_type=evidence.source_type,
+        source_id=evidence.source_id,
+        title=evidence.title,
+        snippet=evidence.snippet,
+        score=evidence.score,
+        why_selected=evidence.why_selected,
+    )
+
+
+def _to_handoff_packet_read(packet) -> HandoffPacketRead:
+    return HandoffPacketRead(
+        from_agent=packet.from_agent,
+        to_agent=packet.to_agent,
+        task_kind=packet.task_kind,
+        objective=packet.objective,
+        required_inputs=list(packet.required_inputs),
+        attached_evidence_ids=list(packet.attached_evidence_ids),
+        blocking_questions=list(packet.blocking_questions),
+        done_definition=packet.done_definition,
+    )
+
+
+def _to_memory_record_read(record) -> MemoryRecordRead:
+    return MemoryRecordRead(
+        record_id=record.record_id,
+        project_id=record.project_id,
+        bucket=record.bucket,
+        source_task_id=record.source_task_id,
+        summary=record.summary,
+        confidence=record.confidence,
+        created_at=record.created_at,
+        expires_at=record.expires_at,
+        tags=list(record.tags),
+        metadata=dict(record.metadata),
+    )
+
+
+def _to_benchmark_run_summary_read(summary) -> BenchmarkRunSummaryRead:
+    return BenchmarkRunSummaryRead(
+        benchmark_id=summary.benchmark_id,
+        project_id=summary.project_id,
+        success_rate=summary.success_rate,
+        routing_accuracy=summary.routing_accuracy,
+        retrieval_usefulness=summary.retrieval_usefulness,
+        resume_success=summary.resume_success,
+        branch_selection_quality=summary.branch_selection_quality,
+        scenario_count=summary.scenario_count,
+        scenarios=[
+            {
+                "scenario_id": scenario.scenario_id,
+                "task_kind": scenario.task_kind,
+                "success": scenario.success,
+                "latency_ms": scenario.latency_ms,
+                "provider_route": scenario.provider_route,
+                "retrieval_used": scenario.retrieval_used,
+                "tool_calls": list(scenario.tool_calls),
+                "checkpoint_used": scenario.checkpoint_used,
+                "score_breakdown": dict(scenario.score_breakdown),
+                "failure_reason": scenario.failure_reason,
+            }
+            for scenario in summary.scenarios
+        ],
+        failure_reasons=list(summary.failure_reasons),
+        created_at=summary.created_at,
     )
 
 

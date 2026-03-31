@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.agents.base import BaseAgent
 from app.agents.orchestrator import Orchestrator
 from app.db.repositories.in_memory_project_repository import InMemoryProjectRepository
@@ -7,7 +9,10 @@ from app.routing.resolver import RoutingResolver
 from app.schemas.project import Project
 from app.schemas.result import AgentResult
 from app.schemas.task import Task, TaskStatus
+from app.services.activity_service import ActivityService
+from app.services.memory_registry_service import MemoryRegistryService
 from app.services.project_service import ProjectService
+from app.services.strategy_service import StrategyService
 from app.services.task_service import TaskService
 
 
@@ -107,3 +112,63 @@ def test_orchestrator_persists_resolved_routing_from_task_override() -> None:
     assert dispatch.result.routing is not None
     assert dispatch.result.routing.provider_name == "codex"
     assert any("provider=codex" in note for note in dispatch.result.audit_notes)
+
+
+class PlanningAgent(BaseAgent):
+    name = "branch_manager_agent"
+    description = "Creates a child task"
+
+    async def run(self, task: Task, ctx) -> AgentResult:
+        return AgentResult(
+            status="success",
+            artifacts=["artifact-1"],
+            next_tasks=[
+                Task(
+                    task_id="t3:child",
+                    project_id=task.project_id,
+                    kind="gap_mapping",
+                    goal="Map gaps from the planned branch",
+                    input_payload={"topic": "retrieval"},
+                    owner=task.owner,
+                    assigned_agent="mapper_agent",
+                )
+            ],
+            output={"summary": "Planned a structured handoff."},
+        )
+
+
+def test_orchestrator_records_strategy_and_handoff(tmp_path: Path) -> None:
+    repository = InMemoryTaskRepository()
+    activity_service = ActivityService(events_path=tmp_path / "run_events.jsonl")
+    task_service = TaskService(repository, activity_service=activity_service)
+    memory_registry = MemoryRegistryService(tmp_path / "memory.jsonl")
+    orchestrator = Orchestrator(
+        task_service,
+        strategy_service=StrategyService(memory_registry),
+        memory_registry_service=memory_registry,
+        activity_service=activity_service,
+    )
+    orchestrator.register_agent(PlanningAgent(), handles={"branch_plan"})
+    task_service.create_task(
+        Task(
+            task_id="t3",
+            project_id="p1",
+            kind="branch_plan",
+            goal="Plan follow-up work",
+            input_payload={"topic": "retrieval"},
+            owner="gabriel",
+        )
+    )
+
+    import asyncio
+
+    dispatch = asyncio.run(orchestrator.dispatch("t3"))
+    child = task_service.get_task("t3:child")
+
+    assert dispatch.task.latest_strategy_trace is not None
+    assert dispatch.task.latest_strategy_trace.reasoning_summary
+    assert child is not None
+    assert child.latest_handoff_packet is not None
+    assert child.latest_handoff_packet.from_agent == "Planner"
+    assert child.latest_handoff_packet.to_agent == "Retriever/Mapper"
+    assert memory_registry.list_records(project_id="p1")

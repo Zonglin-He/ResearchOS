@@ -9,6 +9,7 @@ import {
   type ArtifactDetail,
   type AuditReport,
   type AuditSummary,
+  type BenchmarkRunSummary,
   type BranchComparison,
   type DiscussionHistory,
   type DiscussionSession,
@@ -23,6 +24,7 @@ import {
   type KnowledgeRecord,
   type KnowledgeSummary,
   type Lesson,
+  type MemoryRecord,
   type PaperCard,
   type PaperCardDetail,
   type ProjectAutopilotResponse,
@@ -33,6 +35,7 @@ import {
   type RoutingInspection,
   type RunEvent,
   type RunManifest,
+  type StrategyTrace,
   type SpecFreeze,
   type Task,
   type TopicFreeze,
@@ -78,6 +81,9 @@ type DashboardData = {
   branchComparison: BranchComparison | null;
   recentEvents: RunEvent[];
   flowSnapshot: FlowSnapshot | null;
+  latestStrategy: StrategyTrace | null;
+  projectMemory: MemoryRecord[];
+  benchmarkSummary: BenchmarkRunSummary | null;
 };
 
 const tabs: Array<{ id: MainTab; label: string; icon: typeof FlaskConical }> = [
@@ -216,6 +222,9 @@ export default function App() {
         branchComparison,
         recentEvents,
         flowSnapshot,
+        latestStrategy,
+        projectMemory,
+        benchmarkSummary,
       ] = await Promise.all([
         getJson<Task[]>("/tasks"),
         getJson<Claim[]>("/claims"),
@@ -241,6 +250,9 @@ export default function App() {
         nextProjectId ? getJson<BranchComparison>(`/projects/${nextProjectId}/branches/compare`) : Promise.resolve(null),
         nextProjectId ? getJson<RunEvent[]>(`/projects/${nextProjectId}/events?limit=20`) : Promise.resolve([]),
         nextProjectId ? getJson<FlowSnapshot>(`/projects/${nextProjectId}/flow`) : Promise.resolve(null),
+        nextProjectId ? getJson<StrategyTrace | null>(`/projects/${nextProjectId}/strategy/latest`) : Promise.resolve(null),
+        nextProjectId ? getJson<MemoryRecord[]>(`/projects/${nextProjectId}/memory/search`) : Promise.resolve([]),
+        getJson<BenchmarkRunSummary | null>("/benchmarks/latest"),
       ]);
 
       setData({
@@ -270,6 +282,9 @@ export default function App() {
         branchComparison,
         recentEvents,
         flowSnapshot,
+        latestStrategy,
+        projectMemory,
+        benchmarkSummary,
       });
     } catch (loadError) {
       setError(normalizeError(loadError));
@@ -648,6 +663,7 @@ export default function App() {
                   gapMaps={data.gapMaps}
                   lessons={data.lessons}
                   knowledgeSummary={data.knowledgeSummary}
+                  projectMemory={data.projectMemory}
                   topicFreeze={data.topicFreeze}
                   specFreeze={data.specFreeze}
                   resultsFreeze={data.resultsFreeze}
@@ -706,6 +722,8 @@ export default function App() {
                       flowSnapshot={data.flowSnapshot}
                       recentEvents={data.recentEvents}
                       branchComparison={data.branchComparison}
+                      latestStrategy={data.latestStrategy}
+                      benchmarkSummary={data.benchmarkSummary}
                       routingPreview={routingPreview}
                       selectedRunAudit={selectedRunAudit}
                       runAction={runAction}
@@ -725,6 +743,7 @@ export default function App() {
                       enableProvider={(provider) => postJson(`/providers/${provider}/enable`)}
                       clearCooldown={(provider) => postJson(`/providers/${provider}/clear-cooldown`)}
                       probeProvider={(provider) => postJson(`/providers/${provider}/probe`)}
+                      runBenchmark={(payload) => postJson("/benchmarks/run", payload)}
                       verifyClaim={(claimId) => postJson(`/verifications/claims/${claimId}`)}
                       verifyRun={(runId) => postJson(`/verifications/runs/${runId}`)}
                       createApproval={(payload) => postJson("/approvals", payload)}

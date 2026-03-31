@@ -7,6 +7,7 @@ import type {
   GapMapDetail,
   KnowledgeSummary,
   Lesson,
+  MemoryRecord,
   PaperCard,
   PaperCardDetail,
   ResultsFreeze,
@@ -30,6 +31,7 @@ type Props = {
   gapMaps: GapMap[];
   lessons: Lesson[];
   knowledgeSummary: KnowledgeSummary;
+  projectMemory: MemoryRecord[];
   topicFreeze: FreezeLike;
   specFreeze: FreezeLike;
   resultsFreeze: ResultsFreeze | null;
@@ -195,6 +197,24 @@ export function RegistryTab(props: Props) {
               meta={bucket.latest_title || "暂无条目"}
             />
           ))}
+        </div>
+        <div className="stack-md">
+          {props.projectMemory.length ? (
+            props.projectMemory.slice(0, 8).map((record) => (
+              <div key={record.record_id} className="record-card">
+                <div className="record-card-head">
+                  <strong>{bucketLabel(record.bucket)}</strong>
+                  <span>{record.confidence.toFixed(2)}</span>
+                </div>
+                <p>{record.summary}</p>
+                <small>
+                  {record.source_task_id ?? "memory"} | {record.created_at.replace("T", " ").slice(0, 16)}
+                </small>
+              </div>
+            ))
+          ) : (
+            <p className="muted">No memory timeline entries yet.</p>
+          )}
         </div>
       </Panel>
 

@@ -17,10 +17,12 @@ from app.services.artifact_annotation_service import ArtifactAnnotationService
 from app.services.artifact_service import ArtifactService
 from app.services.freeze_service import FreezeService
 from app.services.gap_map_service import GapMapService
+from app.services.memory_registry_service import MemoryRegistryService
 from app.services.paper_card_service import PaperCardService
 from app.services.project_service import ProjectService
 from app.services.provenance_service import ProvenanceService
 from app.services.run_service import RunService
+from app.services.strategy_service import StrategyService
 from app.services.task_service import TaskService
 from app.workflows.research_flow import available_flow_actions
 
@@ -41,6 +43,8 @@ class OperatorInspectionService:
         orchestrator: Orchestrator,
         provider_registry: ProviderRegistry,
         provider_health_service: ProviderHealthService,
+        strategy_service: StrategyService,
+        memory_registry_service: MemoryRegistryService,
         storage_boundary: StorageBoundary,
     ) -> None:
         self.project_service = project_service
@@ -55,6 +59,8 @@ class OperatorInspectionService:
         self.orchestrator = orchestrator
         self.provider_registry = provider_registry
         self.provider_health_service = provider_health_service
+        self.strategy_service = strategy_service
+        self.memory_registry_service = memory_registry_service
         self.storage_boundary = storage_boundary
 
     def build_project_dashboard(self, project_id: str) -> ProjectDashboard:
@@ -229,6 +235,31 @@ class OperatorInspectionService:
             metadata=dict(artifact.metadata),
             resolved_path=provenance.resolved_path,
             workspace_relative_path=provenance.workspace_relative_path,
+        )
+
+    def latest_project_strategy(self, project_id: str):
+        project = self.project_service.get_project(project_id)
+        if project is None:
+            raise KeyError(f"Project not found: {project_id}")
+        return self.strategy_service.latest_project_strategy(
+            project_id=project_id,
+            tasks=self.task_service.list_tasks(),
+        )
+
+    def task_retrieval_evidence(self, task_id: str):
+        task = self.task_service.get_task(task_id)
+        if task is None:
+            raise KeyError(f"Task not found: {task_id}")
+        return tuple(task.latest_retrieval_evidence)
+
+    def search_project_memory(self, project_id: str, query: str, *, limit: int = 12):
+        project = self.project_service.get_project(project_id)
+        if project is None:
+            raise KeyError(f"Project not found: {project_id}")
+        return tuple(
+            self.memory_registry_service.search(project_id=project_id, query=query, limit=limit)
+            if query.strip()
+            else self.memory_registry_service.list_records(project_id=project_id)[:limit]
         )
 
     def list_provider_health(self):

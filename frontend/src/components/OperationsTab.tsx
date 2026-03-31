@@ -3,6 +3,7 @@ import { FileCheck2, Hand, PlayCircle, Route, ShieldAlert, Sparkles, Square, Und
 import type {
   Approval,
   AuditReport,
+  BenchmarkRunSummary,
   BranchComparison,
   Claim,
   FlowSnapshot,
@@ -11,6 +12,7 @@ import type {
   RoutingInspection,
   RunEvent,
   RunManifest,
+  StrategyTrace,
   Task,
 } from "../api";
 import { EmptyState, KeyValue, Panel, StatusPill } from "./ui";
@@ -25,6 +27,8 @@ type Props = {
   flowSnapshot: FlowSnapshot | null;
   recentEvents: RunEvent[];
   branchComparison: BranchComparison | null;
+  latestStrategy: StrategyTrace | null;
+  benchmarkSummary: BenchmarkRunSummary | null;
   routingPreview: RoutingInspection | null;
   selectedRunAudit: AuditReport | null;
   runAction: (key: string, callback: () => Promise<unknown>, refresh?: boolean) => Promise<void>;
@@ -42,6 +46,7 @@ type Props = {
   enableProvider: (provider: string) => Promise<unknown>;
   clearCooldown: (provider: string) => Promise<unknown>;
   probeProvider: (provider: string) => Promise<unknown>;
+  runBenchmark: (payload: { project_id: string | null }) => Promise<unknown>;
   verifyClaim: (claimId: string) => Promise<unknown>;
   verifyRun: (runId: string) => Promise<unknown>;
   createApproval: (payload: unknown) => Promise<unknown>;
@@ -65,6 +70,10 @@ export function OperationsTab(props: Props) {
   const pendingApprovals = useMemo(
     () => props.approvals.filter((approval) => approval.decision === "pending"),
     [props.approvals],
+  );
+  const inspectedTask = useMemo(
+    () => props.projectTasks.find((task) => task.task_id === props.routingPreview?.subject_id) ?? null,
+    [props.projectTasks, props.routingPreview],
   );
 
   function getDraft(approval: Approval): ApprovalDraft {
@@ -171,6 +180,64 @@ export function OperationsTab(props: Props) {
         ) : (
           <EmptyState title="No flow snapshot yet" body="The backend will expose the current research flow state here once the project is initialized." />
         )}
+      </Panel>
+
+      <Panel title="Benchmark / Strategy" subtitle="Track whether the system is making better decisions, not just exposing more controls.">
+        <div className="stack-md">
+          <div className="inspect-card">
+            <div className="inspect-title">
+              <Sparkles size={16} />
+              <strong>Latest project strategy</strong>
+            </div>
+            {props.latestStrategy ? (
+              <>
+                <KeyValue label="Task" value={props.latestStrategy.task_id} />
+                <KeyValue label="Retrieve" value={String(props.latestStrategy.should_retrieve)} />
+                <KeyValue label="Targets" value={props.latestStrategy.retrieval_targets.join(" | ") || "<none>"} />
+                <KeyValue label="Tools" value={props.latestStrategy.tool_candidates.join(" | ") || "<none>"} />
+                <KeyValue label="Reasoning" value={props.latestStrategy.reasoning_summary || "<none>"} />
+              </>
+            ) : (
+              <p>No strategy trace has been persisted for this project yet.</p>
+            )}
+          </div>
+          <div className="inspect-card">
+            <div className="inspect-title">
+              <Route size={16} />
+              <strong>Latest benchmark</strong>
+            </div>
+            {props.benchmarkSummary ? (
+              <>
+                <KeyValue label="Success rate" value={props.benchmarkSummary.success_rate} />
+                <KeyValue label="Routing accuracy" value={props.benchmarkSummary.routing_accuracy} />
+                <KeyValue label="Retrieval usefulness" value={props.benchmarkSummary.retrieval_usefulness} />
+                <KeyValue label="Resume success" value={props.benchmarkSummary.resume_success} />
+                <KeyValue label="Branch quality" value={props.benchmarkSummary.branch_selection_quality} />
+                <KeyValue
+                  label="Failures"
+                  value={props.benchmarkSummary.failure_reasons.join(" | ") || "No benchmark failures recorded."}
+                />
+              </>
+            ) : (
+              <p>No benchmark run has been recorded yet.</p>
+            )}
+            <div className="button-row">
+              <button
+                className="button tiny"
+                type="button"
+                onClick={() =>
+                  void props.runAction(
+                    "run-benchmark",
+                    () => props.runBenchmark({ project_id: props.projectDashboard?.project_id ?? null }),
+                  )
+                }
+                disabled={props.isBusy("run-benchmark")}
+              >
+                Run benchmark
+              </button>
+            </div>
+          </div>
+        </div>
       </Panel>
 
       <Panel title="Pending Approvals" subtitle="Approve, reject, or approve with conditions without leaving the operator console.">
@@ -622,7 +689,38 @@ export function OperationsTab(props: Props) {
             </div>
           ) : null}
 
-          {!props.routingPreview && !props.selectedRunAudit ? (
+          {inspectedTask ? (
+            <div className="inspect-card">
+              <div className="inspect-title">
+                <Route size={16} />
+                <strong>Task strategy / evidence / handoff</strong>
+              </div>
+              <KeyValue
+                label="Strategy"
+                value={inspectedTask.latest_strategy_trace?.reasoning_summary || "No strategy trace on this task."}
+              />
+              <KeyValue
+                label="Evidence"
+                value={
+                  inspectedTask.latest_retrieval_evidence.length
+                    ? inspectedTask.latest_retrieval_evidence
+                        .map((item) => `${item.source_type}:${item.title}`)
+                        .join(" | ")
+                    : "No retrieval evidence."
+                }
+              />
+              <KeyValue
+                label="Handoff"
+                value={
+                  inspectedTask.latest_handoff_packet
+                    ? `${inspectedTask.latest_handoff_packet.from_agent} -> ${inspectedTask.latest_handoff_packet.to_agent}: ${inspectedTask.latest_handoff_packet.objective}`
+                    : "No handoff packet."
+                }
+              />
+            </div>
+          ) : null}
+
+          {!props.routingPreview && !props.selectedRunAudit && !inspectedTask ? (
             <EmptyState title="No inspection results" body="Inspect routing or audit a run to populate this area." />
           ) : (
             <div className="inspect-card inspect-tip">

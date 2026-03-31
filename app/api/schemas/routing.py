@@ -50,3 +50,4 @@ class ResolvedDispatchModel(BaseModel):
     health_snapshots: list[ProviderHealthSnapshotModel] = Field(default_factory=list)
     sources: dict[str, str] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    strategy_metadata: dict[str, Any] = Field(default_factory=dict)

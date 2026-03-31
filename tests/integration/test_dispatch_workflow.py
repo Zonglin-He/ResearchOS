@@ -67,5 +67,8 @@ def test_dispatch_workflow_via_api_resolves_profile_and_persists_registry_output
     assert paper_cards.status_code == 200
     assert paper_cards.json()[0]["paper_id"] == "integration_paper"
     assert artifacts.status_code == 200
-    assert artifacts.json()[0]["kind"] == "reader_note"
-    assert artifacts.json()[0]["run_id"] == "run-t1"
+    artifact_rows = artifacts.json()
+    artifact_kinds = {row["kind"] for row in artifact_rows}
+    assert "reader_note" in artifact_kinds
+    assert "strategy_trace" in artifact_kinds
+    assert any(row["kind"] == "reader_note" and row["run_id"] == "run-t1" for row in artifact_rows)

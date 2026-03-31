@@ -4,6 +4,9 @@ from fastapi.testclient import TestClient
 
 from app.api.app import create_app
 from app.schemas.artifact import ArtifactRecord
+from app.schemas.project import Project
+from app.schemas.strategy import HandoffPacket, RetrievalEvidence, StrategyTrace
+from app.schemas.task import Task
 from app.schemas.task import TaskStatus
 
 
@@ -769,3 +772,79 @@ def test_api_can_resume_checkpoint_and_compare_branches(tmp_path: Path) -> None:
     assert "accuracy" in comparison.json()["metric_keys"]
     assert pause_flow.status_code == 200
     assert pause_flow.json()["status"] == "paused"
+
+
+def test_api_exposes_strategy_memory_and_benchmark_endpoints(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
+    client.app.state.project_service.create_project(
+        Project(
+            project_id="p2",
+            name="Strategy Project",
+            description="Expose strategy and memory",
+            status="active",
+        )
+    )
+    client.app.state.task_service.create_task(
+        Task(
+            task_id="task-strategy",
+            project_id="p2",
+            kind="paper_ingest",
+            goal="Read strategy evidence",
+            input_payload={"topic": "retrieval"},
+            owner="tester",
+            latest_strategy_trace=StrategyTrace(
+                task_id="task-strategy",
+                project_id="p2",
+                should_retrieve=True,
+                retrieval_targets=("retrieval_note",),
+                should_call_tools=True,
+                tool_candidates=("arxiv_fetcher",),
+                needs_human_checkpoint=False,
+                reasoning_summary="paper ingest should retrieve literature",
+            ),
+            latest_retrieval_evidence=[
+                RetrievalEvidence(
+                    source_type="retrieval_note",
+                    source_id="memory-1",
+                    title="retrieval note",
+                    snippet="A durable retrieval memory.",
+                    score=0.9,
+                    why_selected="Matched the current topic.",
+                )
+            ],
+            latest_handoff_packet=HandoffPacket(
+                from_agent="Planner",
+                to_agent="Retriever/Mapper",
+                task_kind="paper_ingest",
+                objective="Read bounded sources",
+                required_inputs=("topic",),
+                attached_evidence_ids=("memory-1",),
+                done_definition="Produce paper cards.",
+            ),
+        )
+    )
+    client.app.state.memory_registry_service.record_task_summary(
+        project_id="p2",
+        task_id="task-strategy",
+        bucket="research_decision",
+        summary="Use grounded retrieval for this project.",
+        confidence=0.9,
+        tags=["retrieval"],
+    )
+
+    strategy_response = client.get("/projects/p2/strategy/latest")
+    memory_response = client.get("/projects/p2/memory/search")
+    evidence_response = client.get("/tasks/task-strategy/retrieval-evidence")
+    benchmark_response = client.post("/benchmarks/run", json={"project_id": "p2"})
+    latest_benchmark_response = client.get("/benchmarks/latest")
+
+    assert strategy_response.status_code == 200
+    assert strategy_response.json()["should_retrieve"] is True
+    assert memory_response.status_code == 200
+    assert memory_response.json()[0]["bucket"] == "research_decision"
+    assert evidence_response.status_code == 200
+    assert evidence_response.json()[0]["source_id"] == "memory-1"
+    assert benchmark_response.status_code == 200
+    assert benchmark_response.json()["scenario_count"] == 5
+    assert latest_benchmark_response.status_code == 200
+    assert latest_benchmark_response.json()["benchmark_id"] == benchmark_response.json()["benchmark_id"]

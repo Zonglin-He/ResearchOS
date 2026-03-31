@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.api.schemas.routing import DispatchProfileModel, ResolvedDispatchModel
+from app.api.schemas.strategy import HandoffPacketRead, RetrievalEvidenceRead, StrategyTraceRead
 
 
 class TaskCreate(BaseModel):
@@ -32,6 +33,9 @@ class TaskRead(TaskCreate):
     last_error: str | None = None
     next_retry_at: datetime | None = None
     checkpoint_path: str | None = None
+    latest_strategy_trace: StrategyTraceRead | None = None
+    latest_retrieval_evidence: list[RetrievalEvidenceRead] = Field(default_factory=list)
+    latest_handoff_packet: HandoffPacketRead | None = None
     created_at: datetime
 
 
