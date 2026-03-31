@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -848,3 +849,62 @@ def test_api_exposes_strategy_memory_and_benchmark_endpoints(tmp_path: Path) -> 
     assert benchmark_response.json()["scenario_count"] == 5
     assert latest_benchmark_response.status_code == 200
     assert latest_benchmark_response.json()["benchmark_id"] == benchmark_response.json()["benchmark_id"]
+
+
+def test_api_latest_strategy_prefers_newest_trace_timestamp(tmp_path: Path) -> None:
+    client = TestClient(create_app(str(tmp_path / "researchos.db"), workspace_root=str(tmp_path)))
+    client.app.state.project_service.create_project(
+        Project(
+            project_id="p3",
+            name="Latest Strategy Project",
+            description="Verify trace ordering",
+            status="active",
+        )
+    )
+    earlier_task_time = datetime.now(timezone.utc) - timedelta(days=2)
+    newer_task_time = datetime.now(timezone.utc) - timedelta(days=1)
+    newest_trace_time = datetime.now(timezone.utc)
+    older_trace_time = datetime.now(timezone.utc) - timedelta(hours=2)
+    client.app.state.task_service.create_task(
+        Task(
+            task_id="older-task",
+            project_id="p3",
+            kind="paper_ingest",
+            goal="Rerun the older task",
+            input_payload={"topic": "retrieval"},
+            owner="tester",
+            created_at=earlier_task_time,
+            latest_strategy_trace=StrategyTrace(
+                task_id="older-task",
+                project_id="p3",
+                should_retrieve=True,
+                retrieval_targets=("retrieval_note",),
+                reasoning_summary="rerun strategy",
+                created_at=newest_trace_time,
+            ),
+        )
+    )
+    client.app.state.task_service.create_task(
+        Task(
+            task_id="newer-task",
+            project_id="p3",
+            kind="paper_ingest",
+            goal="Newer task with older strategy",
+            input_payload={"topic": "retrieval"},
+            owner="tester",
+            created_at=newer_task_time,
+            latest_strategy_trace=StrategyTrace(
+                task_id="newer-task",
+                project_id="p3",
+                should_retrieve=True,
+                retrieval_targets=("retrieval_note",),
+                reasoning_summary="older trace",
+                created_at=older_trace_time,
+            ),
+        )
+    )
+
+    response = client.get("/projects/p3/strategy/latest")
+
+    assert response.status_code == 200
+    assert response.json()["task_id"] == "older-task"
