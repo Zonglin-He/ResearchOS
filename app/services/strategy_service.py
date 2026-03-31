@@ -53,7 +53,10 @@ class StrategyService:
         ]
         if not project_tasks:
             return None
-        project_tasks.sort(key=lambda item: item.created_at, reverse=True)
+        project_tasks.sort(
+            key=lambda item: item.latest_strategy_trace.created_at if item.latest_strategy_trace is not None else item.created_at,
+            reverse=True,
+        )
         return project_tasks[0].latest_strategy_trace
 
     def _retrieve_evidence(self, task: Task, retrieval_targets: list[str]) -> list[RetrievalEvidence]:

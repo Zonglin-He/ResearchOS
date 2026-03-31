@@ -4,6 +4,9 @@ from app.agents.base import BaseAgent
 from app.agents.orchestrator import Orchestrator
 from app.db.repositories.in_memory_project_repository import InMemoryProjectRepository
 from app.db.repositories.in_memory_task_repository import InMemoryTaskRepository
+from app.db.repositories.sqlite_project_repository import SQLiteProjectRepository
+from app.db.repositories.sqlite_task_repository import SQLiteTaskRepository
+from app.db.sqlite import SQLiteDatabase
 from app.routing.models import AgentRoutingPolicy, DispatchProfile, ProviderSpec
 from app.routing.resolver import RoutingResolver
 from app.schemas.project import Project
@@ -172,3 +175,58 @@ def test_orchestrator_records_strategy_and_handoff(tmp_path: Path) -> None:
     assert child.latest_handoff_packet.from_agent == "Planner"
     assert child.latest_handoff_packet.to_agent == "Retriever/Mapper"
     assert memory_registry.list_records(project_id="p1")
+
+
+def test_orchestrator_persists_strategy_fields_with_sqlite_repository(tmp_path: Path) -> None:
+    database = SQLiteDatabase(tmp_path / "researchos.db")
+    database.initialize()
+    project_repository = SQLiteProjectRepository(database)
+    repository = SQLiteTaskRepository(database)
+    task_service = TaskService(repository)
+    project_service = ProjectService(project_repository)
+    memory_registry = MemoryRegistryService(tmp_path / "memory.jsonl")
+    memory_registry.record_task_summary(
+        project_id="p1",
+        task_id="memory-source",
+        bucket="retrieval_note",
+        summary="Grounded retrieval memory",
+        confidence=0.9,
+        tags=["retrieval"],
+        metadata={"title": "retrieval memory"},
+    )
+    orchestrator = Orchestrator(
+        task_service,
+        project_service=project_service,
+        strategy_service=StrategyService(memory_registry),
+        memory_registry_service=memory_registry,
+    )
+    orchestrator.register_agent(SuccessfulAgent(), handles={"paper_ingest"})
+    project_service.create_project(
+        Project(
+            project_id="p1",
+            name="SQLite Project",
+            description="Persist strategy fields",
+            status="active",
+        )
+    )
+    task_service.create_task(
+        Task(
+            task_id="sqlite-task",
+            project_id="p1",
+            kind="paper_ingest",
+            goal="Read retrieval notes",
+            input_payload={"topic": "retrieval"},
+            owner="gabriel",
+        )
+    )
+
+    import asyncio
+
+    asyncio.run(orchestrator.dispatch("sqlite-task"))
+    persisted = task_service.get_task("sqlite-task")
+
+    assert persisted is not None
+    assert persisted.latest_strategy_trace is not None
+    assert persisted.latest_strategy_trace.should_retrieve is True
+    assert persisted.latest_retrieval_evidence
+    assert persisted.latest_retrieval_evidence[0].source_id == "memory-source"

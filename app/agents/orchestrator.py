@@ -114,8 +114,6 @@ class Orchestrator:
 
         routing = self._resolve_routing(task, agent)
         strategy_trace, retrieval_evidence = self._resolve_strategy(task, project_id=task.project_id)
-        task.latest_strategy_trace = strategy_trace
-        task.latest_retrieval_evidence = list(retrieval_evidence)
         if routing is not None:
             routing.strategy_metadata = {
                 "should_retrieve": strategy_trace.should_retrieve,
@@ -123,9 +121,11 @@ class Orchestrator:
                 "should_call_tools": strategy_trace.should_call_tools,
                 "tool_candidates": list(strategy_trace.tool_candidates),
                 "needs_human_checkpoint": strategy_trace.needs_human_checkpoint,
-            }
+        }
         if task.status != TaskStatus.RUNNING:
             task = self.task_service.update_status(task.task_id, TaskStatus.RUNNING)
+        task.latest_strategy_trace = strategy_trace
+        task.latest_retrieval_evidence = list(retrieval_evidence)
         task.assigned_agent = agent_name
         task.last_run_routing = routing
         task.next_retry_at = None
